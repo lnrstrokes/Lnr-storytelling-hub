@@ -1,0 +1,154 @@
+/* ==========================================================================
+   READER.CSS — the onscreen voice reader bar
+   --------------------------------------------------------------------------
+   All class names are new, so nothing in the existing stylesheets is touched.
+
+   The bar is part of the app layout, NOT floating over the picture: the app
+   column and the bar split the viewport height between them (see the #root
+   rules at the bottom). A screencast captures the frame and the area around
+   it, so an overlay here would also hide the transport controls.
+   ========================================================================== */
+
+.reader-dock {
+  position: relative; /* in the layout, not floating over the app */
+  z-index: 900; /* above app content, below toasts (2000) and modals (3000+) */
+  box-sizing: border-box;
+  background: #0b1119;
+  border-top: 1px solid #253347;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.55);
+  padding: 9px 12px calc(9px + env(safe-area-inset-bottom, 0px));
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.reader-dock-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  max-width: 940px;
+  margin: 0 auto;
+}
+
+.reader-dock-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #f7d896;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.reader-dock-sub {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #93a8bc;
+  margin-top: 1px;
+  line-height: 1.25;
+}
+
+/* The dropdown. 16px on purpose: below that, iOS Safari zooms the whole page
+   in when the control is focused, which would jerk the broadcast layout. */
+.reader-dock select {
+  flex: 1 1 150px;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 16px;
+  color: #e6eef8;
+  background: #131c29;
+  border: 1px solid #2b394b;
+  border-radius: 9px;
+  padding: 9px 10px;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.reader-dock select option {
+  background: #131c29;
+  color: #e6eef8;
+}
+
+.reader-dock button {
+  flex-shrink: 0;
+  min-height: 42px;
+  padding: 9px 13px;
+  border-radius: 9px;
+  border: 1px solid #2b394b;
+  background: #172230;
+  color: #c2d0df;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.reader-dock button:hover {
+  background: #1f2c3d;
+  color: #fff;
+}
+
+.reader-dock button.is-on {
+  background: #14351f;
+  border-color: #22c55e;
+  color: #bbf7d0;
+}
+
+.reader-dock button:focus-visible,
+.reader-dock select:focus-visible {
+  outline: 2px solid #f7d896;
+  outline-offset: 2px;
+}
+
+/* The reader bar is a sibling of .fs-app inside #root, so the app column and
+   the bar split the viewport height between them. The bar can then never cover
+   the app's content — no overlay, no hidden controls, nothing captured by a
+   screencast on top of the picture. */
+#root:has(> .reader-dock) {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  /* dvh tracks the collapsing mobile toolbar in PWA standalone mode, and the
+     safe-area value keeps the bar above the home indicator. */
+  min-height: 100dvh;
+}
+
+#root:has(> .reader-dock) > .fs-app {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#root:has(> .reader-dock) > .reader-dock {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 480px) {
+  .reader-dock-sub {
+    display: none; /* the status line is the first thing to go on a phone */
+  }
+  .reader-dock-inner {
+    gap: 7px;
+  }
+  .reader-dock button {
+    padding: 9px 11px;
+    font-size: 11.5px;
+  }
+}
+
+@media (max-width: 380px) {
+  .reader-dock-label span {
+    display: none; /* keep the icon, save the width */
+  }
+  .reader-dock select {
+    flex: 1 1 120px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader-dock button {
+    transition: none;
+  }
+}

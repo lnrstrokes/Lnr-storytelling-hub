@@ -1,0 +1,277 @@
+/* ==========================================================================
+   STAGE-CLEAN.CSS — the livestream viewport, reduced to content only
+   --------------------------------------------------------------------------
+   Nothing here edits the 1,396 lines of working CSS, and nothing here edits
+   App.tsx. Every rule is either scoped to the quiz viewport or is a new class
+   name. To undo the whole file, delete the one @import in index.css.
+
+   HOW THE QUIZ CASE IS DETECTED
+   `.stage-frame:has(> .quiz-viewport-stage)` — the same frame markup is used
+   for the quiz and the video loop, but only the quiz branch renders a
+   `.quiz-viewport-stage` inside it. `:has()` lets the CSS tell them apart on
+   its own, so no component change is needed. Supported everywhere since 2023
+   (Chrome 105, Safari 15.4, Firefox 121).
+
+   WHAT THIS CHANGES
+   1. Solid background — the canvas animation / wallpaper image behind the quiz
+      is gone, so nothing competes with the question.
+   2. Zero overlays — watermark, "LIVE ON AIR", "CASTING TO YOUTUBE", the chat
+      callout, the category badges, the "PREPARE YOUR ANSWER" kicker and the
+      illustration caption are hidden. Nothing covers the content.
+   3. Fit to box — the frame becomes a query container, so type is sized in
+      cqh (percent of the frame's own height) and scales with the frame instead
+      of being fixed pixels. The four answers split whatever height is left, so
+      they always fill the frame exactly. No scrolling, no clipping.
+   4. The countdown moves out of the way of the question: it used to sit above
+      it and the top of its label was clipped. It now flows at the foot of the
+      content (via flex `order`) where it is fully visible.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. SOLID BACKGROUND
+   -------------------------------------------------------------------------- */
+.stage-frame:has(> .quiz-viewport-stage) {
+  background: #060a10;
+  border-color: #1b2836;
+  container-type: size; /* children can now size against the frame */
+}
+
+.stage-frame:has(> .quiz-viewport-stage) .stage-bg-layer {
+  background: #060a10;
+}
+
+/* The video / wallpaper img / animated canvas behind the quiz. `display:none`
+   because `visibility:hidden` would still reserve and paint the layer. */
+.stage-frame:has(> .quiz-viewport-stage) .stage-bg-layer > * {
+  display: none !important;
+}
+
+/* This gradient existed so the old top and bottom overlays stayed legible.
+   With no overlays it only dulls the content, so it goes. */
+.stage-frame:has(> .quiz-viewport-stage) .stage-overlay-shade {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   2. NOTHING SITS ON TOP OF THE CONTENT
+   -------------------------------------------------------------------------- */
+
+/* Status chrome drawn over the picture. */
+.stage-frame:has(> .quiz-viewport-stage) .stage-watermark,
+.stage-frame:has(> .quiz-viewport-stage) .stage-live-pill,
+.stage-frame:has(> .quiz-viewport-stage) .cast-active-pill {
+  display: none !important;
+}
+
+/* Labels, badges and captions that are not the quiz itself. The question
+   number still appears in the stage header above the frame, and the countdown
+   still appears in-flow at the bottom, so nothing is actually lost. */
+.stage-frame:has(> .quiz-viewport-stage) .live-chat-callout-banner,
+.stage-frame:has(> .quiz-viewport-stage) .quiz-meta-row,
+.stage-frame:has(> .quiz-viewport-stage) .quiz-question-kicker,
+.stage-frame:has(> .quiz-viewport-stage) .quiz-image-tag {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   3. FIT-TO-BOX LAYOUT
+   -------------------------------------------------------------------------- */
+.stage-frame:has(> .quiz-viewport-stage) .quiz-viewport-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(5px, 1.3cqh, 12px);
+  padding: clamp(8px, 2cqh, 18px) clamp(9px, 2.6cqw, 18px);
+  box-sizing: border-box;
+  /* Was `overflow-y: auto`. A screencast captures the visible box only, so
+     anything past the fold was silently absent from the stream. Nothing needs
+     to scroll now — the layout scales instead. */
+  overflow: hidden;
+  scrollbar-width: none;
+}
+
+/* Reading order top to bottom, even though the markup order differs. */
+.stage-frame:has(> .quiz-viewport-stage) .quiz-image-box {
+  order: 1;
+  flex: 0 1 auto;
+  max-height: 19%;
+  margin: 0;
+}
+.stage-frame:has(> .quiz-viewport-stage) .quiz-question-box {
+  order: 2;
+  flex: 0 1 auto;
+  margin: 0;
+}
+.stage-frame:has(> .quiz-viewport-stage) .quiz-options-list {
+  order: 3;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+}
+.stage-frame:has(> .quiz-viewport-stage) .quiz-reveal-card {
+  order: 4;
+  flex: 0 1 auto;
+  margin: 0;
+}
+.stage-frame:has(> .quiz-viewport-stage) .progressive-countdown-bar {
+  order: 5;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+/* --- Illustration -------------------------------------------------------- */
+.stage-frame:has(> .quiz-viewport-stage) .quiz-image-box {
+  border-radius: clamp(6px, 1.6cqw, 12px);
+}
+.stage-frame:has(> .quiz-viewport-stage) .quiz-image-box img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* --- Question ------------------------------------------------------------ */
+.stage-frame:has(> .quiz-viewport-stage) .quiz-question-box {
+  padding: clamp(7px, 1.7cqh, 16px) clamp(9px, 2.3cqw, 18px);
+  border-radius: clamp(8px, 2cqw, 14px);
+  /* Near-opaque panel: contrast comes from the panel itself rather than from
+     hoping whatever is behind it happens to be dark enough. */
+  background: #0e151f;
+  border: 1.5px solid #7a6130;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  backdrop-filter: none;
+}
+
+.stage-frame:has(> .quiz-viewport-stage) .quiz-question-text.font-medium-text {
+  font-size: clamp(13px, 3.5cqh, 26px);
+  line-height: 1.28;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+
+.stage-frame:has(> .quiz-viewport-stage) .quiz-question-text.font-regular-text {
+  font-size: clamp(12px, 3.1cqh, 22px);
+  line-height: 1.26;
+  font-weight: 800;
+}
+
+.stage-frame:has(> .quiz-viewport-stage) .quiz-question-text.font-normal-text {
+  font-size: clamp(11px, 2.7cqh, 19px);
+  line-height: 1.24;
+  font-weight: 700;
+}
+
+/* --- Answers ------------------------------------------------------------- */
+.stage-frame:has(> .quiz-viewport-stage) .quiz-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(4px, 1cqh, 9px);
+}
+
+/* `flex: 1 1 0` makes all four rows split the leftover height equally, so the
+   answer block ends flush with the countdown strip below it. The min-height is
+   a floor so the rows never squash to an unreadable sliver once the reveal
+   card appears underneath them. */
+.stage-frame:has(> .quiz-viewport-stage) .quiz-opt-btn {
+  flex: 1 1 0;
+  min-height: clamp(24px, 5.6cqh, 46px);
+  padding: clamp(4px, 0.95cqh, 10px) clamp(7px, 1.8cqw, 14px);
+  gap: clamp(6px, 1.4cqw, 12px);
+  border-radius: clamp(6px, 1.6cqw, 12px);
+  background: #111a26;
+  border: 1.5px solid #26364a;
+  backdrop-filter: none;
+}
+
+.stage-frame:has(> .quiz-viewport-stage) .quiz-opt-text.font-medium-text {
+  font-size: clamp(11.5px, 2.9cqh, 21px);
+  line-height: 1.24;
+  font-weight: 700;
+}
+
+.stage-frame:has(> .quiz-viewport-stage) .quiz-opt-text.font-normal-text {
+  font-size: clamp(10.5px, 2.5cqh, 18px);
+  line-height: 1.22;
+  font-weight: 600;
+}
+
+.stage-frame:has(> .quiz-viewport-stage) .opt-badge {
+  width: clamp(18px, 4.2cqh, 30px);
+  height: clamp(18px, 4.2cqh, 30px);
+  font-size: clamp(10px, 2.3cqh, 15px);
+}
+
+/* --- Revealed answer ---------------------------------------------------- */
+.stage-frame:has(> .quiz-viewport-stage) .quiz-reveal-card {
+  padding: clamp(6px, 1.4cqh, 13px) clamp(8px, 2cqw, 15px);
+  border-radius: clamp(7px, 1.8cqw, 12px);
+}
+
+.stage-frame:has(> .quiz-viewport-stage) .reveal-head {
+  font-size: clamp(10.5px, 2.2cqh, 13px);
+  margin-bottom: 3px;
+}
+
+.stage-frame:has(> .quiz-viewport-stage) .reveal-answer.font-medium-text {
+  font-size: clamp(12px, 2.8cqh, 20px);
+}
+
+.stage-frame:has(> .quiz-viewport-stage) .reveal-answer.font-normal-text {
+  font-size: clamp(11px, 2.4cqh, 17px);
+}
+
+.stage-frame:has(> .quiz-viewport-stage) .reveal-scripture-ref {
+  font-size: clamp(10.5px, 2.2cqh, 14px);
+}
+
+/* The insight used to be a 48px scroll box. On a stream the hidden half was
+   simply gone, so it now grows with its text instead. */
+.stage-frame:has(> .quiz-viewport-stage) .reveal-insight {
+  max-height: none;
+  overflow: visible;
+  font-size: clamp(11px, 2.3cqh, 16px);
+  line-height: 1.36;
+}
+
+/* --- Countdown, in flow at the foot of the content ---------------------- */
+.stage-frame:has(> .quiz-viewport-stage) .progressive-countdown-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #0b1119;
+  border: 1px solid #1f2d40;
+  border-radius: clamp(5px, 1.4cqw, 8px);
+  padding: clamp(3px, 0.85cqh, 8px) clamp(6px, 1.7cqw, 13px);
+  font-size: clamp(12px, 3cqh, 16px);
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  color: #b8cadb;
+}
+
+.stage-frame:has(> .quiz-viewport-stage) .progressive-countdown-bar span.active {
+  color: #4ade80;
+}
+
+/* --------------------------------------------------------------------------
+   4. LANDSCAPE FRAME — roughly half the height, so answers go two-up
+   -------------------------------------------------------------------------- */
+.stage-frame.landscape:has(> .quiz-viewport-stage) .quiz-viewport-stage {
+  justify-content: flex-start;
+  gap: clamp(3px, 0.8cqh, 7px);
+  padding: clamp(5px, 1.2cqh, 10px) clamp(7px, 2cqw, 14px);
+}
+
+.stage-frame.landscape:has(> .quiz-viewport-stage) .quiz-options-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 1fr;
+  align-content: stretch;
+}
+
+.stage-frame.landscape:has(> .quiz-viewport-stage) .quiz-image-box {
+  max-height: 30%;
+}

@@ -1,0 +1,8 @@
+{
+  "name": "lnr-storytelling-engine",
+  "description": "Imported from GitHub: lnrstrokes/lnr-studio-247-livestream-engine",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

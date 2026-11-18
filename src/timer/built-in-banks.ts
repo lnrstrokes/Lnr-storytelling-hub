@@ -1,0 +1,115 @@
+/* ============================================================
+   lnr Studio — Built-in Multi-Hour Bank Loader
+   Lazily loads & deduplicates all built-in Bible, World History,
+   and Guess-the-Player banks so every creator gets 14+ hours of
+   non-repeating broadcast content right out of the box.
+   ============================================================ */
+
+import type { StarterPlayer, StarterPlayerQuiz } from './player-library.ts';
+import { setStarterData } from './player-library.ts';
+
+export type QuizTuple = [
+  string,
+  [string, string, string, string],
+  number,
+  string,
+  string,
+  string
+];
+
+export interface BuiltInBanksPayload {
+  bible: QuizTuple[];
+  history: QuizTuple[];
+  players: StarterPlayer[];
+  playerQuizzes: StarterPlayerQuiz[];
+}
+
+function normQuestionKey(text: string): string {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+let loadedBanks: BuiltInBanksPayload | null = null;
+let loadPromise: Promise<BuiltInBanksPayload> | null = null;
+
+export async function loadBuiltInBanks(): Promise<BuiltInBanksPayload> {
+  if (loadedBanks) return loadedBanks;
+  if (loadPromise) return loadPromise;
+
+  loadPromise = (async () => {
+    const [{ PRIVATE_BANKS }, chunkedBible, { HISTORY_EXPANSION }] = await Promise.all([
+      import('../../api/_banks/index.ts'),
+      import('../quizbank/index.ts').then((m) => m.loadBank()).catch(() => []),
+      import('./history-expansion.ts'),
+    ]);
+
+    const bible: QuizTuple[] = [];
+    const seenBible = new Set<string>();
+
+    const pushBibleTuple = (raw: QuizTuple) => {
+      if (!raw || !raw[0]) return;
+      const key = normQuestionKey(raw[0]);
+      if (!key || seenBible.has(key)) return;
+      seenBible.add(key);
+      bible.push(raw);
+    };
+
+    const rawBible = (PRIVATE_BANKS.bible || []) as unknown as QuizTuple[];
+    rawBible.forEach(pushBibleTuple);
+
+    for (const q of chunkedBible) {
+      const opts = (q.options || []).map((o) => o.text);
+      if (opts.length < 4) continue;
+      const correctIdx = Math.max(0, ['A', 'B', 'C', 'D'].indexOf(q.correctLetter));
+      pushBibleTuple([
+        q.question,
+        [opts[0], opts[1], opts[2], opts[3]],
+        correctIdx,
+        q.reference || q.scripture || q.category || '',
+        q.insight || '',
+        q.difficulty || 'Medium',
+      ]);
+    }
+
+    const history: QuizTuple[] = [];
+    const seenHistory = new Set<string>();
+
+    const pushHistoryTuple = (raw: QuizTuple) => {
+      if (!raw || !raw[0]) return;
+      const key = normQuestionKey(raw[0]);
+      if (!key || seenHistory.has(key)) return;
+      seenHistory.add(key);
+      history.push(raw);
+    };
+
+    const rawHistory = (PRIVATE_BANKS.history || []) as unknown as QuizTuple[];
+    rawHistory.forEach(pushHistoryTuple);
+    HISTORY_EXPANSION.forEach(pushHistoryTuple);
+
+    const players = (PRIVATE_BANKS.players || []) as unknown as StarterPlayer[];
+    const playerQuizzes = (PRIVATE_BANKS.playerQuizzes || []) as unknown as StarterPlayerQuiz[];
+
+    setStarterData(players, playerQuizzes);
+
+    const payload: BuiltInBanksPayload = {
+      bible,
+      history,
+      players,
+      playerQuizzes,
+    };
+
+    loadedBanks = payload;
+
+    if (typeof window !== 'undefined') {
+      (window as unknown as { LNR_BUILT_IN_BANKS?: BuiltInBanksPayload }).LNR_BUILT_IN_BANKS = payload;
+      window.dispatchEvent(new CustomEvent('lnr:banks-ready', { detail: payload }));
+    }
+
+    return payload;
+  })();
+
+  return loadPromise;
+}

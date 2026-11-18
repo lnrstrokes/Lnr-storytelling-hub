@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Google tag (GTM-KR9HFGSM) -->
+    <script async src="https://www.googletagmanager.com/gtm.js?id=GTM-KR9HFGSM"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0c1210" />
+    <title>lnr Studio — timer edition</title>
+    <meta name="description" content="Livestream control studio with built-in multi-hour trivia, Guess the Player SVG rounds, looped video playback, configurable channel breaks, and YouTube-safe narration." />
+    <meta property="og:title" content="lnr Studio — timer edition" />
+    <meta property="og:description" content="Livestream control studio with built-in multi-hour trivia, Guess the Player SVG rounds, looped video playback, configurable channel breaks, and YouTube-safe narration." />
+    <meta property="og:url" content="https://lnr-studio-247-livestream-engine.vercel.app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/pwa-512x512.png" />
+    <link rel="canonical" href="https://lnr-studio-247-livestream-engine.vercel.app/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="lnr Studio" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then((reg) => {
+            console.log('lnr Studio PWA ServiceWorker active');
+            // A new build is waiting: activate it, then reload once so the
+            // installed app shows the newest version instead of a stale cache.
+            reg.addEventListener('updatefound', () => {
+              const sw = reg.installing;
+              if (!sw) return;
+              sw.addEventListener('statechange', () => {
+                if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+                  sw.postMessage({ type: 'SKIP_WAITING' });
+                }
+              });
+            });
+          }).catch((err) => {
+            console.warn('SW registration:', err);
+          });
+
+          let reloaded = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (reloaded) return;
+            reloaded = true;
+            window.location.reload();
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,6033 @@
+/* ============================================================
+   lnr Studio — timer edition · engine
+   Zero-server. Everything persists in localStorage + IndexedDB.
+
+   Engines
+   -------
+   The studio now runs two separate engines:
+     quiz  — Bible / World History banks, non-repeating shuffle bag,
+             per-question countdown, voice reader.
+     video — the prerecorded clip, looped for a chosen playback length.
+   The promo break belongs to neither: it runs between blocks on both,
+   so the rotation is  block → promo → block  where "block" is whatever
+   engine is selected.
+
+   Model
+   -----
+   bank      : { bible: [Q], history: [Q] }
+   Q         : { q, opts:[4], correct:0-3, ref, insight, level }
+   bag       : per-segment shuffled queue of bank indices (non-repeating)
+   phase     : 'quiz' | 'promo' | 'video'; phaseEndsAt is a timestamp
+   ============================================================ */
+(function () {
+  'use strict';
+
+  /* ---------- small helpers ---------- */
+  var $ = function (id) { return document.getElementById(id); };
+  var on = function (el, ev, fn) { if (el) el.addEventListener(ev, fn); };
+  var now = function () { return Date.now(); };
+
+  function shuffle(a) {
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+  function clock(ms) {
+    if (ms < 0) ms = 0;
+    var total = Math.floor(ms / 1000);
+    var h = Math.floor(total / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var s = total % 60;
+    return h > 0 ? h + ':' + pad(m) + ':' + pad(s) : pad(m) + ':' + pad(s);
+  }
+
+  function sessionClock(ms) {
+    var total = Math.floor(ms / 1000);
+    return pad(Math.floor(total / 3600)) + ':' + pad(Math.floor((total % 3600) / 60)) + ':' + pad(total % 60);
+  }
+
+  var STORE = 'lnr_timer_v2';
+
+  /* ---------- settings ---------- */
+  var DEFAULT_WATERMARK = 'LNR';
+  var DEFAULT_SITE = 'lnr-studio-247-livestream-engine.vercel.app';
+  var DEFAULT_BRAND = 'LNR STUDIO';
+
+  var defaults = {
+    engine: 'quiz',
+    segment: 'bible',
+    quizMin: 60,
+    videoMin: 1,         /* legacy compat alias; break duration comes from promoAdSec */
+    promoAdsEnabled: false,
+    promoAdSec: 30,      /* fallback 1-break slot length (15-300s) when no clip uploaded */
+    promoIntervalMin: 10, /* minimum uninterrupted quiz minutes before triggering a break after milestone */
+    qSec: 10,
+    loopHours: 2,        /* video engine playback length */
+    playerBlockMin: 60,  /* player quiz block length */
+    clueSec: 6,          /* pause/step per clue */
+    guessSec: 12,        /* comment countdown window */
+    playerRevealSec: 6,  /* answer reveal hold */
+    milestoneSec: 30,    /* every-10-questions self-score board */
+    playerMode: 'all',   /* 'all' | 'clues' | 'visual' */
+    storyBlockMin: 60,   /* documentary storytelling block length */
+    storySceneSec: 8,    /* hold seconds after narrator completes a story scene */
+    storyCat: 'all',     /* 'all' | 'world-history' | 'biblical' */
+    storyStartId: '',    /* optional selected starter episode id */
+    chatSafe: true,      /* keep player content in upper ~68% above live chat/typing */
+    chatGuide: false,    /* show preview dashed boundary line */
+    brand: DEFAULT_BRAND, /* brand strap across the break */
+    promoDisplayMode: 'full',      /* 'full' | 'pip' | 'split' */
+    promoOrder: 'sequential',      /* 'sequential' | 'shuffle' */
+    promoOverlayStyle: 'disclosure', /* 'disclosure' | 'clean-brand' | 'raw' */
+    autoRotate: true,
+    music: 'sacred',
+    musicVol: 35,
+    sfxOn: true,
+    voiceOn: true,
+    voiceReveal: true,
+    voiceName: '',
+    voiceRate: 0.96,
+    watermark: DEFAULT_WATERMARK,
+    site: DEFAULT_SITE,
+    safeDefault: false
+  };
+
+  var S = {};
+  try { S = JSON.parse(localStorage.getItem(STORE) || '{}') || {}; } catch (e) { S = {}; }
+  Object.keys(defaults).forEach(function (k) {
+    if (typeof S[k] === 'undefined' || S[k] === null) S[k] = defaults[k];
+  });
+  if (S.site === 'www.lnrstudio.com') S.site = DEFAULT_SITE;
+  if (S.promoOverlayStyle === 'youtube-ad') S.promoOverlayStyle = 'disclosure';
+
+  function clampNumSetting(key, min, max) {
+    var n = Number(S[key]);
+    if (!isFinite(n) || isNaN(n)) n = defaults[key];
+    S[key] = Math.max(min, Math.min(max, n));
+  }
+  clampNumSetting('quizMin', 5, 240);
+  clampNumSetting('promoAdSec', 15, 300);
+  clampNumSetting('promoIntervalMin', 5, 60);
+  clampNumSetting('qSec', 5, 90);
+  clampNumSetting('loopHours', 0.1, 168);
+  clampNumSetting('playerBlockMin', 10, 240);
+  clampNumSetting('clueSec', 3, 20);
+  clampNumSetting('guessSec', 5, 45);
+  clampNumSetting('playerRevealSec', 3, 20);
+  clampNumSetting('milestoneSec', 10, 60);
+  clampNumSetting('storyBlockMin', 10, 240);
+  clampNumSetting('storySceneSec', 4, 30);
+  clampNumSetting('musicVol', 0, 100);
+  clampNumSetting('voiceRate', 0.7, 1.3);
+  if (S.engine !== 'quiz' && S.engine !== 'players' && S.engine !== 'video' && S.engine !== 'story') S.engine = defaults.engine;
+  if (S.segment !== 'bible' && S.segment !== 'history') S.segment = defaults.segment;
+  if (S.storyCat !== 'all' && S.storyCat !== 'world-history' && S.storyCat !== 'biblical') S.storyCat = 'all';
+  if (S.promoDisplayMode !== 'full' && S.promoDisplayMode !== 'pip' && S.promoDisplayMode !== 'split') S.promoDisplayMode = 'full';
+  if (S.promoOrder !== 'sequential' && S.promoOrder !== 'shuffle') S.promoOrder = 'sequential';
+  if (S.promoOverlayStyle !== 'disclosure' && S.promoOverlayStyle !== 'clean-brand' && S.promoOverlayStyle !== 'raw') S.promoOverlayStyle = 'disclosure';
+
+  function save() {
+    try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {}
+    var tag = $('savedTag');
+    if (tag) {
+      tag.textContent = 'Saved on this device';
+      window.setTimeout(function () { tag.textContent = 'All changes saved on this device'; }, 1400);
+    }
+  }
+
+  /* ---------- studio limits & cross-session repeat protection ---------- */
+  var MAX_VIDEOS = 12;
+  var MAX_PROMOS = 5;
+  var MAX_BAG_HISTORY = 1500;
+  var POST_READ_COUNTDOWN_MS = 10000; /* 10s post-read countdown before answer reveal */
+  var BAG_HIST_KEY = 'lnr_timer_bag_hist_v1';
+  var LEGACY_HASH_KEY = 'lnr_played_hashes_v1';
+
+  /* ---------- played-question hash memory (prevents cross-session repetition up to 1,500 items) ---------- */
+  var playedHashes = [];
+  var playedHashSet = {};
+  try {
+    var savedHashes = JSON.parse(localStorage.getItem(BAG_HIST_KEY) || localStorage.getItem(LEGACY_HASH_KEY) || '[]');
+    if (Array.isArray(savedHashes)) {
+      playedHashes = savedHashes.slice(-MAX_BAG_HISTORY);
+      playedHashes.forEach(function (h) { playedHashSet[h] = 1; });
+    }
+  } catch (e) {}
+
+  function qNormKey(text) {
+    return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  var STOP_WORDS = {
+    the: 1, a: 1, an: 1, of: 1, in: 1, to: 1, is: 1, was: 1, are: 1, were: 1,
+    for: 1, on: 1, by: 1, with: 1, at: 1, from: 1, who: 1, what: 1, which: 1, where: 1, when: 1, did: 1, does: 1
+  };
+
+  function qTokens(text) {
+    return qNormKey(text).split(' ').filter(function (w) { return w.length >= 2 && !STOP_WORDS[w]; });
+  }
+
+  function isNearDuplicate(text, existingKeys, existingTokenLists) {
+    var norm = qNormKey(text);
+    if (!norm) return true;
+    if (existingKeys[norm]) return true;
+    var tok = qTokens(text);
+    if (tok.length < 4 || !existingTokenLists || !existingTokenLists.length) return false;
+    var tokSet = {};
+    tok.forEach(function (w) { tokSet[w] = 1; });
+    for (var i = 0; i < existingTokenLists.length; i++) {
+      var prev = existingTokenLists[i];
+      if (!prev || prev.length < 4) continue;
+      var inter = 0;
+      for (var j = 0; j < prev.length; j++) {
+        if (tokSet[prev[j]]) inter++;
+      }
+      var union = tok.length + prev.length - inter;
+      if (union > 0 && (inter / union) >= 0.82) return true;
+    }
+    return false;
+  }
+
+  function recordPlayedHash(qText) {
+    var norm = qNormKey(qText);
+    if (!norm) return;
+    if (!playedHashSet[norm]) {
+      playedHashSet[norm] = 1;
+      playedHashes.push(norm);
+      if (playedHashes.length > MAX_BAG_HISTORY) {
+        var dropped = playedHashes.shift();
+        if (dropped) delete playedHashSet[dropped];
+      }
+      try { localStorage.setItem(BAG_HIST_KEY, JSON.stringify(playedHashes)); } catch (e) {}
+    }
+  }
+
+  /* ---------- question banks ---------- */
+  var SEGMENTS = { bible: 'Bible / Faith', history: 'World History / Trivia' };
+
+  function normalise(t) {
+    if (Array.isArray(t)) {
+      return { q: t[0], opts: t[1], correct: t[2], ref: t[3], insight: t[4], level: t[5] || 'Medium' };
+    }
+    return t;
+  }
+
+  var bank = { bible: [], history: [] };
+  var usingDemo = { bible: false, history: false };
+
+  /* custom (imported) questions, persisted separately so a bank update never wipes them */
+  var CUSTOM_KEY = 'lnr_custom_bank_v2';
+  var custom = { bible: [], history: [] };
+  try {
+    var c = JSON.parse(localStorage.getItem(CUSTOM_KEY) || 'null');
+    if (c && c.bible && c.history) custom = c;
+  } catch (e) {}
+
+  function rebuildQuizBanks() {
+    var builtIn = window.LNR_BUILT_IN_BANKS || {};
+    var demoSource = window.LNR_DEMO || {};
+    ['bible', 'history'].forEach(function (seg) {
+      var list = [];
+      var seen = {};
+      var builtInList = Array.isArray(builtIn[seg]) ? builtIn[seg] : [];
+      var hasCustom = Array.isArray(custom[seg]) && custom[seg].length > 0;
+      usingDemo[seg] = false;
+
+      builtInList.forEach(function (raw) {
+        var q = normalise(raw);
+        if (!q || !q.q) return;
+        var key = qNormKey(q.q);
+        if (!seen[key]) { seen[key] = 1; list.push(q); }
+      });
+
+      if (hasCustom) {
+        custom[seg].forEach(function (q) {
+          if (!q || !q.q) return;
+          var key = qNormKey(q.q);
+          if (!seen[key]) { seen[key] = 1; list.push(q); }
+        });
+      }
+
+      if (!list.length && Array.isArray(demoSource[seg])) {
+        usingDemo[seg] = true;
+        demoSource[seg].forEach(function (raw) {
+          var q = normalise(raw);
+          if (!q || !q.q) return;
+          var key = qNormKey(q.q);
+          if (!seen[key]) { seen[key] = 1; list.push(q); }
+        });
+      }
+      bank[seg] = list;
+      bags[seg] = [];
+    });
+  }
+
+  function saveCustom() {
+    try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(custom)); } catch (e) {}
+  }
+
+  /* ---------- non-repeating shuffle bag ---------- */
+  var bags = { bible: [], history: [] };
+  var lastServed = { bible: -1, history: -1 };
+
+  rebuildQuizBanks();
+
+  function effectivePromoIntervalMin() {
+    return Math.max(5, Math.min(60, Number(S.promoIntervalMin) || 10));
+  }
+
+  function effectivePromoAdSec() {
+    return Math.max(15, Math.min(300, Number(S.promoAdSec) || 30));
+  }
+
+  function refill(seg) {
+    var unseen = [];
+    var seen = [];
+    for (var i = 0; i < bank[seg].length; i++) {
+      var k = qNormKey(bank[seg][i] && bank[seg][i].q);
+      if (playedHashSet[k]) seen.push(i);
+      else unseen.push(i);
+    }
+    shuffle(unseen);
+    shuffle(seen);
+    /* .pop() pulls from end — put seen at index 0.. and unseen at the end so unseen draw first */
+    var idxs = seen.concat(unseen);
+    if (idxs.length > 1 && idxs[idxs.length - 1] === lastServed[seg]) {
+      var t = idxs[idxs.length - 1];
+      idxs[idxs.length - 1] = idxs[0];
+      idxs[0] = t;
+    }
+    bags[seg] = idxs;
+  }
+
+  function draw(seg) {
+    if (!bank[seg].length) return null;
+    if (!bags[seg].length) refill(seg);
+    var idx = bags[seg].pop();
+    lastServed[seg] = idx;
+    if (bank[seg][idx]) recordPlayedHash(bank[seg][idx].q);
+    return idx;
+  }
+
+  /* ---------- live state ---------- */
+  var live = {
+    running: false,
+    phase: 'quiz',
+    phaseEndsAt: 0,
+    phaseLen: 0,
+    startedAt: 0,
+    paused: false,
+    pausedAt: 0,
+    qIndex: -1,
+    qEndsAt: 0,
+    qRemaining: 0,
+    revealed: false,
+    qRecorded: false,
+    inSession: false,
+    served: 0,
+    clipIndex: 0,
+    quizMilestone: false,
+    quizMilestoneStartedAt: 0,
+    quizMilestoneEndsAt: 0,
+    quizRoundNum: 1,
+    quizRoundAnswers: [],
+    quizActiveMs: 0,
+    lastTickAt: 0,
+    promoStartedAt: 0,
+    preAdPending: false,
+    preAdReturnPhase: '',
+    preAdStartedAt: 0,
+    preAdEndsAt: 0,
+    promoReturnPhase: '',
+    promoCursor: 0,
+    activeAdLog: null,
+    waitingForSpeech: false,
+    lastTickCueSec: -1
+  };
+
+  var bagHistory = [];
+
+  /* ---------- elements ---------- */
+  var el = {};
+  [
+    'screenSetup', 'screenStage', 'statBank', 'statRun', 'startBtn', 'openSettingsBtn',
+    'startLabel', 'startHint', 'startSummary', 'brandHome', 'savedTag',
+    'quickStart', 'topbarStartBtn',
+    /* multi-page views & wizard */
+    'pageHome', 'pageStudio', 'pageSettings', 'pageContact',
+    'homeGoStudioBtn',
+    'wizContextTag', 'wizTab1', 'wizTab2', 'wizTab3',
+    'wizStep1', 'wizStep2', 'wizStep3', 'wizStep2Title',
+    'wizToStep2Btn', 'wizChangeEngineBtn', 'wizBackTo1Btn', 'wizToStep3Btn', 'wizBackTo2Btn',
+    /* dedicated settings page controls */
+    'stVoiceTag', 'stVoiceOn', 'stVoiceReveal', 'stVoiceSelect', 'stVoiceRate', 'stVoiceRateLabel',
+    'stMusicTag', 'stMusicGrid', 'stMusicVol', 'stMusicVolLabel', 'stSfxOn',
+    'stAudioInput', 'stAudioName', 'stAudioPreviewBtn', 'stAudioClearBtn',
+    'stAutoRotate', 'stSafeDefault', 'stChatSafe', 'stChatGuide',
+    'stWatermarkInput', 'stSiteInput', 'stBrandOverlayInput', 'stViewLogsBtn', 'stExportCsvBtn',
+    /* engine picker */
+    'engQuiz', 'engPlayers', 'engVideo', 'engStory',
+    'engQuizCount', 'engPlayersCount', 'engVideoCount', 'engStoryCount',
+    'engQuizRun', 'engPlayersRun', 'engVideoRun', 'engStoryRun',
+    'quizSetup', 'playersSetup', 'videoSetup', 'storySetup', 'promoSetup',
+    /* storytelling setup */
+    'storyCatalogNotice', 'storyCatAll', 'storyCatHistory', 'storyCatBiblical',
+    'storyCatAllCount', 'storyCatHistoryCount', 'storyCatBiblicalCount',
+    'setupStoryMin', 'setupStorySceneSec', 'storySceneTag', 'storyEpisodeList',
+    'setupStoryImportInput', 'dlStoryTemplateBtn', 'copyStoryPromptBtn', 'storyClearBtn', 'storyImportResult',
+    /* quiz guide & segment */
+    'quizPrivateNotice', 'quizTierLimitNote', 'segBible', 'segHistory', 'countBible', 'countHistory', 'runBible', 'runHistory',
+    'setupQuizImportInput', 'dlQuizTemplateBtn', 'copyQuizPromptBtn', 'setupImportResult',
+    'setupQuizMin', 'setupQSec',
+    /* player quiz setup & card library */
+    'playerPrivateNotice', 'playerTierLimitNote',
+    'pmodeAll', 'pmodeClues', 'pmodeVisual', 'pmodeAllCount',
+    'setupPlayerMin', 'setupClueSec', 'setupGuessSec', 'setupPlayerRevealSec', 'setupMilestoneSec',
+    'setupChatSafe', 'setupChatGuide',
+    'plPersistTag', 'plStatPlayers', 'plStatFormat', 'plStatQuizzes', 'plStatStorage',
+    'plQuizJsonInput', 'dlPlayerTemplateBtn', 'copyPlayerPromptBtn', 'plClearBtn',
+    'plStatus', 'plSearchInput', 'plSearchResults',
+    /* video engine */
+    'videoDrop', 'videoInput', 'videoTierLimitNote', 'loadDemoVideoBtn', 'demoVideoStatus',
+    'clipList', 'clipCount', 'loopCalc', 'loopMath',
+    'lmDuration', 'lmLoops', 'lmTotal', 'loopPresets', 'loopHours', 'loopNote', 'loopClipInfo',
+    /* promo / breaks */
+    'setupPromoSwitchRow', 'setupPromoEnabled', 'promoToggleMeta', 'promoConfigWrap', 'promoTierLimitNote',
+    'promoFreqControls',
+    'promoDrop', 'promoInput', 'promoList', 'promoCount', 'setupPromoIntervalMin', 'promoAdRange', 'promoAdLabel',
+    'promoCalc', 'promoNote', 'openAnalyticsBtn',
+    /* contact */
+    'copyContactTemplateBtn', 'contactFormBtn',
+    /* stage */
+    'onairPill', 'sessionClock', 'phaseName', 'phaseTime', 'phaseFill', 'phaseMeter',
+    'rotateBtn', 'safeBtn', 'settingsBtn', 'exitBtn', 'broadcastBtn',
+    'frame', 'frameInner', 'segLabel', 'counter', 'frameTimer', 'quizStage', 'qKicker', 'qText',
+    'options', 'reveal', 'revealAnswer', 'revealRef', 'revealNote',
+    'playerStage', 'plStageBadge', 'plCountdownPill', 'plHeadline', 'plCluesList',
+    'plRevealMeta', 'plRevealName', 'plRevealSub', 'plRevealInsight',
+    'plVisualCol', 'plCardFrame', 'plMysteryCover', 'plMysteryLabel', 'plPhoto', 'plCardTag',
+    'chatSafeGuide',
+    'milestoneStage', 'msRoundBadge', 'msTitle', 'msTimer', 'msGrid',
+    'msGrades', 'msGrade0', 'msGrade1', 'msGrade2', 'msGrade3', 'msCta',
+    'storyStage', 'storyActPill', 'storyEpTitle', 'storyEraTag', 'storyActRail',
+    'storyCanvas', 'storyVisualHost', 'storySceneTypeTag', 'storyNarrationText', 'storyEngagementLine',
+    'videoStage', 'stageVideo', 'stageVideoB', 'demoVideoCanvas', 'videoEmpty', 'videoEmptyTitle', 'videoEmptyNote',
+    'promoAdOverlay', 'promoAdBadge', 'promoAdTitle', 'promoAdClock', 'promoAdReturn', 'promoUnmuteBtn',
+    'adNotice', 'adNoticeBadge', 'adNoticeTitle', 'adNoticeSub', 'adNoticeTimer', 'adNoticeFill',
+    'promoBrand', 'promoBrandText', 'loopBadge', 'loopBadgeText',
+    'progFill', 'watermark', 'frameSite', 'curtain', 'safePeek',
+    'prevBtn', 'playBtn', 'playGlyph', 'revealToggleBtn', 'nextBtn',
+    'voiceBtn', 'musicBtn', 'kbdHint',
+    /* dev panel */
+    'devPanel', 'devPanelClose', 'devBody', 'devNextQ', 'devReveal', 'devRotate',
+    'devSafe', 'devRedraw',
+    /* drawer */
+    'drawer', 'drawerClose', 'drawerPromoTag', 'drawerPromoSwitchRow', 'promoEnabledDrawer',
+    'quizMin', 'promoIntervalMin', 'promoSec', 'qSec', 'autoRotate',
+    'musicGrid', 'musicVol', 'musicVolLabel', 'sfxOn',
+    'audioInput', 'audioName', 'audioPreviewBtn', 'audioClearBtn',
+    'storyMin', 'storySceneSec', 'drawerStoryTag',
+    'loopHoursDrawer', 'brandOverlayInput',
+    'bankTag', 'pillBible', 'pillHistory', 'pillBibleCount', 'pillHistoryCount',
+    'importInput', 'importResult', 'voiceOn', 'voiceReveal', 'voiceSelect', 'voiceRate',
+    'voiceRateLabel',
+    'drawerPlayerTag', 'playerBlockMin', 'clueSec', 'guessSec', 'playerRevealSec',
+    'milestoneSec', 'drawerChatSafe', 'drawerChatGuide',
+    'watermarkInput', 'siteInput', 'safeDefault',
+    'sponsorAnalyticsSection', 'alTotalCount', 'alTotalDuration',
+    'alLogList', 'alExportCsvBtn', 'alClearBtn',
+    /* studio operator modal */
+    'accessModal', 'accessModalClose', 'panelAdmin',
+    'adminToolsBox', 'adminPromoCountTag', 'adminPromoDisplay', 'adminPromoOrder', 'adminPromoOverlay',
+    'adminPromoFolderInput', 'adminPromoFilesInput', 'syncPublicPromosBtn', 'adminPromoList',
+    'scrim', 'toasts'
+  ].forEach(function (id) { el[id] = $(id); });
+
+  /* ---------- toast ---------- */
+  function toast(msg, bad) {
+    if (!el.toasts) return;
+    var t = document.createElement('div');
+    t.className = 'toast' + (bad ? ' is-bad' : '');
+    t.textContent = msg;
+    el.toasts.appendChild(t);
+    window.setTimeout(function () {
+      t.style.opacity = '0';
+      t.style.transition = 'opacity .3s ease';
+      window.setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 320);
+    }, 2600);
+  }
+
+  /* ---------- runtime estimates ---------- */
+  function runtimeText(count) {
+    /* a question occupies qSec plus the (now shorter) answer-reveal hold */
+    var perQ = S.qSec + Math.max(1.2, Math.min(8, S.qSec * 0.4) - 5);
+    var secs = count * perQ;
+    var h = Math.floor(secs / 3600);
+    var m = Math.round((secs % 3600) / 60);
+    return '\u2248 ' + h + 'h ' + pad(m) + 'm';
+  }
+
+  function playerRuntimeSeconds(count) {
+    if (!count) return 0;
+    /* Intro (~3s) + 3 clues (~8.5s each incl. speech) + comment countdown + reveal (~8s) */
+    var perQ = 3 + 3 * Math.max(S.clueSec, 7) + S.guessSec + Math.max(S.playerRevealSec, 7);
+    var milestones = Math.floor(count / 10) * Math.max(S.milestoneSec, 30);
+    return count * perQ + milestones;
+  }
+
+  function formatRuntimeText(secs) {
+    var h = Math.floor(secs / 3600);
+    var m = Math.round((secs % 3600) / 60);
+    return '\u2248 ' + h + 'h ' + pad(m) + 'm';
+  }
+
+  function formatShortSec(secs) {
+    secs = Math.max(1, Math.round(secs || 30));
+    if (secs < 60) return secs + 's';
+    var m = Math.floor(secs / 60);
+    var s = secs % 60;
+    return s ? (m + 'm ' + s + 's') : (m + ' min');
+  }
+
+  function refreshStats() {
+    var b = bank.bible.length, h = bank.history.length;
+    var pLib = window.LNR_PLAYERS;
+    var pQuizzes = pLib ? pLib.getAllQuizzes(S.playerMode) : [];
+    var pAllQuizzes = pLib ? pLib.getAllQuizzes('all') : [];
+    var pPlayers = pLib ? pLib.getAllPlayers() : [];
+    var pIsDemo = pLib && pLib.isDemoOnly ? pLib.isDemoOnly() : false;
+
+    var sApi = window.LNR_STORIES;
+    var sStats = sApi && sApi.getStats ? sApi.getStats() : { total: 0, builtIn: 0, custom: 0, worldHistory: 0, biblical: 0, totalActs: 0, totalScenes: 0 };
+    var sFiltered = sApi ? sApi.getAllEpisodes(S.storyCat) : [];
+    var sSceneCount = 0;
+    sFiltered.forEach(function (ep) {
+      (ep.acts || []).forEach(function (a) { sSceneCount += (a.scenes || []).length; });
+    });
+
+    if (el.countBible) el.countBible.textContent = b + (usingDemo.bible ? ' (demo)' : '');
+    if (el.countHistory) el.countHistory.textContent = h + (usingDemo.history ? ' (demo)' : '');
+    if (el.runBible) el.runBible.textContent = b ? runtimeText(b) + (usingDemo.bible ? ' · demo' : '') : 'import JSON';
+    if (el.runHistory) el.runHistory.textContent = h ? runtimeText(h) + (usingDemo.history ? ' · demo' : '') : 'import JSON';
+    if (el.statBank) el.statBank.textContent = b + h + pAllQuizzes.length + sStats.total;
+
+    var longest = Math.max(b, h);
+    if (el.statRun) el.statRun.textContent = longest ? runtimeText(longest).replace('\u2248 ', '') : 'Ready';
+    if (el.engQuizCount) el.engQuizCount.textContent = b + h;
+    if (el.engQuizRun) {
+      var quizUsingDemoOnly = usingDemo.bible && usingDemo.history;
+      el.engQuizRun.textContent = quizUsingDemoOnly
+        ? '5-question demo \u00b7 ready'
+        : (longest ? (runtimeText(longest).replace('\u2248 ', '') + ' per segment') : 'import JSON to begin');
+    }
+
+    var pRunTxt = formatRuntimeText(playerRuntimeSeconds(pQuizzes.length)).replace('\u2248 ', '');
+    if (el.engPlayersCount) el.engPlayersCount.textContent = pPlayers.length;
+    if (el.engPlayersRun) {
+      el.engPlayersRun.textContent = pIsDemo
+        ? '5-card demo \u00b7 ready'
+        : (pQuizzes.length ? (pRunTxt + ' unbroken') : 'import pack to begin');
+    }
+    if (el.pmodeAllCount) el.pmodeAllCount.textContent = pAllQuizzes.length;
+    if (el.drawerPlayerTag) el.drawerPlayerTag.textContent = pQuizzes.length + (pIsDemo ? ' demo' : ' quizzes');
+
+    if (el.engVideoCount) el.engVideoCount.textContent = clips.length;
+    if (el.engVideoRun) {
+      var per = playlistSeconds(clips);
+      el.engVideoRun.textContent = per
+        ? (clock(per * 1000) + ' \u00b7 ' + effectiveLoopHours() + 'h loop')
+        : (demoVideoMode ? '15s demo active' : ('up to ' + MAX_VIDEOS + ' clips \u00b7 24/7 ready'));
+    }
+
+    if (el.engStoryCount) el.engStoryCount.textContent = sStats.total;
+    if (el.engStoryRun) el.engStoryRun.textContent = sStats.total ? (sStats.totalActs + ' acts \u00b7 ' + sStats.totalScenes + ' scenes') : 'documentary studio';
+    if (el.storyCatAllCount) el.storyCatAllCount.textContent = sStats.total;
+    if (el.storyCatHistoryCount) el.storyCatHistoryCount.textContent = sStats.worldHistory;
+    if (el.storyCatBiblicalCount) el.storyCatBiblicalCount.textContent = sStats.biblical;
+    if (el.storySceneTag) el.storySceneTag.textContent = sSceneCount + ' scenes ready';
+    if (el.drawerStoryTag) el.drawerStoryTag.textContent = sFiltered.length + ' episodes';
+    if (el.storyCatalogNotice) {
+      el.storyCatalogNotice.textContent = sStats.builtIn + ' Built-in' + (sStats.custom ? (' + ' + sStats.custom + ' Custom') : ' + Custom JSON');
+    }
+
+    if (el.pillBibleCount) el.pillBibleCount.textContent = b;
+    if (el.pillHistoryCount) el.pillHistoryCount.textContent = h;
+    if (el.bankTag) el.bankTag.textContent = (S.segment === 'bible' ? b : h) + (usingDemo[S.segment] ? ' demo' : ' loaded');
+
+    var promoActive = !!S.promoAdsEnabled;
+    var activePromos = effectivePromoList();
+    var intervalMin = effectivePromoIntervalMin();
+    var adSecEff = effectivePromoAdSec();
+    var adDesc = !promoActive
+      ? 'breaks off'
+      : (activePromos.length
+        ? ('1 break clip after milestone once ' + intervalMin + 'm+ uninterrupted quiz passes')
+        : ('1 break slot (' + formatShortSec(adSecEff) + ') after milestone once ' + intervalMin + 'm+ quiz passes'));
+    var plan = 'Your session runs 10-question ' + (S.segment === 'history' ? 'World History' : 'Bible') + ' rounds with graphic milestone cards' + (promoActive ? (', then ' + adDesc + '.') : ' (uninterrupted).');
+    if (S.engine === 'players') {
+      plan = 'Your session runs 10-question Player Quiz rounds with milestone grading cards' + (promoActive ? (', then ' + adDesc + '.') : ' (uninterrupted).');
+    } else if (S.engine === 'story') {
+      plan = 'Your session narrates multi-act documentary episodes with animated archival scenes' + (promoActive ? (', then ' + adDesc + ' between episodes.') : ' (continuous uninterrupted rotation).');
+    } else if (S.engine === 'video') {
+      plan = promoActive
+        ? ('Your session runs ' + effectiveLoopHours() + ' hr of video, then ' + (activePromos.length ? '1 break clip' : formatShortSec(adSecEff) + ' break slot') + ', on repeat.')
+        : ('Your session runs ' + effectiveLoopHours() + ' hr of seamless video on repeat (breaks off).');
+    }
+    if (!S.autoRotate && promoActive) plan = 'Auto-rotation is off, so the studio stays on the current round until you press Rotate now.';
+    if (el.startHint) el.startHint.textContent = plan;
+
+    if (el.startSummary) {
+      var segName = S.segment === 'history' ? 'World History' : 'Bible';
+      if (S.engine === 'video') {
+        el.startSummary.textContent = 'Video engine \u00b7 ' + effectiveLoopHours() + ' hr of video' + (promoActive ? ', then 1 partner break.' : ' (breaks off).');
+      } else if (S.engine === 'players') {
+        el.startSummary.textContent = 'Player quiz \u00b7 ' + pQuizzes.length + (pIsDemo ? ' demo cards' : ' quizzes') + ' \u00b7 milestones every 10 Qs' + (promoActive ? ' \u2192 break every ' + intervalMin + 'm+.' : ' \u00b7 uninterrupted.');
+      } else if (S.engine === 'story') {
+        el.startSummary.textContent = 'Storytelling engine \u00b7 ' + sFiltered.length + ' episodes (' + sSceneCount + ' scenes) \u00b7 continuous documentary narration.';
+      } else {
+        el.startSummary.textContent = 'Quiz engine \u00b7 ' + segName + (usingDemo[S.segment] ? ' (Demo)' : '') + ' \u00b7 milestones every 10 Qs' + (promoActive ? ' \u2192 break every ' + intervalMin + 'm+.' : ' \u00b7 uninterrupted.');
+      }
+    }
+  }
+
+  /* ---------- multi-page routing & 3-step studio wizard ---------- */
+  var currentPage = 'home';
+  var wizardStep = 1;
+
+  function engineTitle(eng) {
+    if (eng === 'players') return 'Player quiz';
+    if (eng === 'video') return 'Video engine';
+    if (eng === 'story') return 'Storytelling engine';
+    return 'Quiz engine';
+  }
+
+  function setWizardStep(step) {
+    wizardStep = step === 2 ? 2 : (step === 3 ? 3 : 1);
+    [[el.wizStep1, 1], [el.wizStep2, 2], [el.wizStep3, 3]].forEach(function (pair) {
+      if (pair[0]) pair[0].hidden = pair[1] !== wizardStep;
+    });
+    [[el.wizTab1, 1], [el.wizTab2, 2], [el.wizTab3, 3]].forEach(function (pair) {
+      if (!pair[0]) return;
+      pair[0].classList.toggle('is-active', pair[1] === wizardStep);
+      pair[0].classList.toggle('is-done', pair[1] < wizardStep);
+    });
+    if (el.wizStep2Title) el.wizStep2Title.textContent = 'Configuring: ' + engineTitle(S.engine);
+    if (el.wizContextTag) el.wizContextTag.textContent = engineTitle(S.engine) + ' selected';
+  }
+
+  function setPage(page, opts) {
+    var target = (page === 'studio' || page === 'settings' || page === 'contact') ? page : 'home';
+    currentPage = target;
+    [
+      [el.pageHome, 'home'],
+      [el.pageStudio, 'studio'],
+      [el.pageSettings, 'settings'],
+      [el.pageContact, 'contact']
+    ].forEach(function (pair) {
+      if (pair[0]) pair[0].hidden = pair[1] !== target;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-page-link]'), function (lnk) {
+      lnk.classList.toggle('is-active', lnk.getAttribute('data-page-link') === target);
+    });
+    if (!opts || opts.updateHash !== false) {
+      var wantedHash = '#' + target;
+      if (window.location.hash !== wantedHash && window.history && window.history.replaceState) {
+        try { window.history.replaceState(null, '', wantedHash); } catch (e) {}
+      }
+    }
+    if (!opts || opts.scroll !== false) {
+      window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+    }
+  }
+
+  function resolveHashRoute(rawHash) {
+    var h = String(rawHash || '').replace(/^#/, '').toLowerCase();
+    if (h === 'studio') { setPage('studio', { updateHash: false }); return; }
+    if (h === 'quizsetup' || h === 'playerssetup' || h === 'videosetup' || h === 'storysetup') {
+      if (h === 'playerssetup') setEngine('players');
+      else if (h === 'videosetup') setEngine('video');
+      else if (h === 'storysetup') setEngine('story');
+      else if (h === 'quizsetup') setEngine('quiz');
+      setPage('studio', { updateHash: false });
+      setWizardStep(2);
+      return;
+    }
+    if (h === 'promosetup') {
+      setPage('studio', { updateHash: false });
+      setWizardStep(3);
+      return;
+    }
+    if (h === 'settings') { setPage('settings', { updateHash: false }); return; }
+    if (h === 'contact') { setPage('contact', { updateHash: false }); return; }
+    setPage('home', { updateHash: false });
+  }
+
+  function initRouting() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-page-link]'), function (lnk) {
+      on(lnk, 'click', function (e) {
+        if (e && e.preventDefault) e.preventDefault();
+        var pg = lnk.getAttribute('data-page-link') || 'home';
+        setPage(pg);
+      });
+    });
+    [[el.wizTab1, 1], [el.wizTab2, 2], [el.wizTab3, 3]].forEach(function (pair) {
+      on(pair[0], 'click', function () { setWizardStep(pair[1]); });
+    });
+    on(el.homeGoStudioBtn, 'click', function () { setPage('studio'); setWizardStep(1); });
+    on(el.topbarStartBtn, 'click', function () { setPage('studio'); setWizardStep(1); });
+    on(el.wizToStep2Btn, 'click', function () { setWizardStep(2); });
+    on(el.wizToStep3Btn, 'click', function () { setWizardStep(3); });
+    on(el.wizBackTo1Btn, 'click', function () { setWizardStep(1); });
+    on(el.wizChangeEngineBtn, 'click', function () { setWizardStep(1); });
+    on(el.wizBackTo2Btn, 'click', function () { setWizardStep(2); });
+    window.addEventListener('hashchange', function () {
+      if (!live.inSession) resolveHashRoute(window.location.hash);
+    });
+    resolveHashRoute(window.location.hash);
+  }
+
+  /* ---------- engine selection ---------- */
+  function setEngine(eng) {
+    S.engine = eng;
+    save();
+    [[el.engQuiz, 'quiz'], [el.engPlayers, 'players'], [el.engVideo, 'video'], [el.engStory, 'story']].forEach(function (p) {
+      if (!p[0]) return;
+      var active = p[1] === eng;
+      p[0].classList.toggle('is-selected', active);
+      p[0].setAttribute('aria-checked', active ? 'true' : 'false');
+    });
+    if (el.quizSetup) el.quizSetup.hidden = eng !== 'quiz';
+    if (el.playersSetup) el.playersSetup.hidden = eng !== 'players';
+    if (el.videoSetup) el.videoSetup.hidden = eng !== 'video';
+    if (el.storySetup) el.storySetup.hidden = eng !== 'story';
+    if (el.wizStep2Title) el.wizStep2Title.textContent = 'Configuring: ' + engineTitle(eng);
+    if (el.wizContextTag) el.wizContextTag.textContent = engineTitle(eng) + ' selected';
+    if (el.startLabel) {
+      el.startLabel.textContent = eng === 'video'
+        ? 'Start video session'
+        : (eng === 'players' ? 'Start player quiz session'
+          : (eng === 'story' ? 'Start storytelling broadcast' : 'Start quiz session'));
+    }
+    refreshStats();
+    refreshAccessUI();
+  }
+
+  on(el.engQuiz, 'click', function () { setEngine('quiz'); setWizardStep(2); });
+  on(el.engPlayers, 'click', function () { setEngine('players'); setWizardStep(2); });
+  on(el.engVideo, 'click', function () { setEngine('video'); setWizardStep(2); });
+  on(el.engStory, 'click', function () { setEngine('story'); setWizardStep(2); });
+
+  /* ---------- segment selection ---------- */
+  function setSegment(seg) {
+    S.segment = seg;
+    save();
+    [[el.segBible, 'bible'], [el.segHistory, 'history']].forEach(function (p) {
+      if (!p[0]) return;
+      var active = p[1] === seg;
+      p[0].classList.toggle('is-selected', active);
+      p[0].setAttribute('aria-checked', active ? 'true' : 'false');
+    });
+    if (el.pillBible) el.pillBible.classList.toggle('is-selected', seg === 'bible');
+    if (el.pillHistory) el.pillHistory.classList.toggle('is-selected', seg === 'history');
+    refreshStats();
+    refreshAccessUI();
+  }
+
+  on(el.segBible, 'click', function () { setSegment('bible'); });
+  on(el.segHistory, 'click', function () { setSegment('history'); });
+  on(el.pillBible, 'click', function () { setSegment('bible'); });
+  on(el.pillHistory, 'click', function () { setSegment('history'); });
+
+  /* ---------- settings inputs ---------- */
+  function bindNum(input, key, min, maxOrFn, hook) {
+    if (!input) return;
+    function getMax() {
+      return typeof maxOrFn === 'function' ? maxOrFn() : maxOrFn;
+    }
+    input.value = S[key];
+    function commit() {
+      var effMax = getMax();
+      var v = parseInt(input.value, 10);
+      if (isNaN(v)) v = defaults[key];
+      v = Math.max(min, Math.min(effMax, v));
+      input.value = v;
+      S[key] = v;
+      save();
+      refreshStats();
+      if (hook) hook();
+    }
+    input.addEventListener('input', function () {
+      var effMax = getMax();
+      var v = parseInt(input.value, 10);
+      if (isNaN(v)) return;
+      v = Math.max(min, Math.min(effMax, v));
+      S[key] = v;
+      save();
+      refreshStats();
+      if (hook) hook();
+    });
+    input.addEventListener('blur', commit);
+    input.addEventListener('change', commit);
+  }
+
+  function maxBlockMins() {
+    return 240;
+  }
+
+  function effectiveQuizMin() {
+    var v = Number(S.quizMin) || 60;
+    return Math.max(5, Math.min(240, v));
+  }
+
+  function effectivePlayerBlockMin() {
+    var v = Number(S.playerBlockMin) || 60;
+    return Math.max(10, Math.min(240, v));
+  }
+
+  function effectiveStoryBlockMin() {
+    var v = Number(S.storyBlockMin) || 60;
+    return Math.max(10, Math.min(240, v));
+  }
+
+  bindNum(el.setupQuizMin, 'quizMin', 5, maxBlockMins, function () { syncInputs(); });
+  bindNum(el.setupQSec, 'qSec', 5, 90, function () { syncInputs(); });
+  bindNum(el.quizMin, 'quizMin', 5, maxBlockMins, function () { syncInputs(); });
+  bindNum(el.qSec, 'qSec', 5, 90, function () { syncInputs(); });
+  bindNum(el.setupPromoIntervalMin, 'promoIntervalMin', 5, 60, function () { refreshPromoText(); syncInputs(); });
+  bindNum(el.promoIntervalMin, 'promoIntervalMin', 5, 60, function () { refreshPromoText(); syncInputs(); });
+  /* single partner break fallback slot (15-300 seconds) */
+  bindNum(el.promoSec, 'promoAdSec', 15, 300, function () { refreshPromoText(); syncInputs(); });
+
+  /* player quiz timing dials */
+  bindNum(el.setupPlayerMin, 'playerBlockMin', 10, maxBlockMins, function () { syncInputs(); });
+  bindNum(el.playerBlockMin, 'playerBlockMin', 10, maxBlockMins, function () { syncInputs(); });
+  bindNum(el.setupClueSec, 'clueSec', 3, 20, function () { syncInputs(); });
+  bindNum(el.clueSec, 'clueSec', 3, 20, function () { syncInputs(); });
+  bindNum(el.setupGuessSec, 'guessSec', 5, 45, function () { syncInputs(); });
+  bindNum(el.guessSec, 'guessSec', 5, 45, function () { syncInputs(); });
+  bindNum(el.setupPlayerRevealSec, 'playerRevealSec', 3, 20, function () { syncInputs(); });
+  bindNum(el.playerRevealSec, 'playerRevealSec', 3, 20, function () { syncInputs(); });
+  bindNum(el.setupMilestoneSec, 'milestoneSec', 10, 60, function () { syncInputs(); });
+  bindNum(el.milestoneSec, 'milestoneSec', 10, 60, function () { syncInputs(); });
+
+  /* story pacing dials */
+  bindNum(el.setupStoryMin, 'storyBlockMin', 10, maxBlockMins, function () { syncInputs(); });
+  bindNum(el.storyMin, 'storyBlockMin', 10, maxBlockMins, function () { syncInputs(); });
+  bindNum(el.setupStorySceneSec, 'storySceneSec', 4, 30, function () { syncInputs(); });
+  bindNum(el.storySceneSec, 'storySceneSec', 4, 30, function () { syncInputs(); });
+
+  function effectiveLoopHours() {
+    var v = Number(S.loopHours) || 2;
+    return Math.max(0.1, Math.min(168, v));
+  }
+
+  function syncInputs() {
+    var promoChecked = !!S.promoAdsEnabled;
+    var blockMax = String(maxBlockMins());
+    var loopMax = '168';
+    var effInterval = effectivePromoIntervalMin();
+    var effAdSec = effectivePromoAdSec();
+    [el.setupQuizMin, el.quizMin].forEach(function (i) { if (i) { i.max = blockMax; i.value = S.quizMin; } });
+    [el.setupQSec, el.qSec].forEach(function (i) { if (i) i.value = S.qSec; });
+    [el.setupPromoIntervalMin, el.promoIntervalMin].forEach(function (i) {
+      if (i) { i.value = effInterval; i.disabled = false; }
+    });
+    [el.promoSec, el.promoAdRange].forEach(function (i) {
+      if (i) { i.value = effAdSec; i.disabled = false; }
+    });
+    [el.loopHours, el.loopHoursDrawer].forEach(function (i) { if (i) { i.max = loopMax; i.value = S.loopHours; } });
+    [el.setupPlayerMin, el.playerBlockMin].forEach(function (i) { if (i) { i.max = blockMax; i.value = S.playerBlockMin; } });
+    [el.setupClueSec, el.clueSec].forEach(function (i) { if (i) i.value = S.clueSec; });
+    [el.setupGuessSec, el.guessSec].forEach(function (i) { if (i) i.value = S.guessSec; });
+    [el.setupPlayerRevealSec, el.playerRevealSec].forEach(function (i) { if (i) i.value = S.playerRevealSec; });
+    [el.setupMilestoneSec, el.milestoneSec].forEach(function (i) { if (i) i.value = S.milestoneSec; });
+    [el.setupStoryMin, el.storyMin].forEach(function (i) { if (i) { i.max = blockMax; i.value = S.storyBlockMin; } });
+    [el.setupStorySceneSec, el.storySceneSec].forEach(function (i) { if (i) i.value = S.storySceneSec; });
+    if (el.setupPromoEnabled) el.setupPromoEnabled.checked = promoChecked;
+    if (el.promoEnabledDrawer) el.promoEnabledDrawer.checked = promoChecked;
+    if (el.setupChatSafe) el.setupChatSafe.checked = !!S.chatSafe;
+    if (el.drawerChatSafe) el.drawerChatSafe.checked = !!S.chatSafe;
+    if (el.stChatSafe) el.stChatSafe.checked = !!S.chatSafe;
+    if (el.setupChatGuide) el.setupChatGuide.checked = !!S.chatGuide;
+    if (el.drawerChatGuide) el.drawerChatGuide.checked = !!S.chatGuide;
+    if (el.stChatGuide) el.stChatGuide.checked = !!S.chatGuide;
+    if (el.autoRotate) el.autoRotate.checked = !!S.autoRotate;
+    if (el.stAutoRotate) el.stAutoRotate.checked = !!S.autoRotate;
+    if (el.safeDefault) el.safeDefault.checked = !!S.safeDefault;
+    if (el.stSafeDefault) el.stSafeDefault.checked = !!S.safeDefault;
+    if (el.sfxOn) el.sfxOn.checked = !!S.sfxOn;
+    if (el.stSfxOn) el.stSfxOn.checked = !!S.sfxOn;
+    if (el.voiceOn) el.voiceOn.checked = !!S.voiceOn;
+    if (el.stVoiceOn) el.stVoiceOn.checked = !!S.voiceOn;
+    if (el.stVoiceTag) el.stVoiceTag.textContent = S.voiceOn ? 'On' : 'Off';
+    if (el.voiceReveal) el.voiceReveal.checked = !!S.voiceReveal;
+    if (el.stVoiceReveal) el.stVoiceReveal.checked = !!S.voiceReveal;
+    if (el.musicVol) { el.musicVol.value = S.musicVol; }
+    if (el.stMusicVol) { el.stMusicVol.value = S.musicVol; }
+    if (el.musicVolLabel) el.musicVolLabel.textContent = S.musicVol + '%';
+    if (el.stMusicVolLabel) el.stMusicVolLabel.textContent = S.musicVol + '%';
+    if (el.voiceRate) el.voiceRate.value = Math.round(S.voiceRate * 100);
+    if (el.stVoiceRate) el.stVoiceRate.value = Math.round(S.voiceRate * 100);
+    if (el.voiceRateLabel) el.voiceRateLabel.textContent = S.voiceRate.toFixed(2) + '\u00d7';
+    if (el.stVoiceRateLabel) el.stVoiceRateLabel.textContent = S.voiceRate.toFixed(2) + '\u00d7';
+    if (el.adminPromoDisplay) el.adminPromoDisplay.value = S.promoDisplayMode || 'full';
+    if (el.adminPromoOrder) el.adminPromoOrder.value = S.promoOrder || 'sequential';
+    if (el.adminPromoOverlay) el.adminPromoOverlay.value = S.promoOverlayStyle || 'disclosure';
+    applyChatSafe();
+    applyBranding();
+    refreshPromoText();
+    refreshLoopMath();
+    refreshStats();
+  }
+
+  function applyChatSafe() {
+    if (el.frame) el.frame.classList.toggle('is-chat-safe', !!S.chatSafe);
+    if (el.chatSafeGuide) {
+      var safeOn = document.body.classList.contains('safe');
+      el.chatSafeGuide.hidden = !(S.chatGuide && !safeOn);
+    }
+  }
+
+  function bindChatSafeToggles() {
+    [el.setupChatSafe, el.drawerChatSafe, el.stChatSafe].forEach(function (chk) {
+      on(chk, 'change', function () {
+        S.chatSafe = !!chk.checked;
+        save();
+        syncInputs();
+        toast(S.chatSafe ? 'Chat-safe upper framing on' : 'Chat-safe framing off');
+      });
+    });
+    [el.setupChatGuide, el.drawerChatGuide, el.stChatGuide].forEach(function (chk) {
+      on(chk, 'change', function () {
+        S.chatGuide = !!chk.checked;
+        save();
+        syncInputs();
+      });
+    });
+    [el.setupPromoEnabled, el.promoEnabledDrawer].forEach(function (chk) {
+      on(chk, 'change', function () {
+        S.promoAdsEnabled = !!chk.checked;
+        save();
+        refreshPromoText();
+        syncInputs();
+        toast(S.promoAdsEnabled ? 'Channel / partner breaks enabled' : 'Channel breaks turned off (uninterrupted)');
+      });
+    });
+  }
+  bindChatSafeToggles();
+
+  function setPlayerMode(mode) {
+    S.playerMode = mode;
+    save();
+    [[el.pmodeAll, 'all'], [el.pmodeClues, 'clues'], [el.pmodeVisual, 'visual']].forEach(function (p) {
+      if (p[0]) p[0].classList.toggle('is-selected', p[1] === mode);
+    });
+    plLive.bag = [];
+    refreshStats();
+  }
+  on(el.pmodeAll, 'click', function () { setPlayerMode('all'); });
+  on(el.pmodeClues, 'click', function () { setPlayerMode('clues'); });
+  on(el.pmodeVisual, 'click', function () { setPlayerMode('visual'); });
+
+  function effectiveBranding() {
+    return {
+      tier: 'studio',
+      locked: false,
+      watermark: S.watermark || DEFAULT_WATERMARK,
+      site: typeof S.site === 'string' ? S.site : DEFAULT_SITE,
+      brand: S.brand || DEFAULT_BRAND
+    };
+  }
+
+  function applyBranding() {
+    var b = effectiveBranding();
+    if (el.watermark) el.watermark.textContent = b.watermark;
+    if (el.frameSite) el.frameSite.textContent = b.site;
+    if (el.promoBrandText) el.promoBrandText.textContent = b.brand;
+
+    [
+      [el.watermarkInput, b.watermark],
+      [el.stWatermarkInput, b.watermark],
+      [el.siteInput, b.site],
+      [el.stSiteInput, b.site],
+      [el.brandOverlayInput, b.brand],
+      [el.stBrandOverlayInput, b.brand]
+    ].forEach(function (pair) {
+      var inp = pair[0];
+      if (!inp) return;
+      if (document.activeElement !== inp) inp.value = pair[1];
+      inp.readOnly = false;
+      inp.disabled = false;
+    });
+  }
+
+  [el.autoRotate, el.stAutoRotate].forEach(function (chk) {
+    on(chk, 'change', function () {
+      S.autoRotate = !!chk.checked;
+      save();
+      syncInputs();
+      toast(S.autoRotate ? 'Auto-rotation on' : 'Auto-rotation off \u2014 stays on this block');
+    });
+  });
+
+  [el.watermarkInput, el.stWatermarkInput].forEach(function (inp) {
+    on(inp, 'input', function () {
+      S.watermark = inp.value.slice(0, 14) || DEFAULT_WATERMARK;
+      applyBranding(); save();
+    });
+  });
+  [el.siteInput, el.stSiteInput].forEach(function (inp) {
+    on(inp, 'input', function () {
+      S.site = inp.value.slice(0, 42);
+      applyBranding(); save();
+    });
+  });
+  [el.brandOverlayInput, el.stBrandOverlayInput].forEach(function (inp) {
+    on(inp, 'input', function () {
+      S.brand = inp.value.slice(0, 28) || DEFAULT_BRAND;
+      applyBranding(); save();
+    });
+  });
+  [el.safeDefault, el.stSafeDefault].forEach(function (chk) {
+    on(chk, 'change', function () {
+      S.safeDefault = !!chk.checked;
+      save();
+      syncInputs();
+    });
+  });
+
+  /* ---------- drawer ---------- */
+  function openDrawer() {
+    if (!el.drawer) return;
+    el.drawer.hidden = false;
+    if (el.scrim) el.scrim.hidden = false;
+    document.body.classList.add('drawer-open');
+  }
+  function closeDrawer() {
+    if (!el.drawer) return;
+    el.drawer.hidden = true;
+    if (el.scrim) el.scrim.hidden = true;
+    document.body.classList.remove('drawer-open');
+  }
+  on(el.openSettingsBtn, 'click', function () { setPage('settings'); });
+  on(el.settingsBtn, 'click', openDrawer);
+  on(el.drawerClose, 'click', closeDrawer);
+  on(el.scrim, 'click', closeDrawer);
+
+  /* ---------- music, SFX & persistent MP3 upload + preview ---------- */
+  var musicCards = document.querySelectorAll('#musicGrid .music-card, #stMusicGrid .music-card');
+  function isAudioSuppressedPhase() {
+    return live.phase === 'video' || live.phase === 'promo';
+  }
+
+  function syncMusicCardsUI() {
+    var activeName = 'No music';
+    Array.prototype.forEach.call(musicCards, function (c) {
+      var match = c.getAttribute('data-music') === S.music;
+      c.classList.toggle('is-selected', match);
+      if (match) {
+        var b = c.querySelector('b');
+        if (b) activeName = b.textContent;
+      }
+    });
+    if (customAudioEl && customAudioName) activeName = 'MP3: ' + customAudioName;
+    if (el.stMusicTag) el.stMusicTag.textContent = activeName;
+  }
+
+  Array.prototype.forEach.call(musicCards, function (card) {
+    card.addEventListener('click', function () {
+      S.music = card.getAttribute('data-music');
+      syncMusicCardsUI();
+      save();
+      if (live.running && !live.paused && !isAudioSuppressedPhase()) startMusic();
+      else if (previewingAudio) { stopAudioPreview(); startAudioPreview(); }
+      toast(S.music === 'off' ? 'Music off' : 'Music bed: ' + card.querySelector('b').textContent);
+    });
+  });
+
+  [el.sfxOn, el.stSfxOn].forEach(function (chk) {
+    on(chk, 'change', function () {
+      S.sfxOn = !!chk.checked;
+      syncInputs();
+      save();
+      toast(S.sfxOn ? 'Scene cues & ticks enabled (excluded during Video clips)' : 'Scene cues & ticks muted');
+    });
+  });
+
+  [el.musicVol, el.stMusicVol].forEach(function (slider) {
+    on(slider, 'input', function () {
+      S.musicVol = parseInt(slider.value, 10);
+      if (el.musicVol) el.musicVol.value = S.musicVol;
+      if (el.stMusicVol) el.stMusicVol.value = S.musicVol;
+      if (el.musicVolLabel) el.musicVolLabel.textContent = S.musicVol + '%';
+      if (el.stMusicVolLabel) el.stMusicVolLabel.textContent = S.musicVol + '%';
+      if (musicGain) musicGain.gain.value = (S.musicVol / 100) * 0.14;
+      if (customAudioEl) customAudioEl.volume = S.musicVol / 100;
+      if (previewGain) previewGain.gain.value = (S.musicVol / 100) * 0.18;
+      save();
+    });
+  });
+
+  /* procedural music bed & SFX — excluded on video/promo phases */
+  var audioCtx = null, musicNodes = null, musicGain = null;
+  var customAudioEl = null, customAudioUrl = '', customAudioName = '';
+  var previewingAudio = false, previewSynthNodes = null, previewGain = null, previewStopTimer = 0;
+
+  function musicProfile(name) {
+    if (name === 'ambient') return { root: 174.6, chord: [1, 1.5, 2.0, 2.5], lfo: 0.045 };
+    if (name === 'focus') return { root: 220, chord: [1, 1.25, 1.5, 2], lfo: 0.12 };
+    if (name === 'sacred') return { root: 196, chord: [1, 1.5, 1.875, 2.25], lfo: 0.06 };
+    return null;
+  }
+
+  function ensureAudioCtx() {
+    if (!audioCtx) {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      audioCtx = new Ctx();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(function () {});
+    }
+    return audioCtx;
+  }
+
+  function buildPadNodes(prof, volScale) {
+    var ctx = ensureAudioCtx();
+    if (!ctx) return null;
+    var gMaster = ctx.createGain();
+    gMaster.gain.value = (S.musicVol / 100) * volScale;
+    gMaster.connect(ctx.destination);
+    var oscs = [];
+    prof.chord.forEach(function (mult, i) {
+      var o = ctx.createOscillator();
+      var g = ctx.createGain();
+      o.type = i === 0 ? 'sine' : 'triangle';
+      o.frequency.value = prof.root * mult;
+      g.gain.value = i === 0 ? 0.5 : 0.18 / (i + 1);
+      o.connect(g); g.connect(gMaster);
+      o.start();
+      oscs.push(o);
+    });
+    var lfo = ctx.createOscillator();
+    var lfoGain = ctx.createGain();
+    lfo.frequency.value = prof.lfo;
+    lfoGain.gain.value = 60;
+    lfo.connect(lfoGain);
+    lfoGain.connect(oscs[0].frequency);
+    lfo.start();
+    oscs.push(lfo);
+    return { oscs: oscs, gain: gMaster };
+  }
+
+  function startMusic() {
+    stopMusic();
+    /* Never embed background sound during prerecorded Video or Partner Break phases */
+    if (!live.running || live.paused || isAudioSuppressedPhase()) {
+      updateVoiceBtn();
+      return;
+    }
+    if (S.music === 'off' && !customAudioEl) {
+      updateVoiceBtn();
+      return;
+    }
+    stopAudioPreview();
+    if (customAudioEl) {
+      customAudioEl.volume = S.musicVol / 100;
+      customAudioEl.loop = true;
+      var p = customAudioEl.play();
+      if (p && p.catch) p.catch(function () {});
+      updateVoiceBtn();
+      return;
+    }
+    var prof = musicProfile(S.music);
+    if (!prof) { updateVoiceBtn(); return; }
+    try {
+      var padRes = buildPadNodes(prof, 0.14);
+      if (padRes) {
+        musicNodes = padRes.oscs;
+        musicGain = padRes.gain;
+      }
+    } catch (e) { /* audio is best-effort */ }
+    updateVoiceBtn();
+  }
+
+  function stopMusic() {
+    if (customAudioEl && !previewingAudio) {
+      try { customAudioEl.pause(); } catch (e) {}
+    }
+    if (musicNodes) {
+      musicNodes.forEach(function (n) { try { n.stop(); } catch (e) {} });
+      musicNodes = null;
+      musicGain = null;
+    }
+    updateVoiceBtn();
+  }
+
+  function playToneSequence(freqs, durSec, peakGain, waveType) {
+    if (!S.sfxOn || !live.running || live.paused || isAudioSuppressedPhase()) return;
+    try {
+      var ctx = ensureAudioCtx();
+      if (!ctx) return;
+      var baseT = ctx.currentTime + 0.01;
+      freqs.forEach(function (f, idx) {
+        var t0 = baseT + idx * (durSec * 0.55);
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = waveType || 'triangle';
+        osc.frequency.setValueAtTime(f, t0);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.linearRampToValueAtTime(peakGain, t0 + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + durSec);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + durSec + 0.02);
+      });
+    } catch (e) {}
+  }
+
+  function playSceneChime() {
+    playToneSequence([392.0, 587.33], 0.24, 0.055, 'sine');
+  }
+
+  function playRevealChime() {
+    playToneSequence([523.25, 659.25, 783.99], 0.28, 0.065, 'triangle');
+  }
+
+  function playMilestoneFanfare() {
+    playToneSequence([440, 554.37, 659.25, 880], 0.32, 0.07, 'triangle');
+  }
+
+  function playCountdownTick(secsLeft) {
+    if (!S.sfxOn || isAudioSuppressedPhase()) return;
+    try {
+      var ctx = ensureAudioCtx();
+      if (!ctx || ctx.state !== 'running') return;
+      var t0 = ctx.currentTime;
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      var accent = secsLeft <= 3;
+      osc.type = accent ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(accent ? 1046.5 : 880, t0);
+      osc.frequency.exponentialRampToValueAtTime(accent ? 660 : 520, t0 + 0.045);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.linearRampToValueAtTime(accent ? 0.065 : 0.045, t0 + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.055);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t0);
+      osc.stop(t0 + 0.06);
+    } catch (e) {}
+  }
+
+  function syncAudioPreviewUI() {
+    var hasCustom = !!customAudioEl;
+    var labelText = hasCustom ? customAudioName : 'No custom track';
+    if (el.audioName) el.audioName.textContent = labelText;
+    if (el.stAudioName) el.stAudioName.textContent = labelText;
+    [el.audioClearBtn, el.stAudioClearBtn].forEach(function (btn) {
+      if (btn) btn.hidden = !hasCustom;
+    });
+    [el.audioPreviewBtn, el.stAudioPreviewBtn].forEach(function (btn) {
+      if (!btn) return;
+      btn.classList.toggle('is-playing', previewingAudio);
+      if (previewingAudio) {
+        btn.textContent = 'Stop preview';
+      } else {
+        btn.textContent = hasCustom ? 'Preview MP3' : 'Preview sound bed';
+      }
+    });
+    syncMusicCardsUI();
+  }
+
+  function stopAudioPreview() {
+    if (previewStopTimer) { window.clearTimeout(previewStopTimer); previewStopTimer = 0; }
+    if (previewSynthNodes) {
+      previewSynthNodes.forEach(function (n) { try { n.stop(); } catch (e) {} });
+      previewSynthNodes = null;
+      previewGain = null;
+    }
+    if (customAudioEl && previewingAudio && (!live.running || live.paused || isAudioSuppressedPhase())) {
+      try { customAudioEl.pause(); customAudioEl.currentTime = 0; } catch (e) {}
+    }
+    previewingAudio = false;
+    syncAudioPreviewUI();
+  }
+
+  function startAudioPreview() {
+    stopAudioPreview();
+    ensureAudioCtx();
+    if (customAudioEl) {
+      previewingAudio = true;
+      customAudioEl.currentTime = 0;
+      customAudioEl.volume = S.musicVol / 100;
+      customAudioEl.loop = false;
+      customAudioEl.onended = function () {
+        if (previewingAudio) stopAudioPreview();
+      };
+      var p = customAudioEl.play();
+      if (p && p.catch) {
+        p.catch(function () {
+          stopAudioPreview();
+          toast('Unable to play audio file — check browser audio permission', true);
+        });
+      }
+      syncAudioPreviewUI();
+      return;
+    }
+    var prof = musicProfile(S.music === 'off' ? 'sacred' : S.music);
+    if (!prof) return;
+    try {
+      var padRes = buildPadNodes(prof, 0.18);
+      if (padRes) {
+        previewSynthNodes = padRes.oscs;
+        previewGain = padRes.gain;
+        previewingAudio = true;
+        previewStopTimer = window.setTimeout(stopAudioPreview, 12000);
+        syncAudioPreviewUI();
+      }
+    } catch (e) {
+      toast('Audio preview unavailable on this device', true);
+    }
+  }
+
+  function loadCustomAudioBlob(blob, name) {
+    stopAudioPreview();
+    if (customAudioUrl) { try { URL.revokeObjectURL(customAudioUrl); } catch (e) {} customAudioUrl = ''; }
+    if (customAudioEl) { try { customAudioEl.pause(); } catch (e) {} }
+    customAudioUrl = URL.createObjectURL(blob);
+    customAudioName = name || 'Custom track';
+    var audio = new Audio(customAudioUrl);
+    audio.preload = 'metadata';
+    audio.loop = true;
+    audio.onloadedmetadata = function () {
+      if (isFinite(audio.duration) && audio.duration > 0) {
+        customAudioName = (name || 'Custom track') + ' \u00b7 ' + clock(audio.duration * 1000);
+        syncAudioPreviewUI();
+      }
+    };
+    audio.onerror = function () {
+      toast('Could not decode audio file: ' + (name || 'track'), true);
+    };
+    customAudioEl = audio;
+    syncAudioPreviewUI();
+  }
+
+  function clearCustomAudio() {
+    stopAudioPreview();
+    if (customAudioEl) { try { customAudioEl.pause(); } catch (e) {} }
+    if (customAudioUrl) { try { URL.revokeObjectURL(customAudioUrl); } catch (e) {} customAudioUrl = ''; }
+    customAudioEl = null;
+    customAudioName = '';
+    idbDeleteStore('vault', 'custom_audio_track').catch(function () {});
+    syncAudioPreviewUI();
+    if (live.running && !live.paused && !isAudioSuppressedPhase()) startMusic();
+    toast('Custom track removed — using studio music bed');
+  }
+
+  [el.audioInput, el.stAudioInput].forEach(function (inp) {
+    on(inp, 'change', function () {
+      var f = inp.files && inp.files[0];
+      inp.value = '';
+      if (!f) return;
+      loadCustomAudioBlob(f, f.name);
+      idbPutStore('vault', { id: 'custom_audio_track', name: f.name, type: f.type, size: f.size, blob: f }).catch(function () {});
+      toast('MP3 / track ready: ' + f.name + ' (tap Preview MP3 to listen)');
+      if (live.running && !live.paused && !isAudioSuppressedPhase()) startMusic();
+    });
+  });
+
+  [el.audioPreviewBtn, el.stAudioPreviewBtn].forEach(function (btn) {
+    on(btn, 'click', function () {
+      if (previewingAudio) {
+        stopAudioPreview();
+      } else {
+        startAudioPreview();
+      }
+    });
+  });
+
+  [el.audioClearBtn, el.stAudioClearBtn].forEach(function (btn) {
+    on(btn, 'click', clearCustomAudio);
+  });
+
+  /* ---------- IndexedDB clip, ad log & vault stores ---------- */
+  var DB_NAME = 'lnr_timer_media', DB_VER = 2, dbPromise = null;
+
+  function db() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('IndexedDB unavailable')); return; }
+      var req = indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = function () {
+        var d = req.result;
+        if (!d.objectStoreNames.contains('clips')) d.createObjectStore('clips', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('ad_logs')) d.createObjectStore('ad_logs', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('vault')) d.createObjectStore('vault', { keyPath: 'id' });
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+    return dbPromise;
+  }
+
+  function idbListStore(store) {
+    return db().then(function (d) {
+      return new Promise(function (resolve) {
+        var tx = d.transaction(store, 'readonly');
+        var rq = tx.objectStore(store).getAll();
+        rq.onsuccess = function () { resolve(rq.result || []); };
+        rq.onerror = function () { resolve([]); };
+      });
+    }).catch(function () { return []; });
+  }
+
+  function idbGetStore(store, id) {
+    return db().then(function (d) {
+      return new Promise(function (resolve) {
+        var tx = d.transaction(store, 'readonly');
+        var rq = tx.objectStore(store).get(id);
+        rq.onsuccess = function () { resolve(rq.result || null); };
+        rq.onerror = function () { resolve(null); };
+      });
+    }).catch(function () { return null; });
+  }
+
+  function idbPutStore(store, rec) {
+    return db().then(function (d) {
+      return new Promise(function (resolve, reject) {
+        var tx = d.transaction(store, 'readwrite');
+        tx.objectStore(store).put(rec);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+
+  function idbDeleteStore(store, id) {
+    return db().then(function (d) {
+      return new Promise(function (resolve) {
+        var tx = d.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(id);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { resolve(); };
+      });
+    });
+  }
+
+  function idbClearStore(store) {
+    return db().then(function (d) {
+      return new Promise(function (resolve) {
+        var tx = d.transaction(store, 'readwrite');
+        tx.objectStore(store).clear();
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { resolve(); };
+      });
+    }).catch(function () {});
+  }
+
+  function idbList() { return idbListStore('clips'); }
+  function idbPut(rec) { return idbPutStore('clips', rec); }
+  function idbDelete(id) { return idbDeleteStore('clips', id); }
+
+  var clips = [];        /* video engine: [{id,name,size,duration}] (up to 12) */
+  var promos = [];       /* custom channel / partner break clips: up to 5 uploaded */
+  var defaultFolderPromos = []; /* /promos/manifest.json default folder */
+  var adminPromos = [];  /* operator break folder clips & /promos/ manifest items */
+  var clipURLs = {};     /* id -> objectURL */
+  var pendingClipUploads = 0;
+  var pendingPromoUploads = 0;
+  var demoVideoMode = false;
+
+  /* breaks are interstitial between blocks, capped at 5 minutes */
+  var PROMO_MAX_SEC = 300;
+
+  function effectivePromoList() {
+    var list = [];
+    var seenIds = {};
+    promos.forEach(function (p) {
+      if (p && !seenIds[p.id]) { seenIds[p.id] = 1; list.push(p); }
+    });
+    adminPromos.forEach(function (p) {
+      if (p && p.enabled !== false && !seenIds[p.id]) { seenIds[p.id] = 1; list.push(p); }
+    });
+    if (!list.length && defaultFolderPromos.length) {
+      defaultFolderPromos.forEach(function (p) {
+        if (p && !seenIds[p.id]) { seenIds[p.id] = 1; list.push(p); }
+      });
+    }
+    return list;
+  }
+
+  function humanSize(bytes) {
+    if (!bytes) return '';
+    if (bytes > 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+    return Math.round(bytes / 1024) + ' KB';
+  }
+
+  function renderAdminPromoList() {
+    if (el.adminPromoCountTag) {
+      var enabledCount = adminPromos.filter(function (p) { return p.enabled !== false; }).length;
+      el.adminPromoCountTag.textContent = enabledCount + '/' + adminPromos.length + ' active';
+    }
+    if (!el.adminPromoList) return;
+    el.adminPromoList.innerHTML = '';
+    if (!adminPromos.length) {
+      var empty = document.createElement('li');
+      empty.innerHTML = '<span>No admin folder promos loaded yet. Pick a device folder or sync /promos/.</span>';
+      el.adminPromoList.appendChild(empty);
+      return;
+    }
+    adminPromos.forEach(function (cc) {
+      var li = document.createElement('li');
+      var lbl = document.createElement('label');
+      var chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.checked = cc.enabled !== false;
+      chk.addEventListener('change', function () {
+        cc.enabled = chk.checked;
+        if (!cc.externalUrl) {
+          idbGetStore('clips', cc.id).then(function (rec) {
+            if (rec) {
+              rec.enabled = cc.enabled;
+              idbPut(rec).catch(function () {});
+            }
+          });
+        }
+        renderAdminPromoList();
+        refreshPromoText();
+        refreshStats();
+      });
+      var nm = document.createElement('span');
+      nm.textContent = cc.name;
+      lbl.appendChild(chk);
+      lbl.appendChild(nm);
+
+      var dur = document.createElement('small');
+      dur.textContent = cc.duration ? clock(cc.duration * 1000) : (cc.externalUrl ? '/promos/' : 'video');
+
+      var rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'clip-remove';
+      rm.setAttribute('aria-label', 'Remove ' + cc.name);
+      rm.textContent = '\u2715';
+      rm.addEventListener('click', function () {
+        idbDelete(cc.id).then(function () {
+          adminPromos = adminPromos.filter(function (x) { return x.id !== cc.id; });
+          if (clipURLs[cc.id] && !cc.externalUrl) { URL.revokeObjectURL(clipURLs[cc.id]); delete clipURLs[cc.id]; }
+          renderAdminPromoList();
+          refreshPromoText();
+          refreshStats();
+          toast('Removed ' + cc.name + ' from admin folder');
+        });
+      });
+
+      li.appendChild(lbl);
+      li.appendChild(dur);
+      li.appendChild(rm);
+      el.adminPromoList.appendChild(li);
+    });
+  }
+
+  function renderClips() {
+    renderMedia('clip');
+    renderMedia('promo');
+    renderAdminPromoList();
+    refreshLoopMath();
+    refreshPromoText();
+    refreshStats();
+  }
+
+  function listFor(kind) { return kind === 'promo' ? el.promoList : el.clipList; }
+  function itemFor(kind) { return kind === 'promo' ? promos : clips; }
+  function countElFor(kind) { return kind === 'promo' ? el.promoCount : el.clipCount; }
+
+  function renderMedia(kind) {
+    var host = listFor(kind);
+    var items = itemFor(kind);
+    if (!host) return;
+    host.innerHTML = '';
+    items.forEach(function (cc, i) {
+      var li = document.createElement('li');
+      var name = document.createElement('span');
+      name.className = 'clip-name';
+      name.textContent = (i + 1) + '. ' + cc.name;
+      var size = document.createElement('span');
+      size.className = 'clip-size';
+      size.textContent = (cc.duration ? clock(cc.duration * 1000) + ' \u00b7 ' : '') + humanSize(cc.size);
+      var btn = document.createElement('button');
+      btn.className = 'clip-remove';
+      btn.type = 'button';
+      btn.setAttribute('aria-label', 'Remove ' + cc.name);
+      btn.textContent = '\u2715';
+      btn.addEventListener('click', function () {
+        idbDelete(cc.id).then(function () {
+          var arr = itemFor(kind).filter(function (x) { return x.id !== cc.id; });
+          if (kind === 'promo') promos = arr; else clips = arr;
+          if (clipURLs[cc.id]) { URL.revokeObjectURL(clipURLs[cc.id]); delete clipURLs[cc.id]; }
+          if (standbyPrepared.id === cc.id) {
+            standbyPrepared = { deckIdx: -1, id: '', url: '', index: -1 };
+          }
+          renderClips();
+          if (!arr.length && live.phase === (kind === 'promo' ? 'promo' : 'video')) showVideoEmpty();
+          else if (live.inSession && live.phase === 'video' && kind !== 'promo') {
+            var av = activeVideo();
+            if (av) av.loop = (arr.length === 1);
+            if (arr.length > 1) preloadStandbyClip((live.clipIndex + 1) % arr.length);
+          }
+          toast((kind === 'promo' ? 'Break clip' : 'Clip') + ' removed');
+        });
+      });
+      li.appendChild(name); li.appendChild(size); li.appendChild(btn);
+      host.appendChild(li);
+    });
+    var ce = countElFor(kind);
+    if (ce) {
+      var shownCount = kind === 'promo' ? effectivePromoList().length : items.length;
+      ce.textContent = shownCount + (shownCount === 1 ? ' clip' : ' clips');
+    }
+  }
+
+  /* read a video's length without loading it into the stage */
+  function probeDuration(file) {
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file);
+      var v = document.createElement('video');
+      v.preload = 'metadata';
+      var done = false;
+      function finish(d) {
+        if (done) return;
+        done = true;
+        URL.revokeObjectURL(url);
+        resolve(d);
+      }
+      v.onloadedmetadata = function () {
+        finish(isFinite(v.duration) && v.duration > 0 ? v.duration : 0);
+      };
+      v.onerror = function () { finish(0); };
+      window.setTimeout(function () { finish(isFinite(v.duration) && v.duration > 0 ? v.duration : 0); }, 5000);
+      v.src = url;
+    });
+  }
+
+  function storeMedia(f, kind) {
+    var isVideo = f && (/^video\//i.test(f.type || '') || /\.(mp4|webm|mov|m4v|ogv|mkv)$/i.test(f.name || ''));
+    if (!isVideo) { toast('That file is not a video', true); return; }
+    if (kind === 'clip' && (clips.length + pendingClipUploads) >= MAX_VIDEOS) {
+      toast('Studio allows up to ' + MAX_VIDEOS + ' uploaded prerecorded video clips', true);
+      return;
+    }
+    if (kind === 'promo' && (promos.length + pendingPromoUploads) >= MAX_PROMOS) {
+      toast('Studio allows up to ' + MAX_PROMOS + ' uploaded channel break clips', true);
+      return;
+    }
+    var targetArr = kind === 'admin_promo' ? adminPromos : (kind === 'promo' ? promos : clips);
+    var alreadyDup = targetArr.some(function (x) {
+      return x.name === f.name && x.size === f.size;
+    });
+    if (alreadyDup) {
+      toast('Skipped duplicate clip: ' + f.name);
+      return;
+    }
+
+    if (kind === 'promo') pendingPromoUploads++;
+    if (kind === 'clip') pendingClipUploads++;
+    var prefix = kind === 'admin_promo' ? 'apromo_' : (kind === 'promo' ? 'promo_' : 'clip_');
+    var id = prefix + now() + '_' + Math.random().toString(36).slice(2, 7);
+    probeDuration(f).then(function (d) {
+      if ((kind === 'promo' || kind === 'admin_promo') && d > PROMO_MAX_SEC) {
+        toast('Break clip rejected: ' + clock(d * 1000) + ' is over the 5:00 limit', true);
+        return null;
+      }
+      return idbPut({ id: id, name: f.name, size: f.size, blob: f, kind: kind, duration: d, enabled: true }).then(function () { return d; });
+    }).then(function (d) {
+      if (kind === 'promo' && pendingPromoUploads > 0) pendingPromoUploads--;
+      if (kind === 'clip' && pendingClipUploads > 0) pendingClipUploads--;
+      if (d === null) return;
+      var rec = { id: id, name: f.name, size: f.size, duration: d || 0, enabled: true };
+      if (!clipURLs[id]) clipURLs[id] = URL.createObjectURL(f);
+      if (kind === 'admin_promo') adminPromos.push(rec);
+      else if (kind === 'promo') {
+        promos.push(rec);
+        S.promoAdsEnabled = true;
+        save();
+      } else {
+        clips.push(rec);
+        demoVideoMode = false;
+      }
+      renderClips();
+      if (live.inSession && live.phase === 'video' && kind === 'clip') {
+        var av = activeVideo();
+        if (av) av.loop = (clips.length === 1);
+        if (clips.length > 1) preloadStandbyClip((live.clipIndex + 1) % clips.length);
+      }
+      toast('Added ' + f.name + (d ? ' \u00b7 ' + clock(d * 1000) : ''));
+    }).catch(function () {
+      if (kind === 'promo' && pendingPromoUploads > 0) pendingPromoUploads--;
+      if (kind === 'clip' && pendingClipUploads > 0) pendingClipUploads--;
+      toast('Could not store that clip on this device', true);
+    });
+  }
+
+  function handleClipFiles(list, kind) {
+    if (!list || !list.length) return;
+    Array.prototype.forEach.call(list, function (f) { storeMedia(f, kind || 'clip'); });
+  }
+
+  on(el.videoInput, 'change', function () {
+    handleClipFiles(el.videoInput.files, 'clip');
+    el.videoInput.value = '';
+  });
+  on(el.promoInput, 'change', function () {
+    handleClipFiles(el.promoInput.files, 'promo');
+    el.promoInput.value = '';
+  });
+  on(el.adminPromoFolderInput, 'change', function () {
+    handleClipFiles(el.adminPromoFolderInput.files, 'admin_promo');
+    el.adminPromoFolderInput.value = '';
+  });
+  on(el.adminPromoFilesInput, 'change', function () {
+    handleClipFiles(el.adminPromoFilesInput.files, 'admin_promo');
+    el.adminPromoFilesInput.value = '';
+  });
+  on(el.loadDemoVideoBtn, 'click', function () {
+    demoVideoMode = !demoVideoMode;
+    if (el.demoVideoStatus) {
+      el.demoVideoStatus.textContent = demoVideoMode
+        ? 'Built-in 15s demo ready — press Start video session below to preview.'
+        : 'Try Engine 03 right now without uploading an MP4.';
+    }
+    if (el.loadDemoVideoBtn) {
+      el.loadDemoVideoBtn.textContent = demoVideoMode ? 'Demo Video Ready (Tap to Disable)' : 'Preview 15s Built-in Video Demo';
+    }
+    refreshStats();
+    toast(demoVideoMode ? '15s Video Engine demo enabled' : 'Video Engine demo disabled');
+  });
+
+  [[el.videoDrop, 'clip'], [el.promoDrop, 'promo']].forEach(function (pair) {
+    var zone = pair[0], kind = pair[1];
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      on(zone, ev, function (e) { e.preventDefault(); zone.classList.add('is-over'); });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+      on(zone, ev, function (e) { e.preventDefault(); zone.classList.remove('is-over'); });
+    });
+    on(zone, 'drop', function (e) {
+      if (e.dataTransfer && e.dataTransfer.files) handleClipFiles(e.dataTransfer.files, kind);
+    });
+  });
+
+  /* ---------- loop calculator ---------- */
+  function playlistSeconds(items) {
+    var t = 0;
+    items.forEach(function (cc) { t += (cc.duration || 0); });
+    return t;
+  }
+
+  function refreshLoopMath() {
+    var per = playlistSeconds(clips);
+    var targetH = effectiveLoopHours();
+    var targetS = targetH * 3600;
+    if (el.lmDuration) el.lmDuration.textContent = per ? clock(per * 1000) : (demoVideoMode ? '00:15' : '\u2014');
+    if (el.loopClipInfo) {
+      el.loopClipInfo.textContent = clips.length
+        ? clips.length + (clips.length === 1 ? ' video' : ' videos') + (per ? ' \u00b7 ' + clock(per * 1000) : '')
+        : (demoVideoMode ? '15s built-in animated demo enabled (does not use your upload slot).' : 'Add your prerecorded video or tap Preview 15s Demo above.');
+    }
+    if (!per && demoVideoMode) {
+      var dLoops = Math.max(1, Math.ceil(targetS / 15));
+      var dTotalS = dLoops * 15;
+      if (el.lmLoops) el.lmLoops.textContent = dLoops + '\u00d7';
+      if (el.lmTotal) el.lmTotal.textContent = clock(dTotalS * 1000);
+      if (el.loopNote) el.loopNote.textContent = '15s built-in Demo Canvas loops seamlessly to test Engine 03.';
+    } else if (!per) {
+      if (el.lmLoops) el.lmLoops.textContent = '\u2014';
+      if (el.lmTotal) el.lmTotal.textContent = '\u2014';
+      if (el.loopNote) el.loopNote.textContent = 'Add your prerecorded videos and the loop count appears here.';
+    } else {
+      var loops = Math.max(1, Math.ceil(targetS / per));
+      var totalS = loops * per;
+      if (el.lmLoops) el.lmLoops.textContent = loops + '\u00d7';
+      if (el.lmTotal) el.lmTotal.textContent = clock(totalS * 1000);
+      if (el.loopNote) {
+        el.loopNote.textContent = targetH + ' hr on air = ' + loops + ' playback' + (loops === 1 ? '' : 's') +
+          ' of ' + clock(per * 1000) + ' \u2192 ' + clock(totalS * 1000) + ' total, unbroken.';
+      }
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('#loopPresets .preset'), function (b) {
+      var h = Number(b.getAttribute('data-hours'));
+      b.classList.toggle('is-selected', Math.abs(h - targetH) < 0.001);
+      b.disabled = false;
+      b.title = '';
+    });
+  }
+
+  function refreshPromoText() {
+    S.promoAdSec = Math.max(15, Math.min(300, Number(S.promoAdSec) || 30));
+    S.promoIntervalMin = Math.max(5, Math.min(60, Number(S.promoIntervalMin) || 10));
+    var secs = effectivePromoAdSec();
+    var intervalMin = effectivePromoIntervalMin();
+    var enabled = !!S.promoAdsEnabled;
+    var activePromos = effectivePromoList();
+    if (el.promoToggleMeta) el.promoToggleMeta.textContent = enabled ? 'Enabled' : 'Breaks off';
+    if (el.drawerPromoTag) el.drawerPromoTag.textContent = enabled ? 'Breaks on' : 'Breaks off';
+    if (el.promoConfigWrap) el.promoConfigWrap.hidden = !enabled;
+    if (el.promoAdLabel) el.promoAdLabel.textContent = formatShortSec(secs);
+    if (el.promoAdRange && Number(el.promoAdRange.value) !== secs) el.promoAdRange.value = secs;
+    if (el.promoSec && Number(el.promoSec.value) !== secs) el.promoSec.value = secs;
+    if (el.setupPromoIntervalMin && Number(el.setupPromoIntervalMin.value) !== intervalMin) el.setupPromoIntervalMin.value = intervalMin;
+    if (el.promoIntervalMin && Number(el.promoIntervalMin.value) !== intervalMin) el.promoIntervalMin.value = intervalMin;
+    if (el.promoCalc) {
+      el.promoCalc.textContent = !enabled
+        ? 'Breaks off (uninterrupted)'
+        : (activePromos.length
+          ? activePromos.length + (activePromos.length === 1 ? ' clip \u00b7 after ' + intervalMin + 'm+ quiz' : ' clips \u00b7 after ' + intervalMin + 'm+ quiz')
+          : 'After ' + intervalMin + 'm+ quiz & milestone (' + formatShortSec(secs) + ' slot)');
+    }
+    if (el.promoNote) {
+      el.promoNote.textContent = !enabled
+        ? 'Channel breaks are off. Your stream runs uninterrupted quiz rounds and 10-question milestones.'
+        : (activePromos.length
+          ? 'Milestones appear every 10 questions. After ' + intervalMin + ' min of uninterrupted quiz, a brief Partner Break notice plays 1 break clip (' + activePromos.length + ' available) right after the milestone.'
+          : 'Milestones appear every 10 questions. After ' + intervalMin + ' min of uninterrupted quiz, a brief Partner Break notice plays 1 slot (' + formatShortSec(secs) + ') right after the milestone.');
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('[data-promosec]'), function (b) {
+      b.classList.toggle('is-selected', Number(b.getAttribute('data-promosec')) === secs);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-promointerval]'), function (b) {
+      b.classList.toggle('is-selected', Number(b.getAttribute('data-promointerval')) === intervalMin);
+    });
+  }
+
+  on(el.promoAdRange, 'input', function () {
+    S.promoAdSec = Math.max(15, Math.min(300, parseInt(el.promoAdRange.value, 10) || 30));
+    save(); refreshPromoText(); refreshStats(); syncInputs();
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-promosec]'), function (b) {
+    on(b, 'click', function () {
+      S.promoAdSec = Number(b.getAttribute('data-promosec')) || 30;
+      save(); refreshPromoText(); refreshStats(); syncInputs();
+    });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-promointerval]'), function (b) {
+    on(b, 'click', function () {
+      S.promoIntervalMin = Math.max(5, Math.min(60, Number(b.getAttribute('data-promointerval')) || 10));
+      save(); refreshPromoText(); refreshStats(); syncInputs();
+    });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('#loopPresets .preset'), function (b) {
+    on(b, 'click', function () {
+      var h = Number(b.getAttribute('data-hours'));
+      S.loopHours = h;
+      if (el.loopHours) el.loopHours.value = S.loopHours;
+      if (el.loopHoursDrawer) el.loopHoursDrawer.value = S.loopHours;
+      save(); refreshLoopMath(); refreshStats();
+    });
+  });
+
+  on(el.loopHours, 'input', function () {
+    var v = parseFloat(el.loopHours.value);
+    if (isNaN(v)) return;
+    S.loopHours = Math.max(0.1, Math.min(168, v));
+    if (el.loopHoursDrawer) el.loopHoursDrawer.value = S.loopHours;
+    save(); refreshLoopMath(); refreshStats();
+  });
+
+  on(el.loopHoursDrawer, 'input', function () {
+    var v = parseFloat(el.loopHoursDrawer.value);
+    if (isNaN(v)) return;
+    S.loopHours = Math.max(0.1, Math.min(168, v));
+    if (el.loopHours) el.loopHours.value = S.loopHours;
+    save(); refreshLoopMath(); refreshStats();
+  });
+
+  /* ---------- video playback & built-in 15s demo canvas ---------- */
+  var videoDecks = [el.stageVideo, el.stageVideoB].filter(Boolean);
+  var activeDeckIdx = 0;
+  var videoGen = 0;
+  var videoTransitioning = false;
+  var videoXfadeTimer = 0;
+  var demoCanvasRaf = 0;
+  var demoCanvasStart = 0;
+  var standbyPrepared = { deckIdx: -1, id: '', url: '', index: -1 };
+  var CROSSFADE_LEAD_SEC = 0.48;
+  var CROSSFADE_MS = 460;
+
+  function activeVideo() {
+    return videoDecks[activeDeckIdx] || el.stageVideo;
+  }
+
+  function findMediaRecordById(id) {
+    var i;
+    for (i = 0; i < adminPromos.length; i++) if (adminPromos[i].id === id) return adminPromos[i];
+    for (i = 0; i < defaultFolderPromos.length; i++) if (defaultFolderPromos[i].id === id) return defaultFolderPromos[i];
+    for (i = 0; i < promos.length; i++) if (promos[i].id === id) return promos[i];
+    for (i = 0; i < clips.length; i++) if (clips[i].id === id) return clips[i];
+    return null;
+  }
+
+  function clipFor(id) {
+    if (clipURLs[id]) return Promise.resolve(clipURLs[id]);
+    var known = findMediaRecordById(id);
+    if (known && known.externalUrl) {
+      clipURLs[id] = known.externalUrl;
+      return Promise.resolve(known.externalUrl);
+    }
+    return db().then(function (d) {
+      return new Promise(function (resolve) {
+        var tx = d.transaction('clips', 'readonly');
+        var rq = tx.objectStore('clips').get(id);
+        rq.onsuccess = function () {
+          var rec = rq.result;
+          if (!rec || !rec.blob) { resolve(null); return; }
+          var url = URL.createObjectURL(rec.blob);
+          clipURLs[id] = url;
+          resolve(url);
+        };
+        rq.onerror = function () { resolve(null); };
+      });
+    }).catch(function () { return null; });
+  }
+
+  function withClipUrl(id, cb) {
+    if (clipURLs[id]) { cb(clipURLs[id]); return; }
+    clipFor(id).then(cb);
+  }
+
+  function warmClipUrls(list) {
+    (list || []).forEach(function (cc) {
+      if (cc && cc.id && !clipURLs[cc.id]) clipFor(cc.id);
+    });
+  }
+
+  function activeList() { return live.phase === 'promo' ? effectivePromoList() : clips; }
+
+  function preloadStandbyClip(nextIndex) {
+    if (videoDecks.length < 2 || !live.inSession || live.phase !== 'video') return;
+    var list = activeList();
+    if (list.length < 2) return;
+    nextIndex = ((nextIndex % list.length) + list.length) % list.length;
+    var cc = list[nextIndex];
+    if (!cc) return;
+    var sbIdx = 1 - activeDeckIdx;
+    var sb = videoDecks[sbIdx];
+    if (!sb) return;
+    if (standbyPrepared.deckIdx === sbIdx && standbyPrepared.id === cc.id && standbyPrepared.url) return;
+
+    var gen = videoGen;
+    withClipUrl(cc.id, function (url) {
+      if (!url || gen !== videoGen || !live.inSession || live.phase !== 'video') return;
+      if ((1 - activeDeckIdx) !== sbIdx) return;
+      sb.hidden = false;
+      sb.className = 'is-standby';
+      sb.muted = true;
+      sb.loop = false;
+      sb.preload = 'auto';
+      if (sb.getAttribute('data-clip-id') !== cc.id) {
+        sb.src = url;
+        sb.setAttribute('data-clip-id', cc.id);
+        try { sb.load(); } catch (e) {}
+      } else {
+        try { sb.pause(); sb.currentTime = 0; } catch (e) {}
+      }
+      standbyPrepared = { deckIdx: sbIdx, id: cc.id, url: url, index: nextIndex };
+    });
+  }
+
+  function transitionToClip(index) {
+    var list = activeList();
+    if (!list.length) { showVideoEmpty(); return; }
+    index = ((index % list.length) + list.length) % list.length;
+    var cc = list[index];
+    if (!cc) { showVideoEmpty(); return; }
+
+    warmClipUrls(list);
+    if (videoXfadeTimer) {
+      window.clearTimeout(videoXfadeTimer);
+      videoXfadeTimer = 0;
+    }
+
+    var gen = videoGen;
+    withClipUrl(cc.id, function (url) {
+      if (gen !== videoGen || !live.inSession || (live.phase !== 'video' && live.phase !== 'promo')) return;
+      if (!url) { showVideoEmpty(); return; }
+
+      var listNow = activeList();
+      if (!listNow.length) { showVideoEmpty(); return; }
+      var curV = activeVideo();
+      var shouldCrossfade = (videoDecks.length > 1) &&
+        (live.phase === 'video') &&
+        listNow.length > 1 &&
+        curV &&
+        !curV.hidden &&
+        (curV.getAttribute('data-clip-id') || '') !== '' &&
+        curV.readyState >= 1;
+
+      if (!shouldCrossfade) {
+        var deck = curV || el.stageVideo;
+        if (!deck) return;
+        videoTransitioning = false;
+        videoDecks.forEach(function (d, i) {
+          if (i === activeDeckIdx) return;
+          d.className = 'is-standby';
+          d.hidden = true;
+          try { d.pause(); } catch (e) {}
+        });
+        var needLoad = (deck.getAttribute('data-clip-id') !== cc.id) || !deck.getAttribute('src') || deck.networkState === 0;
+        if (needLoad) {
+          deck.src = url;
+          deck.setAttribute('data-clip-id', cc.id);
+          try { deck.load(); } catch (e) {}
+        }
+        deck.loop = (live.phase !== 'promo') && (listNow.length === 1);
+        deck.muted = false;
+        deck.volume = 1;
+        if (el.promoUnmuteBtn) el.promoUnmuteBtn.hidden = true;
+        try {
+          if (deck.readyState >= 1 && deck.currentTime > 0.05) deck.currentTime = 0;
+        } catch (e) {}
+        deck.hidden = false;
+        deck.className = 'is-active';
+        if (el.videoEmpty) el.videoEmpty.hidden = true;
+        live.clipIndex = index;
+        if (!live.paused) {
+          var p = deck.play();
+          if (p && p.catch) {
+            p.catch(function () {
+              deck.muted = true;
+              if (live.phase === 'promo' && el.promoUnmuteBtn) el.promoUnmuteBtn.hidden = false;
+              var p2 = deck.play();
+              if (p2 && p2.catch) p2.catch(function () {});
+            });
+          }
+        }
+        updateLoopBadge();
+        updatePromoBrand();
+        updatePromoOverlay();
+        if (live.phase === 'video' && listNow.length > 1) {
+          preloadStandbyClip((index + 1) % listNow.length);
+        }
+        return;
+      }
+
+      /* Smooth dual-deck crossfade: outgoing stays painted at opacity: 1 underneath
+         while preloaded incoming deck fades from 0 -> 1 over CROSSFADE_MS. */
+      videoTransitioning = true;
+      var outIdx = activeDeckIdx;
+      var inIdx = 1 - outIdx;
+      var outV = videoDecks[outIdx];
+      var inV = videoDecks[inIdx];
+
+      if (inV.getAttribute('data-clip-id') !== cc.id || !inV.getAttribute('src') || inV.networkState === 0) {
+        inV.src = url;
+        inV.setAttribute('data-clip-id', cc.id);
+        try { inV.load(); } catch (e) {}
+      }
+      inV.loop = false;
+      inV.muted = false;
+      inV.volume = 1;
+      try {
+        if (inV.readyState >= 1 && inV.currentTime > 0.05) inV.currentTime = 0;
+      } catch (e) {}
+
+      outV.className = 'is-outgoing';
+      inV.hidden = false;
+      inV.className = 'is-standby';
+      void inV.offsetWidth;
+      inV.className = 'is-active';
+
+      activeDeckIdx = inIdx;
+      live.clipIndex = index;
+      if (el.videoEmpty) el.videoEmpty.hidden = true;
+      standbyPrepared = { deckIdx: -1, id: '', url: '', index: -1 };
+
+      if (!live.paused) {
+        var pIn = inV.play();
+        if (pIn && pIn.catch) {
+          pIn.catch(function () {
+            inV.muted = true;
+            var pIn2 = inV.play();
+            if (pIn2 && pIn2.catch) pIn2.catch(function () {});
+          });
+        }
+      }
+      updateLoopBadge();
+      updatePromoBrand();
+      updatePromoOverlay();
+
+      videoXfadeTimer = window.setTimeout(function () {
+        videoXfadeTimer = 0;
+        videoTransitioning = false;
+        if (gen !== videoGen) return;
+        outV.className = 'is-standby';
+        try { outV.pause(); } catch (e) {}
+        if (live.inSession && live.phase === 'video' && activeList().length > 1) {
+          preloadStandbyClip((live.clipIndex + 1) % activeList().length);
+        }
+      }, CROSSFADE_MS);
+    });
+  }
+
+  function playClip(index) {
+    transitionToClip(index);
+  }
+
+  function stopDemoCanvas() {
+    if (demoCanvasRaf) {
+      window.cancelAnimationFrame(demoCanvasRaf);
+      demoCanvasRaf = 0;
+    }
+    if (el.demoVideoCanvas) el.demoVideoCanvas.hidden = true;
+  }
+
+  function startDemoCanvas() {
+    if (!el.demoVideoCanvas) return;
+    stopDemoCanvas();
+    el.demoVideoCanvas.hidden = false;
+    if (el.videoEmpty) el.videoEmpty.hidden = true;
+    demoCanvasStart = now();
+    var ctx = el.demoVideoCanvas.getContext('2d');
+    var slides = [
+      { title: 'ENGINE 03 \u00b7 DUAL-DECK VIDEO LOOP', sub: 'Preloads clip B while clip A finishes for seamless 24/7 handoffs' },
+      { title: 'ZERO-DROP CHANNEL BREAKS', sub: 'Up to 12 prerecorded clips \u00b7 dual-deck crossfade \u00b7 24/7 uptime' },
+      { title: 'MOBILE & DESKTOP CAPTURE READY', sub: 'Upload MP4, WebM or MOV directly from device storage \u2014 zero server bandwidth' }
+    ];
+    function draw() {
+      if (!live.inSession || live.phase !== 'video' || clips.length || !demoVideoMode) {
+        stopDemoCanvas();
+        return;
+      }
+      var cv = el.demoVideoCanvas;
+      if (cv.width !== 960 || cv.height !== 540) { cv.width = 960; cv.height = 540; }
+      var elapsedSec = live.paused ? ((live.pausedAt - demoCanvasStart) / 1000) : ((now() - demoCanvasStart) / 1000);
+      var cycle = ((elapsedSec % 15) + 15) % 15;
+      var slideIdx = Math.min(2, Math.floor(cycle / 5));
+      var slideProgress = (cycle % 5) / 5;
+      var sl = slides[slideIdx];
+      var grad = ctx.createLinearGradient(0, 0, 960, 540);
+      grad.addColorStop(0, slideIdx === 0 ? '#0d1a15' : (slideIdx === 1 ? '#111f19' : '#0b1614'));
+      grad.addColorStop(1, '#1a2f26');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 960, 540);
+
+      /* subtle motion ring */
+      ctx.strokeStyle = 'rgba(207, 163, 90, 0.25)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(480, 270, 170 + Math.sin(elapsedSec * 1.4) * 14, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#cfa35a';
+      ctx.font = '600 18px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('BUILT-IN DEMO LOOP \u00b7 SLIDE ' + (slideIdx + 1) + ' OF 3', 480, 200);
+
+      ctx.fillStyle = '#f5efe2';
+      ctx.font = '700 34px Georgia, serif';
+      ctx.fillText(sl.title, 480, 260);
+
+      ctx.fillStyle = '#b4c2b9';
+      ctx.font = '400 20px sans-serif';
+      ctx.fillText(sl.sub, 480, 305);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fillRect(220, 360, 520, 6);
+      ctx.fillStyle = '#cfa35a';
+      ctx.fillRect(220, 360, 520 * slideProgress, 6);
+
+      ctx.fillStyle = 'rgba(245,239,226,0.5)';
+      ctx.font = '500 14px ui-monospace, monospace';
+      ctx.fillText('15s seamless preview loop \u00b7 ' + (Math.ceil(15 - cycle)) + 's remaining in loop', 480, 405);
+
+      demoCanvasRaf = window.requestAnimationFrame(draw);
+    }
+    draw();
+  }
+
+  function updatePromoBrand() {
+    if (!el.promoBrand) return;
+    var ov = S.promoOverlayStyle || 'disclosure';
+    var show = live.phase === 'promo' && ov !== 'raw';
+    el.promoBrand.hidden = !show;
+    if (show && el.promoBrandText) el.promoBrandText.textContent = effectiveBranding().brand || 'LNR STUDIO';
+  }
+
+  function updatePromoOverlay() {
+    if (!el.promoAdOverlay) return;
+    var ov = S.promoOverlayStyle || 'disclosure';
+    var show = live.inSession && live.phase === 'promo' && ov === 'disclosure';
+    el.promoAdOverlay.hidden = !show;
+    if (!show) {
+      if (el.promoUnmuteBtn) el.promoUnmuteBtn.hidden = true;
+      return;
+    }
+    var list = effectivePromoList();
+    var adClip = list.length ? list[live.clipIndex % list.length] : null;
+    if (el.promoAdBadge) el.promoAdBadge.textContent = 'PARTNER';
+    if (el.promoAdTitle) {
+      el.promoAdTitle.textContent = adClip ? ('Paid promotion \u00b7 ' + adClip.name) : 'Partner spotlight';
+    }
+    var nextRound = live.promoReturnPhase === 'players' ? plLive.roundNum : live.quizRoundNum;
+    if (el.promoAdReturn) {
+      el.promoAdReturn.textContent = 'Returns to Round ' + nextRound + ' after break';
+    }
+    var av = activeVideo();
+    var remMs;
+    if (list.length && av && !av.hidden && isFinite(av.duration) && av.duration > 0) {
+      var cappedDur = Math.min(PROMO_MAX_SEC, av.duration);
+      remMs = Math.max(0, (cappedDur - (av.currentTime || 0)) * 1000);
+    } else {
+      remMs = Math.max(0, live.phaseEndsAt - (live.paused ? live.pausedAt : now()));
+    }
+    if (el.promoAdClock) el.promoAdClock.textContent = clock(remMs);
+    if (el.promoUnmuteBtn) {
+      el.promoUnmuteBtn.hidden = !(av && !av.hidden && av.muted);
+    }
+  }
+
+  on(el.promoUnmuteBtn, 'click', function () {
+    var av = activeVideo();
+    if (av) {
+      av.muted = false;
+      av.volume = 1;
+      var p = av.play();
+      if (p && p.catch) p.catch(function () {});
+    }
+    if (el.promoUnmuteBtn) el.promoUnmuteBtn.hidden = true;
+    toast('Break clip sound on');
+  });
+
+  function updateLoopBadge() {
+    if (el.loopBadge) el.loopBadge.hidden = true;
+  }
+
+  function showVideoEmpty() {
+    if (live.phase === 'video' && !clips.length && demoVideoMode) {
+      videoDecks.forEach(function (v) {
+        v.hidden = true;
+        v.className = 'is-standby';
+        try { v.pause(); } catch (e) {}
+      });
+      startDemoCanvas();
+      return;
+    }
+    stopDemoCanvas();
+    if (!el.videoEmpty) return;
+    el.videoEmpty.hidden = false;
+    if (el.loopBadge) el.loopBadge.hidden = true;
+    if (el.videoEmptyTitle) {
+      el.videoEmptyTitle.textContent = live.phase === 'promo' ? 'Partner break \u00b7 slot' : 'Video break';
+    }
+    if (el.videoEmptyNote) {
+      el.videoEmptyNote.textContent = live.phase === 'promo'
+        ? 'No break clip loaded yet. This ' + formatShortSec(effectivePromoAdSec()) + ' break returns automatically to Round ' + (live.promoReturnPhase === 'players' ? plLive.roundNum : live.quizRoundNum) + '.'
+        : 'No clip loaded yet. Add a clip or enable the built-in 15s demo in Setup.';
+    }
+    videoDecks.forEach(function (v) {
+      v.hidden = true;
+      v.className = 'is-standby';
+      try { v.pause(); } catch (e) {}
+    });
+    updatePromoBrand();
+    updatePromoOverlay();
+  }
+
+  function stopVideo() {
+    videoGen++;
+    videoTransitioning = false;
+    stopDemoCanvas();
+    if (videoXfadeTimer) {
+      window.clearTimeout(videoXfadeTimer);
+      videoXfadeTimer = 0;
+    }
+    standbyPrepared = { deckIdx: -1, id: '', url: '', index: -1 };
+    activeDeckIdx = 0;
+    videoDecks.forEach(function (v) {
+      try { v.pause(); } catch (e) {}
+      v.removeAttribute('src');
+      v.removeAttribute('data-clip-id');
+      try { v.load(); } catch (e) {}
+    });
+    if (el.loopBadge) el.loopBadge.hidden = true;
+    if (el.promoBrand) el.promoBrand.hidden = true;
+    if (el.promoAdOverlay) el.promoAdOverlay.hidden = true;
+    if (el.promoUnmuteBtn) el.promoUnmuteBtn.hidden = true;
+    if (el.videoEmpty) el.videoEmpty.hidden = true;
+  }
+
+  function syncActivePromoDuration(v) {
+    if (!v || live.phase !== 'promo') return;
+    var d = v.duration;
+    if (isFinite(d) && d > 0) {
+      var list = effectivePromoList();
+      var promoRec = list[live.clipIndex % Math.max(1, list.length)];
+      if (promoRec && !promoRec.duration) {
+        promoRec.duration = d;
+        refreshPromoText();
+      }
+      var capped = Math.min(PROMO_MAX_SEC, d);
+      var rem = Math.max(0.5, capped - (v.currentTime || 0));
+      live.phaseLen = (capped + 1.5) * 1000;
+      live.phaseEndsAt = now() + (rem + 1.5) * 1000;
+      updatePhaseUI();
+    }
+  }
+
+  videoDecks.forEach(function (v, deckIdx) {
+    on(v, 'loadeddata', function () {
+      if (deckIdx !== activeDeckIdx) {
+        try {
+          if (v.currentTime > 0.05) v.currentTime = 0;
+          v.pause();
+        } catch (e) {}
+      } else if (live.phase === 'promo') {
+        syncActivePromoDuration(v);
+      }
+    });
+
+    on(v, 'loadedmetadata', function () {
+      if (deckIdx !== activeDeckIdx || live.phase !== 'promo') return;
+      syncActivePromoDuration(v);
+    });
+
+    on(v, 'durationchange', function () {
+      if (deckIdx !== activeDeckIdx || live.phase !== 'promo') return;
+      syncActivePromoDuration(v);
+    });
+
+    on(v, 'timeupdate', function () {
+      if (deckIdx !== activeDeckIdx || live.paused || videoTransitioning) return;
+      if (live.phase === 'promo') {
+        if (isFinite(v.duration) && v.duration > 0) {
+          var capped = Math.min(PROMO_MAX_SEC, v.duration);
+          if (v.currentTime >= capped) {
+            if (S.autoRotate) {
+              enterPhase(live.promoReturnPhase || homePhase(), false);
+            } else {
+              playClip(live.clipIndex);
+            }
+          }
+        }
+        return;
+      }
+      if (live.phase !== 'video' || clips.length < 2) return;
+      var d = v.duration;
+      if (isFinite(d) && d > CROSSFADE_LEAD_SEC * 2 && (d - v.currentTime) <= CROSSFADE_LEAD_SEC) {
+        transitionToClip((live.clipIndex + 1) % clips.length);
+      }
+    });
+
+    on(v, 'ended', function () {
+      if (deckIdx !== activeDeckIdx) return;
+      if (live.phase === 'quiz' || live.phase === 'players') return;
+      if (live.phase === 'promo') {
+        if (S.autoRotate) {
+          enterPhase(live.promoReturnPhase || homePhase(), false);
+        } else {
+          playClip(live.clipIndex);
+        }
+        return;
+      }
+      if (videoTransitioning) return;
+      var list = activeList();
+      if (list.length > 1) transitionToClip((live.clipIndex + 1) % list.length);
+      else playClip(0);
+    });
+
+    on(v, 'error', function () {
+      if (deckIdx !== activeDeckIdx || !live.inSession) return;
+      if (live.phase === 'video' && clips.length > 1 && !videoTransitioning) {
+        transitionToClip((live.clipIndex + 1) % clips.length);
+      } else if (live.phase === 'promo') {
+        showVideoEmpty();
+      }
+    });
+  });
+
+  /* ---------- voice reader ---------- */
+  var synth = window.speechSynthesis || null;
+
+  /* speech.js turns on-screen text into text a TTS engine reads naturally
+     ("1 John 3:16" -> "First John, chapter three, verse sixteen"). The
+     fallback keeps the reader working if that module ever fails to load. */
+  var speech = window.LNR_SPEECH || {
+    normalizeSpeech: function (t) { return String(t === null || typeof t === 'undefined' ? '' : t); },
+    questionParts: function (q, opts) {
+      if (!q) return [];
+      var parts = (!opts || opts.announceNext !== false) ? ['Next question.'] : [];
+      parts.push(String(q.q || ''));
+      (q.opts || []).forEach(function (o, i) { parts.push(['A', 'B', 'C', 'D'][i] + '. ' + o); });
+      return parts;
+    },
+    revealParts: function (q) {
+      if (!q) return [];
+      var parts = ['The answer is ' + ['A', 'B', 'C', 'D'][q.correct] + '. ' +
+        ((q.opts && q.opts[q.correct]) || '')];
+      if (q.ref) parts.push('Reference: ' + q.ref);
+      if (q.insight) parts.push(q.insight);
+      return parts;
+    }
+  };
+
+  var voiceList = [];
+  var speaking = false;
+  var pausedSpeech = false;
+
+  /* ---------- speech completion tracking ----------
+     The broadcast must not cut the reader off. `speechPending` counts the
+     utterances still queued; it reaches 0 only when the LAST one fires
+     `onend`, which is the moment the answer, reference and note have all
+     been spoken.
+
+     `speechGen` is a generation token. `stopSpeech()` cancels the queue, and
+     a cancelled utterance still fires `onend`/`onerror` — without the token
+     those late events would decrement the count of the NEW queue and make
+     the engine think it had finished while it was still talking.
+
+     `speechDeadline` is a wall-clock fallback: some engines never fire
+     `onend` at all (a long-standing Chrome/Safari quirk). Without it a
+     missing event would stall the broadcast forever, so the queue is
+     treated as done once a generous estimate of its spoken length passes. */
+  var speechPending = 0;
+  var speechGen = 0;
+  var speechDeadline = 0;
+  var activeUtterances = [];
+
+  /* The reveal queue is tracked separately from the question queue.
+     The scene gate must wait for the ANSWER, REFERENCE and NOTE — not for a
+     question that happens to still be reading. If the reveal announcement is
+     switched off, nothing is queued here and the scene advances on the clock
+     exactly as it always did. */
+  var revealPending = 0;
+  var revealDeadline = 0;
+
+  function speechUtteranceEnded(gen, isReveal, utt) {
+    if (gen !== speechGen) return;          /* a cancelled, older queue */
+    if (utt) {
+      var idx = activeUtterances.indexOf(utt);
+      if (idx >= 0) activeUtterances.splice(idx, 1);
+    }
+    if (speechPending > 0) speechPending--;
+    if (isReveal && revealPending > 0) revealPending--;
+    if (speechPending > 0) {
+      var bump = now() + 4500 + speechPending * 1500;
+      if (bump > speechDeadline) speechDeadline = bump;
+      if (isReveal && bump > revealDeadline) revealDeadline = bump;
+    }
+    if (speechPending === 0) {
+      activeUtterances = [];
+      speaking = false;
+      updateVoiceBtn();
+      if (!isReveal && live.inSession && live.phase === 'quiz' && !live.revealed && !live.quizMilestone && live.waitingForSpeech) {
+        armPostReadQuizCountdown();
+        playCountdownTick(10);
+        live.lastTickCueSec = 10;
+        updatePhaseUI();
+      }
+    }
+  }
+
+  function speechBusy() {
+    if (!synth || !S.voiceOn) return false;
+    if (speechPending <= 0) return false;
+    if (now() > speechDeadline) {
+      speechPending = 0;
+      activeUtterances = [];
+      speaking = false;
+      return false;
+    }
+    return true;
+  }
+
+  /* Is the reader still speaking the reveal? Used by the tick to hold the
+     scene until the answer, reference and note have all been read out. */
+  function revealBusy() {
+    if (!synth || !S.voiceOn || !S.voiceReveal) return false;
+    if (revealPending <= 0) return false;
+    if (now() > revealDeadline) {           /* onend never came — give up */
+      revealPending = 0;
+      return false;
+    }
+    return true;
+  }
+
+  function curatedVoices() {
+    var all = synth ? synth.getVoices() : [];
+    if (!all.length) return [];
+    var preferred = ['Google UK English Female', 'Google US English', 'Samantha', 'Daniel',
+      'Microsoft Aria Online (Natural) - English (United States)',
+      'Microsoft Guy Online (Natural) - English (United States)',
+      'Karen', 'Moira', 'Serena'];
+    var en = all.filter(function (v) { return /^en(-|_|$)/i.test(v.lang); });
+    var picked = [];
+    preferred.forEach(function (p) {
+      en.forEach(function (v) { if (v.name === p && picked.indexOf(v) < 0) picked.push(v); });
+    });
+    en.forEach(function (v) { if (picked.indexOf(v) < 0 && picked.length < 10) picked.push(v); });
+    return picked.length ? picked : all.slice(0, 8);
+  }
+
+  function fillVoices() {
+    var targets = [el.voiceSelect, el.stVoiceSelect].filter(Boolean);
+    if (!targets.length) return;
+    voiceList = curatedVoices();
+    targets.forEach(function (sel) {
+      sel.innerHTML = '';
+      if (!voiceList.length) {
+        var o = document.createElement('option');
+        o.value = ''; o.textContent = 'System default voice';
+        sel.appendChild(o);
+        return;
+      }
+      voiceList.forEach(function (v) {
+        var opt = document.createElement('option');
+        opt.value = v.name;
+        opt.textContent = v.name + ' \u00b7 ' + v.lang;
+        if (S.voiceName === v.name) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
+  if (synth) {
+    fillVoices();
+    if (typeof synth.onvoiceschanged !== 'undefined') synth.onvoiceschanged = fillVoices;
+    /* some engines only populate the list after a speak() call — prime it silently */
+    if (!(synth.getVoices() || []).length) {
+      try {
+        var primer = new SpeechSynthesisUtterance(' ');
+        primer.volume = 0;
+        primer.rate = 1;
+        synth.speak(primer);
+        synth.cancel();
+      } catch (e) {}
+      window.setTimeout(function () {
+        fillVoices();
+        [el.voiceSelect, el.stVoiceSelect].forEach(function (sel) {
+          if (sel && sel.options.length <= 1) {
+            var o = document.createElement('option');
+            o.value = ''; o.textContent = 'Browser default voice';
+            sel.appendChild(o);
+          }
+        });
+      }, 700);
+    }
+  } else {
+    [el.voiceSelect, el.stVoiceSelect].forEach(function (sel) {
+      if (!sel) return;
+      var o0 = document.createElement('option');
+      o0.value = ''; o0.textContent = 'Speech not supported in this browser';
+      sel.appendChild(o0);
+    });
+  }
+
+  [el.voiceSelect, el.stVoiceSelect].forEach(function (sel) {
+    on(sel, 'change', function () {
+      S.voiceName = sel.value;
+      if (el.voiceSelect) el.voiceSelect.value = S.voiceName;
+      if (el.stVoiceSelect) el.stVoiceSelect.value = S.voiceName;
+      save();
+      toast('Voice: ' + ((sel.options[sel.selectedIndex] || {}).text || 'Default'));
+    });
+  });
+
+  [el.voiceRate, el.stVoiceRate].forEach(function (slider) {
+    on(slider, 'input', function () {
+      S.voiceRate = parseInt(slider.value, 10) / 100;
+      if (el.voiceRate) el.voiceRate.value = slider.value;
+      if (el.stVoiceRate) el.stVoiceRate.value = slider.value;
+      if (el.voiceRateLabel) el.voiceRateLabel.textContent = S.voiceRate.toFixed(2) + '\u00d7';
+      if (el.stVoiceRateLabel) el.stVoiceRateLabel.textContent = S.voiceRate.toFixed(2) + '\u00d7';
+      save();
+    });
+  });
+
+  [el.voiceOn, el.stVoiceOn].forEach(function (chk) {
+    on(chk, 'change', function () {
+      S.voiceOn = !!chk.checked;
+      syncInputs();
+      save();
+      updateVoiceBtn();
+      if (!S.voiceOn) {
+        stopSpeech();
+        if (live.inSession && live.phase === 'quiz' && !live.revealed && !live.quizMilestone && live.waitingForSpeech) {
+          armPostReadQuizCountdown();
+          updatePhaseUI();
+        }
+      } else if (live.inSession && live.phase === 'quiz') {
+        if (live.quizMilestone) speakQuizMilestone();
+        else {
+          if (!live.revealed) {
+            live.waitingForSpeech = true;
+            live.lastTickCueSec = -1;
+            live.qEndsAt = now() + Math.max(S.qSec, 30) * 1000;
+          }
+          speakCurrent(false);
+          updatePhaseUI();
+        }
+      } else if (live.inSession && live.phase === 'players') {
+        speakPlayerSubPhase(false);
+      } else if (live.inSession && live.phase === 'story') {
+        speakStoryStep();
+      }
+      toast(S.voiceOn ? 'Voice reader on' : 'Voice reader off');
+    });
+  });
+
+  [el.voiceReveal, el.stVoiceReveal].forEach(function (chk) {
+    on(chk, 'change', function () {
+      S.voiceReveal = !!chk.checked;
+      syncInputs();
+      save();
+      toast(S.voiceReveal ? 'Answer announcement on' : 'Answer announcement off');
+    });
+  });
+
+  function updateVoiceBtn() {
+    if (!el.voiceBtn) return;
+    if (!synth) {
+      el.voiceBtn.textContent = 'Voice: unsupported';
+      el.voiceBtn.disabled = true;
+    } else {
+      el.voiceBtn.textContent = S.voiceOn ? (synth.paused ? 'Voice: paused' : 'Voice: on') : 'Voice: off';
+      el.voiceBtn.classList.toggle('is-on', !!S.voiceOn);
+    }
+    if (el.musicBtn) {
+      if (isAudioSuppressedPhase()) {
+        el.musicBtn.textContent = 'Audio: clip priority';
+        el.musicBtn.classList.remove('is-on');
+      } else {
+        var playing = !!musicNodes || !!(customAudioEl && !customAudioEl.paused);
+        el.musicBtn.textContent = customAudioEl
+          ? ('MP3: ' + (playing ? 'on' : 'ready'))
+          : ('Music: ' + (S.music === 'off' ? 'off' : (playing ? 'on' : 'ready')));
+        el.musicBtn.classList.toggle('is-on', S.music !== 'off' || !!customAudioEl);
+      }
+    }
+  }
+
+  function pickVoice() {
+    if (!voiceList.length) return null;
+    for (var i = 0; i < voiceList.length; i++) {
+      if (voiceList[i].name === S.voiceName) return voiceList[i];
+    }
+    return voiceList[0];
+  }
+
+  /* Split long paragraphs cleanly (< 145 chars) so mobile/Chromium Web Speech
+     never hits the ~15-second utterance truncation bug mid-sentence. */
+  function splitSpeechText(text, maxLen) {
+    var clean = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!clean) return [];
+    if (clean.length <= maxLen) return [clean];
+    var chunks = [];
+    var sentences = clean.split(/(?<=[.!?;:])\s+/);
+    sentences.forEach(function (sent) {
+      var s = sent.trim();
+      if (!s) return;
+      if (s.length <= maxLen) {
+        chunks.push(s);
+        return;
+      }
+      var words = s.split(/\s+/);
+      var buf = '';
+      words.forEach(function (w) {
+        if (!buf) { buf = w; return; }
+        if (buf.length + 1 + w.length > maxLen) {
+          chunks.push(buf);
+          buf = w;
+        } else {
+          buf += ' ' + w;
+        }
+      });
+      if (buf) chunks.push(buf);
+    });
+    return chunks.length ? chunks : [clean];
+  }
+
+  function speakParts(parts, isReveal) {
+    if (!synth || !S.voiceOn) return;
+    stopSpeech();
+    try { if (synth.paused) synth.resume(); } catch (e) {}
+    var v = pickVoice();
+    var gen = speechGen;
+    var expanded = [];
+    (parts || []).forEach(function (p) {
+      if (!p || !String(p).replace(/\s+/g, '')) return;
+      splitSpeechText(p, 145).forEach(function (c) { expanded.push(c); });
+    });
+    if (!expanded.length) return;
+
+    var queued = 0;
+    var chars = 0;
+    var rate = Math.max(0.5, Number(S.voiceRate) || 0.96);
+
+    expanded.forEach(function (p) {
+      var u = new SpeechSynthesisUtterance(p);
+      if (v) u.voice = v;
+      u.rate = rate;
+      u.pitch = 1;
+      activeUtterances.push(u);
+      u.onstart = function () {
+        if (gen !== speechGen) return;
+        var remMs = (p.length / 8.5) * 1000 / rate + 4200 + Math.max(0, speechPending - 1) * 1800;
+        var nextDeadline = now() + remMs;
+        if (nextDeadline > speechDeadline) speechDeadline = nextDeadline;
+        if (isReveal && nextDeadline > revealDeadline) revealDeadline = nextDeadline;
+      };
+      /* both handlers: a failed utterance must not leave the queue stuck */
+      u.onend = function () { speechUtteranceEnded(gen, isReveal, u); };
+      u.onerror = function () { speechUtteranceEnded(gen, isReveal, u); };
+      synth.speak(u);
+      queued++;
+      chars += p.length;
+    });
+
+    if (!queued) return;
+    speechPending = queued;
+    /* ~9.5 chars/sec at 1x + inter-utterance latency buffer; dynamically extended in onstart */
+    var estMs = (chars / 9.5) * 1000 / rate + queued * 650;
+    speechDeadline = now() + estMs + 5000;
+    if (isReveal) {
+      revealPending = queued;
+      revealDeadline = speechDeadline;
+    }
+    speaking = true;
+    pausedSpeech = false;
+    updateVoiceBtn();
+  }
+
+  function stopSpeech() {
+    if (!synth) return;
+    speechGen++;              /* invalidate every handler from the old queue */
+    speechPending = 0;
+    speechDeadline = 0;
+    revealPending = 0;
+    revealDeadline = 0;
+    activeUtterances = [];
+    try { synth.cancel(); } catch (e) {}
+    speaking = false;
+    pausedSpeech = false;
+    updateVoiceBtn();
+  }
+
+  function toggleSpeechPause() {
+    if (!synth || !speaking) return;
+    if (synth.paused) { synth.resume(); pausedSpeech = false; toast('Voice resumed'); }
+    else { synth.pause(); pausedSpeech = true; toast('Voice paused'); }
+    updateVoiceBtn();
+  }
+
+  /* keep the position: pause/resume rather than restart */
+  function speakCurrent(announceNext) {
+    var q = currentQ();
+    if (!q) return;
+    speakParts(speech.questionParts(q, { announceNext: announceNext !== false }));
+  }
+
+  /* Announce the reveal: the answer, then the reference, then the note.
+     Called from revealAnswer(), which already guards on live.revealed,
+     so this fires exactly once per question. */
+  function speakReveal() {
+    if (!synth || !S.voiceOn || !S.voiceReveal) return;
+    var q = currentQ();
+    if (!q) return;
+    speakParts(speech.revealParts(q), true);
+  }
+
+  function speakQuizMilestone() {
+    if (!synth || !S.voiceOn || !S.voiceReveal) return;
+    var mp = speech.milestoneParts
+      ? speech.milestoneParts(live.quizRoundNum, live.quizRoundAnswers, S.segment)
+      : ['Round ' + live.quizRoundNum + ' complete! Check the last 10 answers and drop your score in the live chat!'];
+    speakParts(mp, true);
+  }
+
+  on(el.voiceBtn, 'click', function () {
+    if (!S.voiceOn) {
+      S.voiceOn = true;
+      if (el.voiceOn) el.voiceOn.checked = true;
+      if (el.stVoiceOn) el.stVoiceOn.checked = true;
+      save();
+      updateVoiceBtn();
+      if (live.inSession && live.phase === 'quiz') {
+        if (live.quizMilestone) speakQuizMilestone();
+        else {
+          if (!live.revealed) {
+            live.waitingForSpeech = true;
+            live.lastTickCueSec = -1;
+            live.qEndsAt = now() + Math.max(S.qSec, 30) * 1000;
+          }
+          speakCurrent(false);
+          updatePhaseUI();
+        }
+      }
+      else if (live.inSession && live.phase === 'players') speakPlayerSubPhase(false);
+      else if (live.inSession && live.phase === 'story') speakStoryStep();
+      toast('Voice reader on');
+      return;
+    }
+    toggleSpeechPause();
+  });
+
+  /* ---------- JSON import ---------- */
+  function validateQuestion(raw, i, out, seg) {
+    var errs = [];
+    var where = 'Question ' + (i + 1);
+    if (!raw || typeof raw !== 'object') { errs.push(where + ': not an object'); return errs; }
+
+    var text = raw.question || raw.q || raw.text || raw.prompt;
+    if (typeof text !== 'string' || text.trim().length < 8) {
+      errs.push(where + ': "question" must be at least 8 meaningful characters');
+    }
+
+    var opts = raw.options || raw.opts || raw.answers || raw.choices;
+    if (!Array.isArray(opts) || opts.length < 4) {
+      errs.push(where + ': "options" must be an array of 4 answer choices' + (Array.isArray(opts) ? ' (found ' + opts.length + ')' : ''));
+    } else {
+      opts = opts.map(function (o) {
+        if (typeof o === 'string') return o.trim();
+        if (o && typeof o === 'object') return String(o.text || o.label || o.value || '').trim();
+        return String(o);
+      });
+      if (opts.some(function (o) { return !o; })) errs.push(where + ': an option is empty');
+      if (new Set(opts.map(function (o) { return o.toLowerCase(); })).size !== opts.length) {
+        errs.push(where + ': two options are identical');
+      }
+      opts = opts.slice(0, 4);
+    }
+
+    var correct = -1;
+    var av = (typeof raw.answer !== 'undefined') ? raw.answer
+      : (typeof raw.correct !== 'undefined') ? raw.correct
+      : (typeof raw.correct_letter !== 'undefined') ? raw.correct_letter
+      : (typeof raw.correctLetter !== 'undefined') ? raw.correctLetter : null;
+
+    if (typeof av === 'number' && av >= 0 && av < opts.length) correct = av;
+    else if (typeof av === 'string') {
+      var s = av.trim();
+      if (/^[A-Da-d]$/.test(s)) correct = 'ABCD'.indexOf(s.toUpperCase());
+      else if (/^\d+$/.test(s) && parseInt(s, 10) < opts.length) correct = parseInt(s, 10);
+      else {
+        var found = opts.map(function (o) { return o.toLowerCase(); }).indexOf(s.toLowerCase());
+        if (found >= 0) correct = found;
+      }
+    }
+    if (correct < 0) errs.push(where + ': "answer" must be an index (0-' + (opts.length - 1) + ') or a letter A-D');
+
+    if (errs.length) return errs;
+
+    out.push({
+      q: text.trim(),
+      opts: opts,
+      correct: correct,
+      ref: String(raw.reference || raw.ref || raw.source || raw.scripture || ''),
+      insight: String(raw.insight || raw.explanation || raw.note || ''),
+      level: String(raw.difficulty || raw.level || 'Medium')
+    });
+    return [];
+  }
+
+  function importReport(ok, title, lines) {
+    var html = '<b>' + String(title).replace(/</g, '&lt;') + '</b>';
+    if (lines && lines.length) {
+      html += '<ul>' + lines.slice(0, 8).map(function (l) {
+        return '<li>' + String(l).replace(/</g, '&lt;') + '</li>';
+      }).join('') + '</ul>';
+      if (lines.length > 8) html += '<div>\u2026and ' + (lines.length - 8) + ' more.</div>';
+    }
+    [el.importResult, el.setupImportResult].forEach(function (box) {
+      if (!box) return;
+      box.hidden = false;
+      box.className = 'import-result ' + (ok ? 'is-ok' : 'is-bad');
+      box.innerHTML = html;
+    });
+  }
+
+  function handleImport(file) {
+    if (!file) return;
+    if (!/\.json$/i.test(file.name) && file.type !== 'application/json') {
+      importReport(false, 'That is not a JSON file', ['Choose a file ending in .json.']);
+      toast('Import failed: not a JSON file', true);
+      return;
+    }
+    var reader = new FileReader();
+    reader.onerror = function () {
+      importReport(false, 'Could not read the file', ['The browser refused to read it. Try again.']);
+      toast('Import failed: unreadable file', true);
+    };
+    reader.onload = function () {
+      var data;
+      try {
+        data = JSON.parse(String(reader.result));
+      } catch (e) {
+        importReport(false, 'Invalid JSON', [e.message]);
+        toast('Import failed: invalid JSON', true);
+        return;
+      }
+
+      var list = null;
+      var segGuess = S.segment;
+      if (Array.isArray(data)) list = data;
+      else if (data && typeof data === 'object') {
+        list = data.questions || data.items || data.data || null;
+        if (data.segment || data.category) {
+          var g = String(data.segment || data.category).toLowerCase();
+          if (/bib|script|church/.test(g)) segGuess = 'bible';
+          else if (/hist|world/.test(g)) segGuess = 'history';
+        }
+      }
+      if (!Array.isArray(list)) {
+        importReport(false, 'Wrong shape', [
+          'Expected a top-level array, or an object with a "questions" array.',
+          'Example: { "segment": "bible", "questions": [ \u2026 ] }'
+        ]);
+        toast('Import failed: unrecognised shape', true);
+        return;
+      }
+      if (!list.length) {
+        importReport(false, 'Empty file', ['The questions array has no items.']);
+        toast('Import failed: empty file', true);
+        return;
+      }
+
+      var good = [], errs = [];
+      list.forEach(function (raw, i) {
+        errs = errs.concat(validateQuestion(raw, i, good, segGuess));
+      });
+
+      if (!good.length) {
+        importReport(false, 'Nothing imported \u2014 ' + errs.length + ' problem' + (errs.length === 1 ? '' : 's'), errs);
+        toast('Import failed: no valid questions', true);
+        return;
+      }
+
+      /* merge, skipping exact & near-duplicate questions against existing built-in + custom bank */
+      var existingAll = bank[segGuess] || [];
+      var seenKeys = {};
+      var seenTokens = [];
+      existingAll.forEach(function (q) {
+        seenKeys[qNormKey(q.q)] = 1;
+        seenTokens.push(qTokens(q.q));
+      });
+      var added = 0, dupes = 0;
+      good.forEach(function (q) {
+        if (isNearDuplicate(q.q, seenKeys, seenTokens)) {
+          dupes++;
+          return;
+        }
+        seenKeys[qNormKey(q.q)] = 1;
+        seenTokens.push(qTokens(q.q));
+        custom[segGuess].push(q);
+        added++;
+      });
+
+      if (!added) {
+        importReport(false, 'All ' + dupes + ' questions matched existing or repetitive phrasing',
+          ['Nothing was duplicated into the session. Pick fresh, non-repetitive questions.']);
+        toast('Import: skipped repetitive items', true);
+        return;
+      }
+
+      saveCustom();
+      rebuildQuizBanks();       /* cleanly swaps out 5-item demo content once custom items exist */
+      bags[segGuess] = [];
+      setSegment(segGuess);
+      refreshAccessUI();
+      refreshStats();
+
+      var lines = [];
+      lines.push('Added ' + added + ' to ' + SEGMENTS[segGuess] + '.');
+      if (dupes) lines.push('Skipped ' + dupes + ' duplicate' + (dupes === 1 ? '' : 's') + '.');
+      if (errs.length) lines.push('Skipped ' + errs.length + ' malformed item' + (errs.length === 1 ? '' : 's') + '.');
+      lines.push('The ' + SEGMENTS[segGuess] + ' segment now holds ' + (segGuess === 'bible' ? bank.bible.length : bank.history.length) + ' questions.');
+      if (errs.length) lines = lines.concat(errs.slice(0, 4));
+
+      importReport(true, 'Imported ' + added + ' question' + (added === 1 ? '' : 's'), lines);
+      toast('Imported ' + added + ' question' + (added === 1 ? '' : 's') + ' into ' + SEGMENTS[segGuess]);
+    };
+    reader.readAsText(file);
+  }
+
+  on(el.importInput, 'change', function () {
+    var f = el.importInput.files && el.importInput.files[0];
+    handleImport(f);
+    el.importInput.value = '';
+  });
+
+  on(el.setupQuizImportInput, 'change', function () {
+    var f = el.setupQuizImportInput.files && el.setupQuizImportInput.files[0];
+    handleImport(f);
+    el.setupQuizImportInput.value = '';
+  });
+
+  /* ---------- length-driven typography ---------- */
+  /* A question is set as large as it can be without crowding the frame.
+     Bounds are deliberate: 'xl' for a handful of words, 'xs' for a long
+     one. This is what makes a two-word question feel like a title card
+     and a long one still fit without shrinking below legibility. */
+  var Q_FITS = ['xl', 'lg', 'md', 'sm', 'xs'];
+
+  function fitFor(len) {
+    if (len <= 26) return 0;
+    if (len <= 52) return 1;
+    if (len <= 92) return 2;
+    if (len <= 148) return 3;
+    return 4;
+  }
+
+  function fitOptionsFor(len) {
+    if (len <= 12) return 'lg';
+    if (len <= 26) return 'md';
+    if (len <= 46) return 'sm';
+    return 'xs';
+  }
+
+  /* Apply the length tier, then step down while the block still overflows.
+
+     Two things step down, in this order:
+       1. the question text (xl -> xs)
+       2. the option text (lg -> xs), only once the question is at its floor
+
+     The type scale is now much larger, so a long question plus four long
+     options can genuinely exceed the frame. This guard is what makes that
+     safe: it measures the real rendered block and shrinks until it fits, so
+     raising the tiers can never push content out of the frame.
+
+     It must run AFTER the options are in the DOM — measuring before they
+     exist would only ever see the question's height. */
+  function applyQuestionFit(len) {
+    if (!el.qText) return;
+    var idx = fitFor(len);
+    el.qText.setAttribute('data-fit', Q_FITS[idx]);
+
+    var host = el.quizStage;
+    if (!host) return;
+
+    var optEls = el.options ? Array.prototype.slice.call(el.options.children) : [];
+    var optFits = ['lg', 'md', 'sm', 'xs'];
+
+    /* Reset every option to its own length tier first. Without this the
+       previous question's shrink would carry over and the type would ratchet
+       down question after question. */
+    optEls.forEach(function (d) {
+      var tx = d.querySelector('.opt-text');
+      d.setAttribute('data-fit', fitOptionsFor(tx ? tx.textContent.length : 0));
+    });
+
+    var optIdx = 0;                       /* 0 = lg, 3 = xs */
+
+    /* bounded so it can never loop forever */
+    for (var guard = 0; guard < 8; guard++) {
+      var overflow = host.scrollHeight - host.clientHeight;
+      if (overflow <= 0) break;
+
+      if (idx < 4) {
+        idx++;
+        el.qText.setAttribute('data-fit', Q_FITS[idx]);
+        continue;
+      }
+      /* question is at its floor — shrink the options instead */
+      if (optIdx < 3) {
+        optIdx++;
+        optEls.forEach(function (d) { d.setAttribute('data-fit', optFits[optIdx]); });
+        continue;
+      }
+      break;                              /* nothing left to shrink */
+    }
+
+    /* One more pass on the next frame. The first pass can measure before the
+       browser has finished laying out the new font sizes (a wrapped line
+       changes the height only after reflow), which leaves a few pixels of
+       overflow on some viewports. Re-measuring once the frame is painted
+       catches that without ever looping. */
+    if (host.scrollHeight - host.clientHeight > 0) {
+      window.requestAnimationFrame(function () {
+        for (var g2 = 0; g2 < 8; g2++) {
+          if (host.scrollHeight - host.clientHeight <= 0) break;
+          if (idx < 4) {
+            idx++;
+            el.qText.setAttribute('data-fit', Q_FITS[idx]);
+            continue;
+          }
+          if (optIdx < 3) {
+            optIdx++;
+            optEls.forEach(function (d) { d.setAttribute('data-fit', optFits[optIdx]); });
+            continue;
+          }
+          break;
+        }
+      });
+    }
+  }
+
+  /* Trigger a CSS entrance animation cleanly on reuse */
+  function retriggerAnimation(node, cls) {
+    if (!node) return;
+    node.classList.remove(cls);
+    void node.offsetWidth;
+    node.classList.add(cls);
+  }
+
+  /* ---------- question rendering ---------- */
+  function currentQ() {
+    if (live.qIndex < 0) return null;
+    return bank[S.segment][live.qIndex] || null;
+  }
+
+  function renderQuestion() {
+    var seg = S.segment;
+    var q = currentQ();
+    if (!q) {
+      el.qText.setAttribute('data-fit', 'md');
+      el.qText.textContent = 'This segment has no questions yet. Import a JSON file to add some.';
+      el.options.innerHTML = '';
+      return;
+    }
+    el.qKicker.textContent = SEGMENTS[seg] + ' \u00b7 ' + q.level;
+    el.qText.textContent = q.q;
+
+    el.options.innerHTML = '';
+    q.opts.forEach(function (text, i) {
+      var d = document.createElement('div');
+      d.className = 'opt';
+      d.setAttribute('data-i', i);
+      d.setAttribute('data-fit', fitOptionsFor(text.length));
+      var badge = document.createElement('span');
+      badge.className = 'opt-badge';
+      badge.textContent = 'ABCD'[i];
+      var tx = document.createElement('span');
+      tx.className = 'opt-text';
+      tx.textContent = text;
+      d.appendChild(badge); d.appendChild(tx);
+      el.options.appendChild(d);
+    });
+
+    el.reveal.hidden = true;
+    live.revealed = false;
+    live.qRecorded = false;
+    if (el.quizStage) {
+      el.quizStage.classList.remove('is-revealed');
+      retriggerAnimation(el.quizStage, 'is-animating');
+    }
+    if (el.revealToggleBtn) el.revealToggleBtn.textContent = 'Reveal';
+
+    applyQuestionFit(q.q.length);
+
+    var total = bank[seg].length;
+    var served = Math.min(live.served, total);
+    var inRound = Math.min(10, live.quizRoundAnswers.length + 1);
+    el.counter.textContent = 'Round ' + live.quizRoundNum + ' \u00b7 Q' + inRound + ' of 10 (' + served + '/' + total + (live.served > total ? ' \u00b7 bag refilled' : '') + ')';
+    if (el.segLabel) el.segLabel.textContent = SEGMENTS[seg];
+    playSceneChime();
+  }
+
+  function revealAnswer() {
+    var q = currentQ();
+    if (!q || live.revealed || live.quizMilestone) return;
+    live.waitingForSpeech = false;
+    live.lastTickCueSec = -1;
+    live.revealed = true;
+    Array.prototype.forEach.call(el.options.children, function (child, i) {
+      if (i === q.correct) child.classList.add('is-correct');
+    });
+    el.revealAnswer.textContent = 'Answer: ' + 'ABCD'[q.correct] + ' \u00b7 ' + q.opts[q.correct];
+    el.revealRef.textContent = q.ref || '';
+    el.revealNote.textContent = q.insight || '';
+    el.reveal.hidden = false;
+    if (el.quizStage) el.quizStage.classList.add('is-revealed');
+    if (el.revealToggleBtn) el.revealToggleBtn.textContent = 'Hide';
+    playRevealChime();
+    speakReveal();
+  }
+
+  /* ---------- shared milestone graphic cards (Quiz + Player Quiz) ---------- */
+  var svgGradSeq = 0;
+
+  function escapeSvg(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function buildMilestoneGraphicSvg(ans, kind, idx) {
+    var numLabel = String(idx + 1);
+    if (kind === 'players') {
+      var pLib = window.LNR_PLAYERS;
+      var colors = (pLib && pLib.getPlayerColors) ? pLib.getPlayerColors(ans.player_id || '') : ['#d9ab63', '#152b23'];
+      var c1 = escapeSvg(colors[0]);
+      var c2 = escapeSvg(colors[1]);
+      var jerseyNum = escapeSvg(String(ans.number || ans.initials || numLabel));
+      var gradId = 'msj' + (++svgGradSeq);
+      return '<svg viewBox="0 0 64 76" width="64" height="76" aria-hidden="true">' +
+        '<defs><linearGradient id="' + gradId + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="' + c1 + '"/><stop offset="100%" stop-color="' + c2 + '"/></linearGradient></defs>' +
+        '<rect x="1" y="1" width="62" height="74" rx="10" fill="#0c1512" stroke="#d9ab63" stroke-opacity="0.45" stroke-width="1.5"/>' +
+        '<path d="M18 16 L26 12 C29 16 35 16 38 12 L46 16 L55 26 L49 34 L44 30 L44 54 C44 57 42 59 39 59 L25 59 C22 59 20 57 20 54 L20 30 L15 34 L9 26 Z" fill="url(#' + gradId + ')" stroke="#f5efe2" stroke-opacity="0.45" stroke-width="1.3"/>' +
+        '<text x="32" y="44" text-anchor="middle" fill="#ffffff" font-family="Georgia,serif" font-size="16" font-weight="700">' + jerseyNum + '</text>' +
+        '<rect x="6" y="61" width="22" height="10" rx="5" fill="#182722" stroke="#d9ab63" stroke-opacity="0.5"/>' +
+        '<text x="17" y="68.5" text-anchor="middle" fill="#d9ab63" font-family="ui-monospace,monospace" font-size="7.5" font-weight="700">Q' + numLabel + '</text>' +
+        '</svg>';
+    }
+    if (kind === 'history') {
+      return '<svg viewBox="0 0 64 76" width="64" height="76" aria-hidden="true">' +
+        '<rect x="1" y="1" width="62" height="74" rx="10" fill="#121c19" stroke="#d08262" stroke-opacity="0.55" stroke-width="1.5"/>' +
+        '<rect x="5" y="5" width="54" height="66" rx="7" fill="none" stroke="#d08262" stroke-opacity="0.22"/>' +
+        '<path d="M21 18 H43 L34 35 L43 52 H21 L30 35 Z" fill="#d08262" fill-opacity="0.24" stroke="#d08262" stroke-width="1.8" stroke-linejoin="round"/>' +
+        '<path d="M20 18 H44 M20 52 H44" stroke="#f5efe2" stroke-opacity="0.65" stroke-width="2" stroke-linecap="round"/>' +
+        '<circle cx="32" cy="35" r="2.2" fill="#d9ab63"/>' +
+        '<rect x="16" y="57" width="32" height="12" rx="6" fill="#0b1310" stroke="#d08262" stroke-opacity="0.55"/>' +
+        '<text x="32" y="65.5" text-anchor="middle" fill="#f0c6b0" font-family="ui-monospace,monospace" font-size="8" font-weight="700">Q' + numLabel + '</text>' +
+        '</svg>';
+    }
+    /* Bible Scripture Shield Card */
+    return '<svg viewBox="0 0 64 76" width="64" height="76" aria-hidden="true">' +
+      '<rect x="1" y="1" width="62" height="74" rx="10" fill="#10201a" stroke="#d9ab63" stroke-opacity="0.55" stroke-width="1.5"/>' +
+      '<rect x="5" y="5" width="54" height="66" rx="7" fill="none" stroke="#d9ab63" stroke-opacity="0.22"/>' +
+      '<path d="M16 20 C22 17 28 18 32 22 C36 18 42 17 48 20 V46 C42 44 36 45 32 49 C28 45 22 44 16 46 Z" fill="#d9ab63" fill-opacity="0.2" stroke="#d9ab63" stroke-width="1.6" stroke-linejoin="round"/>' +
+      '<line x1="32" y1="22" x2="32" y2="49" stroke="#d9ab63" stroke-width="1.4"/>' +
+      '<path d="M32 10 L33.5 14 L37.5 15.5 L33.5 17 L32 21 L30.5 17 L26.5 15.5 L30.5 14 Z" fill="#f5efe2" fill-opacity="0.88"/>' +
+      '<rect x="16" y="57" width="32" height="12" rx="6" fill="#0b1310" stroke="#d9ab63" stroke-opacity="0.55"/>' +
+      '<text x="32" y="65.5" text-anchor="middle" fill="#d9ab63" font-family="ui-monospace,monospace" font-size="8" font-weight="700">Q' + numLabel + '</text>' +
+      '</svg>';
+  }
+
+  function setMilestoneGradesUI(kind) {
+    var isQuiz = kind === 'bible' || kind === 'history' || kind === 'quiz';
+    if (el.msTitle) {
+      el.msTitle.textContent = isQuiz
+        ? 'Self-Score Check \u2014 Last 10 Answers'
+        : 'Self-Score Check \u2014 Last 10 Players';
+    }
+    if (el.msGrade0) el.msGrade0.textContent = isQuiz ? 'Master Scholar' : 'World Class';
+    if (el.msGrade1) el.msGrade1.textContent = isQuiz ? 'Honor Roll' : 'UCL Starter';
+    if (el.msGrade2) el.msGrade2.textContent = isQuiz ? 'Faithful Learner' : 'First Team';
+    if (el.msGrade3) el.msGrade3.textContent = isQuiz ? 'Warm Up' : 'Academy';
+    if (el.msCta) el.msCta.textContent = 'Tally your score & drop your rank in the live chat!';
+    if (el.milestoneStage) el.milestoneStage.setAttribute('data-ms-kind', kind);
+  }
+
+  function renderMilestoneCards(answers, kind) {
+    if (!el.msGrid) return;
+    el.msGrid.innerHTML = '';
+    answers.forEach(function (ans, idx) {
+      var card = document.createElement('div');
+      card.className = 'ms-item ms-item-graphic';
+      card.style.setProperty('--ms-i', String(idx));
+
+      var art = document.createElement('div');
+      art.className = 'ms-card-art';
+      art.innerHTML = buildMilestoneGraphicSvg(ans, kind, idx);
+
+      var body = document.createElement('div');
+      body.className = 'ms-item-body';
+
+      var top = document.createElement('div');
+      top.className = 'ms-item-top';
+      var qpill = document.createElement('span');
+      qpill.className = 'ms-q-pill';
+      qpill.textContent = 'Q' + (idx + 1);
+      var tag = document.createElement('span');
+      tag.className = 'ms-tag';
+      tag.textContent = kind === 'players' ? (ans.player_id || 'CARD') : (ans.level || 'QUIZ');
+      top.appendChild(qpill);
+      top.appendChild(tag);
+
+      var nm = document.createElement('b');
+      nm.textContent = ans.name || ans.answer || '';
+      var mt = document.createElement('span');
+      mt.className = 'ms-item-sub';
+      mt.textContent = ans.meta || '';
+
+      body.appendChild(top);
+      body.appendChild(nm);
+      body.appendChild(mt);
+      card.appendChild(art);
+      card.appendChild(body);
+      el.msGrid.appendChild(card);
+    });
+    retriggerAnimation(el.milestoneStage, 'is-animating');
+  }
+
+  var PRE_AD_NOTICE_MS = 5000;
+
+  function promoThresholdMs() {
+    return effectivePromoIntervalMin() * 60 * 1000;
+  }
+
+  function canTriggerPromoAfterMilestone() {
+    return !!(S.autoRotate && S.promoAdsEnabled && live.quizActiveMs >= promoThresholdMs());
+  }
+
+  function clearPreAdNotice() {
+    live.preAdPending = false;
+    live.preAdReturnPhase = '';
+    live.preAdStartedAt = 0;
+    live.preAdEndsAt = 0;
+    if (el.adNotice) el.adNotice.hidden = true;
+    if (el.adNoticeFill) el.adNoticeFill.style.width = '0%';
+  }
+
+  function updateAdNoticeUI() {
+    if (!el.adNotice) return;
+    if (!live.preAdPending) {
+      el.adNotice.hidden = true;
+      return;
+    }
+    el.adNotice.hidden = false;
+    var ref = live.paused ? live.pausedAt : now();
+    var rem = Math.max(0, live.preAdEndsAt - ref);
+    var total = Math.max(1000, live.preAdEndsAt - live.preAdStartedAt);
+    var secLeft = Math.max(1, Math.ceil(rem / 1000));
+    if (el.adNoticeTimer) el.adNoticeTimer.textContent = secLeft + 's';
+    if (el.adNoticeFill) {
+      var pct = Math.min(100, Math.max(0, (1 - rem / total) * 100));
+      el.adNoticeFill.style.width = pct.toFixed(1) + '%';
+    }
+  }
+
+  function startPreAdNotice(returnPhase) {
+    clearPreAdNotice();
+    live.preAdPending = true;
+    live.preAdReturnPhase = returnPhase || homePhase();
+    live.preAdStartedAt = now();
+    live.preAdEndsAt = live.preAdStartedAt + PRE_AD_NOTICE_MS;
+    var nextRound = returnPhase === 'players' ? (plLive.roundNum + 1) : (live.quizRoundNum + 1);
+    var activePromos = effectivePromoList();
+    if (el.adNoticeTitle) el.adNoticeTitle.textContent = 'Partner break starting soon';
+    if (el.adNoticeSub) {
+      if (returnPhase === 'story') {
+        el.adNoticeSub.textContent = activePromos.length
+          ? 'Playing 1 break clip, then the next documentary episode begins'
+          : ('Brief partner break (' + formatShortSec(effectivePromoAdSec()) + '), then the next documentary episode begins');
+      } else {
+        el.adNoticeSub.textContent = activePromos.length
+          ? ('Playing 1 break clip, then Round ' + nextRound + ' resumes')
+          : ('Brief partner break (' + formatShortSec(effectivePromoAdSec()) + '), then Round ' + nextRound + ' resumes');
+      }
+    }
+    if (activePromos.length) {
+      var upcoming = activePromos[live.promoCursor % activePromos.length];
+      if (upcoming && upcoming.id) withClipUrl(upcoming.id, function () {});
+    }
+    updateAdNoticeUI();
+  }
+
+  function completePreAdIntoPromo() {
+    var retPhase = live.preAdReturnPhase || homePhase();
+    clearPreAdNotice();
+    if (retPhase === 'players') {
+      plLive.roundAnswers = [];
+      plLive.roundNum++;
+    } else if (retPhase !== 'story') {
+      live.quizMilestone = false;
+      live.quizRoundAnswers = [];
+      live.quizRoundNum++;
+    }
+    if (el.milestoneStage) el.milestoneStage.hidden = true;
+    enterPhase('promo', false, { returnPhase: retPhase });
+  }
+
+  function recordQuizRoundAnswer() {
+    if (live.qRecorded) return;
+    var q = currentQ();
+    if (!q) return;
+    live.qRecorded = true;
+    var last = live.quizRoundAnswers.length ? live.quizRoundAnswers[live.quizRoundAnswers.length - 1] : null;
+    if (last && last.qIndex === live.qIndex && bank[S.segment].length > 10) return;
+    var ansText = (q.opts && q.opts[q.correct]) || '';
+    live.quizRoundAnswers.push({
+      num: live.quizRoundAnswers.length + 1,
+      qIndex: live.qIndex,
+      title: q.q,
+      answer: ansText,
+      name: ansText,
+      meta: q.ref || SEGMENTS[S.segment],
+      segment: S.segment,
+      level: q.level || 'Medium'
+    });
+  }
+
+  function enterQuizMilestone() {
+    if (live.phase !== 'quiz') return;
+    clearPreAdNotice();
+    live.quizMilestone = true;
+    live.quizMilestoneStartedAt = now();
+    live.quizMilestoneEndsAt = live.quizMilestoneStartedAt + Math.max(10, Number(S.milestoneSec) || 30) * 1000;
+
+    if (el.quizStage) el.quizStage.hidden = true;
+    if (el.milestoneStage) el.milestoneStage.hidden = false;
+    if (el.msRoundBadge) el.msRoundBadge.textContent = 'ROUND ' + live.quizRoundNum + ' COMPLETE';
+    if (el.segLabel) el.segLabel.textContent = SEGMENTS[S.segment] + ' \u00b7 Milestone';
+    if (el.counter) el.counter.textContent = 'Round ' + live.quizRoundNum + ' \u00b7 10/10';
+
+    setMilestoneGradesUI(S.segment);
+    renderMilestoneCards(live.quizRoundAnswers, S.segment);
+    if (el.msGrid) el.msGrid.scrollTop = 0;
+    applyChatSafe();
+    playMilestoneFanfare();
+    speakQuizMilestone();
+  }
+
+  var demoRoundNoticed = { quiz: false, players: false };
+
+  function finishQuizMilestone(skipPromo) {
+    if (!skipPromo && canTriggerPromoAfterMilestone()) {
+      startPreAdNotice('quiz');
+      return;
+    }
+    clearPreAdNotice();
+    if (usingDemo[S.segment] && !demoRoundNoticed.quiz) {
+      demoRoundNoticed.quiz = true;
+      toast('Demo round finished \u2014 import your own unique JSON pack for full streams');
+    }
+    live.quizMilestone = false;
+    live.quizRoundAnswers = [];
+    live.quizRoundNum++;
+    if (el.milestoneStage) el.milestoneStage.hidden = true;
+    if (el.quizStage) el.quizStage.hidden = false;
+    nextQuestion();
+  }
+
+  function armPostReadQuizCountdown() {
+    live.waitingForSpeech = false;
+    live.lastTickCueSec = -1;
+    live.qEndsAt = now() + POST_READ_COUNTDOWN_MS;
+    live.qRemaining = POST_READ_COUNTDOWN_MS;
+  }
+
+  function nextQuestion() {
+    if (live.phase !== 'quiz') return;
+    clearPreAdNotice();
+    live.quizMilestone = false;
+    live.lastTickCueSec = -1;
+    if (el.milestoneStage) el.milestoneStage.hidden = true;
+    if (el.quizStage) el.quizStage.hidden = false;
+
+    var idx = draw(S.segment);
+    if (idx === null) { toast('No questions in this segment yet', true); return; }
+    live.qIndex = idx;
+    live.served++;
+    if (S.voiceOn && synth) {
+      live.waitingForSpeech = true;
+      live.qEndsAt = now() + Math.max(S.qSec, 30) * 1000;
+      live.qRemaining = POST_READ_COUNTDOWN_MS;
+    } else {
+      live.waitingForSpeech = false;
+      live.qEndsAt = now() + S.qSec * 1000;
+      live.qRemaining = S.qSec * 1000;
+    }
+    renderQuestion();
+    if (S.voiceOn) speakCurrent(live.served > 1);
+  }
+
+  function prevQuestion() {
+    if (live.phase !== 'quiz') return;
+    clearPreAdNotice();
+    live.lastTickCueSec = -1;
+    if (live.quizMilestone) {
+      live.quizMilestone = false;
+      if (el.milestoneStage) el.milestoneStage.hidden = true;
+      if (el.quizStage) el.quizStage.hidden = false;
+    }
+    if (!bagHistory.length) { toast('No earlier question in this run'); return; }
+    live.qIndex = bagHistory.pop();
+    renderQuestion();
+    if (S.voiceOn && synth) {
+      live.waitingForSpeech = true;
+      live.qEndsAt = now() + Math.max(S.qSec, 30) * 1000;
+      live.qRemaining = POST_READ_COUNTDOWN_MS;
+      speakCurrent(false);
+    } else {
+      live.waitingForSpeech = false;
+      live.qEndsAt = now() + S.qSec * 1000;
+      live.qRemaining = S.qSec * 1000;
+    }
+  }
+
+  /* ============================================================
+     ENGINE 03: PLAYER QUIZ (5-stage sequence + 10-Q milestone)
+     ============================================================ */
+  var plLive = {
+    quiz: null,
+    subPhase: 'intro',   /* 'intro' | 'clue' | 'countdown' | 'reveal' | 'milestone' */
+    clueIndex: 0,
+    subStartedAt: 0,
+    subEndsAt: 0,
+    revealed: false,
+    revealing: false,
+    visualHandle: null,
+    visualPromise: null,
+    bag: [],
+    lastId: '',
+    history: [],
+    roundAnswers: [],
+    roundNum: 1,
+    totalServed: 0
+  };
+
+  function releasePlayerVisual() {
+    var pLib = window.LNR_PLAYERS;
+    if (pLib && plLive.visualHandle) {
+      pLib.revokeVisual(plLive.visualHandle);
+    }
+    plLive.visualHandle = null;
+    plLive.visualPromise = null;
+  }
+
+  function refillPlayerBag() {
+    var pLib = window.LNR_PLAYERS;
+    if (!pLib) { plLive.bag = []; return; }
+    var list = pLib.getAllQuizzes(S.playerMode);
+    var ids = list.map(function (q) { return q.quiz_id; });
+    shuffle(ids);
+    if (ids.length > 1 && ids[0] === plLive.lastId) {
+      var tmp = ids[0]; ids[0] = ids[1]; ids[1] = tmp;
+    }
+    plLive.bag = ids;
+  }
+
+  function drawPlayerQuiz() {
+    var pLib = window.LNR_PLAYERS;
+    if (!pLib) return null;
+    var list = pLib.getAllQuizzes(S.playerMode);
+    if (!list.length) return null;
+    if (!plLive.bag.length) refillPlayerBag();
+    var map = {};
+    list.forEach(function (q) { map[q.quiz_id] = q; });
+    while (plLive.bag.length) {
+      var id = plLive.bag.pop();
+      if (map[id]) {
+        plLive.lastId = id;
+        return map[id];
+      }
+    }
+    return list[0] || null;
+  }
+
+  function speakPlayerSubPhase(announceNext) {
+    if (!synth || !S.voiceOn || live.phase !== 'players') return;
+    var q = plLive.quiz;
+    var shouldAnnounceNext = typeof announceNext === 'boolean' ? announceNext : (plLive.totalServed > 1);
+    if (plLive.subPhase === 'intro' && q) {
+      var intro = speech.playerIntroParts
+        ? speech.playerIntroParts(q, { announceNext: shouldAnnounceNext })
+        : (shouldAnnounceNext ? ['Next question.', q.question || 'Guess the player!'] : [q.question || 'Guess the player!']);
+      speakParts(intro, false);
+    } else if (plLive.subPhase === 'clue' && q) {
+      var clueText = (q.clues && q.clues[plLive.clueIndex]) || '';
+      var cp = speech.playerClueParts ? speech.playerClueParts(clueText, plLive.clueIndex) : [clueText];
+      speakParts(cp, false);
+    } else if (plLive.subPhase === 'countdown') {
+      var cdp = speech.playerCountdownParts ? speech.playerCountdownParts(S.guessSec) : ['Drop your answer in the comments!'];
+      speakParts(cdp, false);
+    } else if (plLive.subPhase === 'reveal' && q && S.voiceReveal) {
+      var pLib = window.LNR_PLAYERS;
+      var player = (plLive.visualHandle && plLive.visualHandle.player) || (pLib && pLib.getPlayerById(q.answer_player_id)) || null;
+      var rp = speech.playerRevealParts ? speech.playerRevealParts(q, player) : ['The answer is ' + q.reveal_text];
+      speakParts(rp, true);
+    } else if (plLive.subPhase === 'milestone' && S.voiceReveal) {
+      var mp = speech.milestoneParts ? speech.milestoneParts(plLive.roundNum, plLive.roundAnswers, 'players') : ['Round complete! Tally your score!'];
+      speakParts(mp, true);
+    }
+  }
+
+  function applyVisualEffect(vis) {
+    if (!el.plPhoto || !el.plCardFrame || !el.plMysteryCover) return;
+    var q = plLive.quiz;
+    if (!q || !vis) return;
+    var mode = q.mode || 'clues';
+    var revealed = plLive.subPhase === 'reveal';
+
+    var targetSrc = revealed ? vis.url : (vis.mysteryUrl || vis.url);
+    if (el.plPhoto.src !== targetSrc) {
+      el.plPhoto.src = targetSrc;
+    }
+
+    el.plCardFrame.classList.remove('is-mode-clues', 'is-mode-blur', 'is-mode-zoom', 'is-mode-sil', 'is-revealed');
+    el.plCardFrame.classList.add(
+      mode === 'blur_reveal' ? 'is-mode-blur'
+        : mode === 'zoom_crop' ? 'is-mode-zoom'
+        : mode === 'silhouette' ? 'is-mode-sil'
+        : 'is-mode-clues'
+    );
+    if (revealed) el.plCardFrame.classList.add('is-revealed');
+
+    /* Progressive clarity step across clues -> countdown -> reveal */
+    var step = 0;
+    if (revealed) step = 4;
+    else if (plLive.subPhase === 'countdown') step = 3;
+    else if (plLive.subPhase === 'clue') step = Math.min(2, plLive.clueIndex + 1);
+    el.plCardFrame.setAttribute('data-step', String(step));
+
+    if (mode === 'clues' && !revealed) {
+      el.plMysteryCover.hidden = false;
+      el.plPhoto.hidden = true;
+      if (el.plCardTag) {
+        el.plCardTag.hidden = false;
+        el.plCardTag.textContent = 'MYSTERY CARD';
+      }
+    } else {
+      el.plMysteryCover.hidden = true;
+      el.plPhoto.hidden = false;
+      if (el.plCardTag) {
+        if (revealed) {
+          /* Never cover bottom of the full-content Player Card on final reveal */
+          el.plCardTag.hidden = true;
+        } else {
+          el.plCardTag.hidden = false;
+          el.plCardTag.textContent = mode === 'blur_reveal' ? 'BLUR REVEAL' : (mode === 'zoom_crop' ? 'ZOOM MYSTERY' : 'SILHOUETTE');
+        }
+      }
+    }
+  }
+
+  function applyPlayerFit() {
+    if (!el.playerStage) return;
+    var mainCol = el.playerStage.querySelector('.player-main-col');
+    if (!mainCol) return;
+    var tiers = ['normal', 'tight', 'compact'];
+    el.playerStage.setAttribute('data-pfit', 'normal');
+    for (var i = 0; i < tiers.length; i++) {
+      el.playerStage.setAttribute('data-pfit', tiers[i]);
+      if (mainCol.scrollHeight <= mainCol.clientHeight + 2) break;
+    }
+  }
+
+  function renderPlayerStage() {
+    var q = plLive.quiz;
+    if (!q) return;
+    var pLib = window.LNR_PLAYERS;
+    var totalPool = pLib ? pLib.getAllQuizzes(S.playerMode).length : 0;
+    var isReveal = plLive.subPhase === 'reveal';
+
+    if (el.segLabel) {
+      var modeLabel = q.mode === 'blur_reveal' ? 'Blur Reveal'
+        : q.mode === 'zoom_crop' ? 'Zoom Mystery'
+        : q.mode === 'silhouette' ? 'Mystery Silhouette' : 'Guess the Player';
+      el.segLabel.textContent = 'Player Quiz \u00b7 ' + modeLabel;
+    }
+    if (el.counter) {
+      var inRound = plLive.roundAnswers.length + (plLive.subPhase === 'milestone' ? 0 : 1);
+      el.counter.textContent = 'Round ' + plLive.roundNum + ' \u00b7 Q' + Math.min(10, inRound) + ' of 10' + (totalPool ? ' (' + plLive.totalServed + '/' + totalPool + ')' : '');
+    }
+
+    if (el.playerStage) {
+      el.playerStage.classList.toggle('is-reveal-stage', isReveal);
+    }
+
+    if (el.plHeadline) {
+      el.plHeadline.textContent = q.question || 'GUESS THE PLAYER!';
+      el.plHeadline.hidden = isReveal;
+      el.plHeadline.classList.toggle('is-with-clues', plLive.subPhase === 'clue' || plLive.subPhase === 'countdown');
+    }
+
+    if (el.plStageBadge) {
+      var totalClues = (q.clues && q.clues.length) || 1;
+      if (plLive.subPhase === 'intro') el.plStageBadge.textContent = 'STAGE 1 \u00b7 LISTEN';
+      else if (plLive.subPhase === 'clue') el.plStageBadge.textContent = 'CLUE ' + (plLive.clueIndex + 1) + ' OF ' + totalClues;
+      else if (plLive.subPhase === 'countdown') el.plStageBadge.textContent = 'STAGE 3 \u00b7 GUESS NOW';
+      else if (isReveal) el.plStageBadge.textContent = 'ANSWER REVEAL';
+    }
+
+    if (el.plCountdownPill) {
+      el.plCountdownPill.hidden = plLive.subPhase !== 'countdown';
+      el.plCountdownPill.classList.remove('is-urgent');
+    }
+
+    if (el.plCluesList) {
+      el.plCluesList.innerHTML = '';
+      el.plCluesList.hidden = isReveal || plLive.subPhase === 'intro';
+      if (!isReveal) {
+        var visibleCount = 0;
+        if (plLive.subPhase === 'clue') visibleCount = plLive.clueIndex + 1;
+        else if (plLive.subPhase === 'countdown') visibleCount = (q.clues || []).length;
+
+        (q.clues || []).forEach(function (clueText, idx) {
+          if (idx >= visibleCount) return;
+          var li = document.createElement('li');
+          li.className = 'pl-clue-item' + (idx === visibleCount - 1 && plLive.subPhase === 'clue' ? ' is-fresh' : '');
+          var num = document.createElement('span');
+          num.className = 'pl-clue-num';
+          num.textContent = 'Clue ' + (idx + 1);
+          var txt = document.createElement('span');
+          txt.className = 'pl-clue-text';
+          txt.textContent = clueText;
+          li.appendChild(num);
+          li.appendChild(txt);
+          el.plCluesList.appendChild(li);
+        });
+      }
+    }
+
+    if (el.plMysteryLabel) {
+      el.plMysteryLabel.textContent = plLive.subPhase === 'countdown' ? 'Drop your answer!' : 'Listen to the clues';
+    }
+
+    if (el.plRevealMeta) {
+      el.plRevealMeta.hidden = !isReveal;
+      if (isReveal) {
+        var player = (plLive.visualHandle && plLive.visualHandle.player) || (pLib && pLib.getPlayerById(q.answer_player_id)) || null;
+        if (el.plRevealName) el.plRevealName.textContent = q.reveal_text || (player && player.name) || q.answer_player_id;
+        if (el.plRevealSub) {
+          el.plRevealSub.textContent = player ? (player.club + ' \u00b7 ' + player.nationality + (player.number ? ' \u00b7 #' + player.number : '')) : q.category;
+        }
+        if (el.plRevealInsight) el.plRevealInsight.textContent = q.insight || '';
+      }
+    }
+
+    if (el.revealToggleBtn) {
+      el.revealToggleBtn.textContent = isReveal ? 'Revealed' : 'Reveal';
+    }
+
+    if (plLive.visualHandle) applyVisualEffect(plLive.visualHandle);
+    applyChatSafe();
+    applyPlayerFit();
+    window.requestAnimationFrame(applyPlayerFit);
+    if (plLive.subPhase === 'intro') retriggerAnimation(el.playerStage, 'is-animating');
+  }
+
+  function enterPlayerSubPhase(sub, clueIdx) {
+    plLive.subPhase = sub;
+    plLive.clueIndex = typeof clueIdx === 'number' ? clueIdx : plLive.clueIndex;
+    plLive.subStartedAt = now();
+    live.lastTickCueSec = -1;
+
+    if (sub === 'intro') {
+      plLive.subEndsAt = plLive.subStartedAt + 2800;
+      playSceneChime();
+    } else if (sub === 'clue') {
+      plLive.subEndsAt = plLive.subStartedAt + S.clueSec * 1000;
+      playSceneChime();
+    } else if (sub === 'countdown') {
+      plLive.subEndsAt = plLive.subStartedAt + S.guessSec * 1000;
+    } else if (sub === 'reveal') {
+      plLive.revealed = true;
+      plLive.subEndsAt = plLive.subStartedAt + S.playerRevealSec * 1000;
+      playRevealChime();
+    }
+
+    renderPlayerStage();
+    speakPlayerSubPhase(sub === 'intro' ? (plLive.totalServed > 1) : false);
+  }
+
+  /* Guarantee the answer never displays before the SVG card is ready */
+  function enterPlayerReveal() {
+    if (live.phase !== 'players' || !plLive.quiz) return;
+    if (plLive.subPhase === 'reveal' || plLive.revealing) return;
+    plLive.revealing = true;
+    var targetQuizId = plLive.quiz.quiz_id;
+
+    var pLib = window.LNR_PLAYERS;
+    var ready = plLive.visualHandle
+      ? Promise.resolve(plLive.visualHandle)
+      : (plLive.visualPromise || (pLib ? pLib.preloadPlayerVisual(plLive.quiz.answer_player_id, { insight: plLive.quiz.insight }) : Promise.resolve(null)));
+
+    ready.then(function (vis) {
+      plLive.revealing = false;
+      if (live.phase !== 'players' || !plLive.quiz || plLive.quiz.quiz_id !== targetQuizId) {
+        if (vis && vis !== plLive.visualHandle && pLib) pLib.revokeVisual(vis);
+        return;
+      }
+      if (vis) plLive.visualHandle = vis;
+      enterPlayerSubPhase('reveal');
+    }).catch(function () {
+      plLive.revealing = false;
+      if (live.phase === 'players' && plLive.quiz && plLive.quiz.quiz_id === targetQuizId) {
+        enterPlayerSubPhase('reveal');
+      }
+    });
+  }
+
+  function recordCurrentRoundAnswer() {
+    var q = plLive.quiz;
+    if (!q) return;
+    var pLib = window.LNR_PLAYERS;
+    var player = (plLive.visualHandle && plLive.visualHandle.player) || (pLib && pLib.getPlayerById(q.answer_player_id)) || null;
+    var nameStr = q.reveal_text || (player && player.name) || q.answer_player_id;
+    var pParts = nameStr.trim().split(/\s+/);
+    var initials = pParts.length >= 2 ? (pParts[0][0] + pParts[pParts.length - 1][0]).toUpperCase() : nameStr.slice(0, 2).toUpperCase();
+    var already = plLive.roundAnswers.some(function (item) { return item.quiz_id === q.quiz_id; });
+    if (!already) {
+      plLive.roundAnswers.push({
+        num: plLive.roundAnswers.length + 1,
+        quiz_id: q.quiz_id,
+        player_id: q.answer_player_id,
+        number: (player && player.number) || '',
+        initials: initials,
+        name: nameStr,
+        meta: player ? (player.club + ' \u00b7 ' + player.nationality) : q.category
+      });
+    }
+  }
+
+  function enterMilestone() {
+    if (live.phase !== 'players') return;
+    clearPreAdNotice();
+    releasePlayerVisual();
+    plLive.subPhase = 'milestone';
+    plLive.subStartedAt = now();
+    plLive.subEndsAt = plLive.subStartedAt + Math.max(10, Number(S.milestoneSec) || 30) * 1000;
+
+    if (el.playerStage) el.playerStage.hidden = true;
+    if (el.milestoneStage) el.milestoneStage.hidden = false;
+    if (el.msRoundBadge) el.msRoundBadge.textContent = 'ROUND ' + plLive.roundNum + ' COMPLETE';
+    if (el.segLabel) el.segLabel.textContent = 'Milestone \u00b7 Self-Score';
+    if (el.counter) el.counter.textContent = 'Round ' + plLive.roundNum + ' \u00b7 10/10';
+
+    setMilestoneGradesUI('players');
+    renderMilestoneCards(plLive.roundAnswers, 'players');
+    if (el.msGrid) el.msGrid.scrollTop = 0;
+    applyChatSafe();
+    playMilestoneFanfare();
+    speakPlayerSubPhase();
+  }
+
+  function finishPlayerMilestone(skipPromo) {
+    if (!skipPromo && canTriggerPromoAfterMilestone()) {
+      startPreAdNotice('players');
+      return;
+    }
+    clearPreAdNotice();
+    if (window.LNR_PLAYERS && window.LNR_PLAYERS.isDemoOnly && window.LNR_PLAYERS.isDemoOnly() && !demoRoundNoticed.players) {
+      demoRoundNoticed.players = true;
+      toast('Player demo finished \u2014 import your own player JSON pack in Setup');
+    }
+    plLive.roundAnswers = [];
+    plLive.roundNum++;
+    if (el.milestoneStage) el.milestoneStage.hidden = true;
+    if (el.playerStage) el.playerStage.hidden = false;
+    nextPlayerQuestion(false);
+  }
+
+  function nextPlayerQuestion(pushHistory) {
+    if (live.phase !== 'players') return;
+    if (pushHistory && plLive.quiz) {
+      plLive.history.push(plLive.quiz.quiz_id);
+      if (plLive.history.length > MAX_BAG_HISTORY) plLive.history.shift();
+    }
+    releasePlayerVisual();
+    if (el.milestoneStage) el.milestoneStage.hidden = true;
+    if (el.playerStage) el.playerStage.hidden = false;
+
+    var q = drawPlayerQuiz();
+    if (!q) {
+      toast('No player quizzes match this filter', true);
+      return;
+    }
+    plLive.quiz = q;
+    plLive.revealed = false;
+    plLive.revealing = false;
+    plLive.totalServed++;
+
+    /* Pre-render Player Card SVG in the background while clues are read */
+    var pLib = window.LNR_PLAYERS;
+    if (pLib) {
+      var qid = q.quiz_id;
+      plLive.visualPromise = pLib.preloadPlayerVisual(q.answer_player_id, { insight: q.insight }).then(function (vis) {
+        if (plLive.quiz && plLive.quiz.quiz_id === qid) {
+          plLive.visualHandle = vis;
+          applyVisualEffect(vis);
+        } else {
+          pLib.revokeVisual(vis);
+        }
+        return vis;
+      });
+    }
+
+    enterPlayerSubPhase('intro', 0);
+  }
+
+  function prevPlayerQuestion() {
+    if (live.phase !== 'players') return;
+    if (!plLive.history.length) { toast('No earlier player in this run'); return; }
+    var prevId = plLive.history.pop();
+    var pLib = window.LNR_PLAYERS;
+    var found = pLib ? pLib.getAllQuizzes('all').find(function (q) { return q.quiz_id === prevId; }) : null;
+    if (!found) { toast('Previous question unavailable'); return; }
+
+    releasePlayerVisual();
+    if (el.milestoneStage) el.milestoneStage.hidden = true;
+    if (el.playerStage) el.playerStage.hidden = false;
+    plLive.quiz = found;
+    plLive.revealed = false;
+    plLive.revealing = false;
+    if (pLib) {
+      plLive.visualPromise = pLib.preloadPlayerVisual(found.answer_player_id, { insight: found.insight }).then(function (vis) {
+        if (plLive.quiz && plLive.quiz.quiz_id === prevId) {
+          plLive.visualHandle = vis;
+          applyVisualEffect(vis);
+        } else {
+          pLib.revokeVisual(vis);
+        }
+        return vis;
+      });
+    }
+    enterPlayerSubPhase('intro', 0);
+  }
+
+  function startPlayerRound() {
+    plLive.roundAnswers = [];
+    plLive.roundNum = 1;
+    plLive.totalServed = 0;
+    plLive.history = [];
+    refillPlayerBag();
+    nextPlayerQuestion(false);
+  }
+
+  /* ============================================================
+     ENGINE 04: DOCUMENTARY STORYTELLING ENGINE
+     Multi-act episodes, 6 animated visual scene compositions & TTS
+     ============================================================ */
+  var storyLive = {
+    episode: null,
+    flatSteps: [],
+    stepIndex: 0,
+    stepStartedAt: 0,
+    stepEndsAt: 0,
+    waitingForSpeech: false,
+    bag: [],
+    lastEpId: '',
+    episodesCompleted: 0
+  };
+
+  function refillStoryBag() {
+    var sApi = window.LNR_STORIES;
+    if (!sApi) { storyLive.bag = []; return; }
+    var list = sApi.getAllEpisodes(S.storyCat);
+    if (!list.length) list = sApi.getAllEpisodes('all');
+    var ids = list.map(function (ep) { return ep.id; });
+    shuffle(ids);
+    if (ids.length > 1 && ids[ids.length - 1] === storyLive.lastEpId) {
+      var t = ids[ids.length - 1]; ids[ids.length - 1] = ids[0]; ids[0] = t;
+    }
+    if (S.storyStartId && storyLive.episodesCompleted === 0) {
+      var foundIdx = ids.indexOf(S.storyStartId);
+      if (foundIdx >= 0) {
+        ids.splice(foundIdx, 1);
+        ids.push(S.storyStartId);
+      }
+    }
+    storyLive.bag = ids;
+  }
+
+  function drawStoryEpisode() {
+    var sApi = window.LNR_STORIES;
+    if (!sApi) return null;
+    var list = sApi.getAllEpisodes(S.storyCat);
+    if (!list.length) list = sApi.getAllEpisodes('all');
+    if (!list.length) return null;
+    if (!storyLive.bag.length) refillStoryBag();
+    var map = {};
+    list.forEach(function (ep) { map[ep.id] = ep; });
+    while (storyLive.bag.length) {
+      var id = storyLive.bag.pop();
+      if (map[id]) {
+        storyLive.lastEpId = id;
+        return map[id];
+      }
+    }
+    return list[0] || null;
+  }
+
+  function buildFlatStorySteps(ep) {
+    var steps = [{ kind: 'intro', actIdx: 0, act: null, scene: null, isNewAct: false }];
+    (ep.acts || []).forEach(function (act, aIdx) {
+      (act.scenes || []).forEach(function (scene, sIdx) {
+        steps.push({
+          kind: 'scene',
+          actIdx: aIdx,
+          act: act,
+          scene: scene,
+          isNewAct: sIdx === 0
+        });
+      });
+    });
+    steps.push({ kind: 'outro', actIdx: Math.max(0, (ep.acts || []).length - 1), act: null, scene: null, isNewAct: false });
+    return steps;
+  }
+
+  function escHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function buildAnimatedMapSvg(route) {
+    var pts = Array.isArray(route) && route.length ? route : ['Origin', 'Passage', 'Destination'];
+    var W = 540, H = 190;
+    var count = pts.length;
+    var coords = pts.map(function (name, i) {
+      var x = 48 + (count > 1 ? (i * (W - 96)) / (count - 1) : (W - 96) / 2);
+      var y = i % 2 === 0 ? 114 : 68;
+      if (i === Math.floor(count / 2)) y = 88;
+      return { x: Math.round(x), y: y, name: name };
+    });
+    var d = coords.map(function (c, i) { return (i === 0 ? 'M ' : ' L ') + c.x + ' ' + c.y; }).join('');
+    var nodes = coords.map(function (c, i) {
+      var labelY = c.y > 95 ? c.y + 24 : c.y - 16;
+      return '<circle cx="' + c.x + '" cy="' + c.y + '" r="' + (i === count - 1 ? 7 : 5.5) + '" fill="#cfa35a" stroke="#0c1210" stroke-width="2"/>' +
+        '<text x="' + c.x + '" y="' + labelY + '" text-anchor="middle" fill="#ede7da" font-family="ui-monospace,monospace" font-size="12" font-weight="600">' + escHtml(c.name) + '</text>';
+    }).join('');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Historical route map">' +
+      '<defs><pattern id="stMapGrid" width="36" height="36" patternUnits="userSpaceOnUse"><path d="M 36 0 L 0 0 0 36" fill="none" stroke="rgba(237,231,218,0.06)" stroke-width="1"/></pattern></defs>' +
+      '<rect width="' + W + '" height="' + H + '" rx="10" fill="url(#stMapGrid)"/>' +
+      '<path class="story-map-route-path" d="' + d + '" fill="none" stroke="#cfa35a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      nodes +
+      '</svg>';
+  }
+
+  function renderStorySceneVisual(step, ep) {
+    if (!el.storyVisualHost) return;
+    if (step.kind === 'intro') {
+      el.storyVisualHost.innerHTML =
+        '<div class="story-intro-hero">' +
+          '<span class="story-scene-kicker">' + escHtml(ep.category === 'biblical' ? 'Biblical Chronicles' : 'World History Documentary') + ' \u00b7 ' + escHtml(ep.era) + '</span>' +
+          '<h2>' + escHtml(ep.title) + '</h2>' +
+          '<p class="story-intro-sub">' + escHtml(ep.subtitle) + '</p>' +
+          '<div class="story-central-q">\u201c' + escHtml(ep.centralQuestion) + '\u201d</div>' +
+        '</div>';
+      return;
+    }
+    if (step.kind === 'outro') {
+      el.storyVisualHost.innerHTML =
+        '<div class="story-intro-hero">' +
+          '<span class="story-scene-kicker">Episode Conclusion \u00b7 Legacy</span>' +
+          '<h2>Why It Still Matters</h2>' +
+          '<div class="story-central-q">\u201c' + escHtml(ep.takeaway) + '\u201d</div>' +
+          '<p class="story-intro-sub">Next documentary chapter loading automatically\u2026</p>' +
+        '</div>';
+      return;
+    }
+
+    var sc = step.scene;
+    var vis = sc.visual || {};
+    var kicker = '<div class="story-scene-kicker">' + escHtml(vis.dateLabel || ('Act ' + (step.act ? step.act.actNum : 1))) +
+      (vis.location ? (' \u00b7 ' + escHtml(vis.location)) : '') + '</div>';
+    var headline = '<h3 class="story-scene-headline">' + escHtml(sc.headline) + '</h3>';
+
+    if (sc.sceneType === 'map') {
+      el.storyVisualHost.innerHTML = kicker + headline +
+        '<div class="story-map-layout">' +
+          '<div class="story-map-svg-box">' + buildAnimatedMapSvg(vis.route) + '</div>' +
+          '<div class="story-stat-box">' +
+            '<div class="story-stat-val">' + escHtml(vis.accentStat || 'Archive Route') + '</div>' +
+            '<div class="story-stat-lbl">' + escHtml(vis.statLabel || (vis.location || 'Historical corridor')) + '</div>' +
+          '</div>' +
+        '</div>';
+    } else if (sc.sceneType === 'timeline') {
+      var itemsHtml = (vis.points || []).map(function (pt) {
+        return '<li class="story-timeline-item">' + escHtml(pt) + '</li>';
+      }).join('');
+      el.storyVisualHost.innerHTML = kicker + headline + '<ul class="story-timeline-list">' + itemsHtml + '</ul>';
+    } else if (sc.sceneType === 'profile') {
+      var subj = vis.subjectName || sc.headline;
+      var initials = subj.trim().split(/\s+/).slice(0, 2).map(function (w) { return w[0] || ''; }).join('').toUpperCase();
+      el.storyVisualHost.innerHTML = kicker +
+        '<div class="story-profile-grid">' +
+          '<div class="story-monogram" aria-hidden="true">' + escHtml(initials || 'H') + '</div>' +
+          '<div>' +
+            '<div class="story-profile-role">' + escHtml(vis.role || 'Historical Profile') + (vis.eraSpan ? (' \u00b7 ' + escHtml(vis.eraSpan)) : '') + '</div>' +
+            headline +
+            (vis.quote ? '<div class="story-doc-card"><p class="story-doc-quote">\u201c' + escHtml(vis.quote) + '\u201d</p></div>' : '') +
+          '</div>' +
+        '</div>';
+    } else if (sc.sceneType === 'comparison') {
+      var lList = (vis.leftItems || []).map(function (it) { return '<li>' + escHtml(it) + '</li>'; }).join('');
+      var rList = (vis.rightItems || []).map(function (it) { return '<li>' + escHtml(it) + '</li>'; }).join('');
+      el.storyVisualHost.innerHTML = kicker + headline +
+        '<div class="story-compare-grid">' +
+          '<div class="story-compare-col"><h4>' + escHtml(vis.leftTitle || 'Perspective A') + '</h4><ul>' + lList + '</ul></div>' +
+          '<div class="story-compare-col is-right"><h4>' + escHtml(vis.rightTitle || 'Perspective B') + '</h4><ul>' + rList + '</ul></div>' +
+        '</div>';
+    } else if (sc.sceneType === 'artifact') {
+      el.storyVisualHost.innerHTML = kicker + headline +
+        '<div class="story-artifact-grid">' +
+          '<div class="story-artifact-meta">' +
+            (vis.artifactName ? '<div><b>Artifact</b>' + escHtml(vis.artifactName) + '</div>' : '') +
+            (vis.material ? '<div><b>Medium</b>' + escHtml(vis.material) + '</div>' : '') +
+            (vis.provenance ? '<div><b>Provenance</b>' + escHtml(vis.provenance) + '</div>' : '') +
+          '</div>' +
+          '<div class="story-stat-box">' +
+            '<div class="story-stat-val">' + escHtml(vis.accentStat || 'Preserved') + '</div>' +
+            '<div class="story-stat-lbl">' + escHtml(vis.statLabel || 'Archival record') + '</div>' +
+          '</div>' +
+        '</div>';
+    } else {
+      el.storyVisualHost.innerHTML = kicker + headline +
+        '<div class="story-doc-card">' +
+          '<p class="story-doc-quote">\u201c' + escHtml(vis.quote || sc.narration) + '\u201d</p>' +
+          (vis.attribution ? '<div class="story-doc-attr">\u2014 ' + escHtml(vis.attribution) + '</div>' : '') +
+        '</div>';
+    }
+  }
+
+  function armStoryHoldCountdown() {
+    storyLive.waitingForSpeech = false;
+    var holdMs = Math.max(4, Number(S.storySceneSec) || 8) * 1000;
+    storyLive.stepStartedAt = now();
+    storyLive.stepEndsAt = storyLive.stepStartedAt + holdMs;
+  }
+
+  function speakStoryStep() {
+    if (!synth || !S.voiceOn || live.phase !== 'story') return;
+    var ep = storyLive.episode;
+    var step = storyLive.flatSteps[storyLive.stepIndex];
+    if (!ep || !step) return;
+    var parts = [];
+    if (step.kind === 'intro') {
+      parts = speech.storyIntroParts ? speech.storyIntroParts(ep) : [ep.title, ep.subtitle, ep.centralQuestion];
+    } else if (step.kind === 'outro') {
+      parts = speech.storyOutroParts ? speech.storyOutroParts(ep) : [ep.takeaway];
+    } else if (step.scene) {
+      parts = speech.storySceneParts ? speech.storySceneParts(step.scene, step.act, step.isNewAct) : [step.scene.narration];
+    }
+    if (parts.length) speakParts(parts, false);
+  }
+
+  function renderStoryStep() {
+    var ep = storyLive.episode;
+    var step = storyLive.flatSteps[storyLive.stepIndex];
+    if (!ep || !step) return;
+
+    if (el.segLabel) el.segLabel.textContent = ep.category === 'biblical' ? 'Story \u00b7 Biblical Chronicle' : 'Story \u00b7 World History';
+    if (el.counter) el.counter.textContent = 'Scene ' + (storyLive.stepIndex + 1) + ' of ' + storyLive.flatSteps.length;
+    if (el.storyEpTitle) el.storyEpTitle.textContent = ep.title;
+    if (el.storyEraTag) el.storyEraTag.textContent = ep.era;
+
+    if (el.storyActPill) {
+      if (step.kind === 'intro') el.storyActPill.textContent = 'PROLOGUE';
+      else if (step.kind === 'outro') el.storyActPill.textContent = 'LEGACY';
+      else el.storyActPill.textContent = 'ACT ' + (step.act ? step.act.actNum : 1) + (step.act ? (' \u00b7 ' + step.act.title.toUpperCase()) : '');
+    }
+
+    if (el.storyActRail) {
+      var actCount = Math.max(1, (ep.acts || []).length);
+      el.storyActRail.innerHTML = '';
+      for (var i = 0; i < actCount; i++) {
+        var dot = document.createElement('span');
+        dot.className = 'story-act-dot' + (i < step.actIdx ? ' is-done' : (i === step.actIdx ? ' is-active' : ''));
+        el.storyActRail.appendChild(dot);
+      }
+    }
+
+    renderStorySceneVisual(step, ep);
+    retriggerAnimation(el.storyCanvas, 'is-animating');
+
+    if (el.storySceneTypeTag && el.storyNarrationText) {
+      if (step.kind === 'intro') {
+        el.storySceneTypeTag.textContent = 'OPENING HOOK';
+        el.storyNarrationText.textContent = ep.centralQuestion;
+      } else if (step.kind === 'outro') {
+        el.storySceneTypeTag.textContent = 'EPISODE LEGACY';
+        el.storyNarrationText.textContent = ep.takeaway;
+      } else if (step.scene) {
+        el.storySceneTypeTag.textContent = String(step.scene.sceneType || 'DOCUMENT').toUpperCase();
+        el.storyNarrationText.textContent = step.scene.narration;
+      }
+    }
+
+    if (el.storyEngagementLine) {
+      var engTxt = step.scene && step.scene.engagement ? step.scene.engagement : '';
+      el.storyEngagementLine.hidden = !engTxt;
+      el.storyEngagementLine.textContent = engTxt;
+    }
+
+    if (el.revealToggleBtn) el.revealToggleBtn.textContent = 'Next scene';
+  }
+
+  function enterStoryStep(idx) {
+    if (live.phase !== 'story' || !storyLive.episode) return;
+    if (idx < 0) idx = 0;
+    if (idx >= storyLive.flatSteps.length) {
+      finishStoryEpisode();
+      return;
+    }
+    storyLive.stepIndex = idx;
+    var step = storyLive.flatSteps[idx];
+    if (step && step.kind === 'outro') playMilestoneFanfare();
+    else playSceneChime();
+
+    storyLive.stepStartedAt = now();
+    if (S.voiceOn && synth) {
+      storyLive.waitingForSpeech = true;
+      storyLive.stepEndsAt = storyLive.stepStartedAt + 45000;
+    } else {
+      storyLive.waitingForSpeech = false;
+      storyLive.stepEndsAt = storyLive.stepStartedAt + Math.max(4, Number(S.storySceneSec) || 8) * 1000;
+    }
+
+    renderStoryStep();
+    speakStoryStep();
+    updatePhaseUI();
+  }
+
+  function startNextStoryEpisode() {
+    var ep = drawStoryEpisode();
+    if (!ep) {
+      toast('No story episodes loaded — import a Story JSON pack', true);
+      return;
+    }
+    storyLive.episode = ep;
+    storyLive.flatSteps = buildFlatStorySteps(ep);
+    enterStoryStep(0);
+  }
+
+  function finishStoryEpisode() {
+    storyLive.episodesCompleted++;
+    if (canTriggerPromoAfterMilestone()) {
+      startPreAdNotice('story');
+      return;
+    }
+    startNextStoryEpisode();
+  }
+
+  function startStoryRun() {
+    storyLive.bag = [];
+    storyLive.episodesCompleted = 0;
+    refillStoryBag();
+    startNextStoryEpisode();
+  }
+
+  /* ---------- phases ---------- */
+  function homePhase() {
+    if (S.engine === 'video') return 'video';
+    if (S.engine === 'players') return 'players';
+    if (S.engine === 'story') return 'story';
+    return 'quiz';
+  }
+
+  function nextPhaseFrom(phase) {
+    if (phase === 'promo') return live.promoReturnPhase || homePhase();
+    return 'promo';
+  }
+
+  function startSession() {
+    if (S.engine === 'quiz' && !bank[S.segment].length) {
+      toast('Import a Quiz JSON pack first (or download the starter template below)', true);
+      setPage('studio');
+      setWizardStep(2);
+      if (el.quizSetup && el.quizSetup.scrollIntoView) {
+        el.quizSetup.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+    if (S.engine === 'players') {
+      var pLib = window.LNR_PLAYERS;
+      var pCount = pLib ? pLib.getAllQuizzes(S.playerMode).length : 0;
+      if (!pCount) {
+        toast('Import a Player Quiz JSON pack first (or download the player template)', true);
+        setPage('studio');
+        setWizardStep(2);
+        if (el.playersSetup && el.playersSetup.scrollIntoView) {
+          el.playersSetup.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+    }
+    if (S.engine === 'story') {
+      var sApi = window.LNR_STORIES;
+      var sCount = sApi ? (sApi.getAllEpisodes(S.storyCat).length || sApi.getAllEpisodes('all').length) : 0;
+      if (!sCount) {
+        toast('Import a Story JSON pack first to begin Storytelling mode', true);
+        setPage('studio');
+        setWizardStep(2);
+        return;
+      }
+    }
+
+    stopAudioPreview();
+    live.inSession = true;
+    live.running = true;
+    live.paused = false;
+    live.served = 0;
+    live.qIndex = -1;
+    live.quizMilestone = false;
+    live.quizRoundNum = 1;
+    live.quizRoundAnswers = [];
+    live.quizActiveMs = 0;
+    live.lastTickAt = now();
+    live.activeAdLog = null;
+    clearPreAdNotice();
+    live.promoReturnPhase = homePhase();
+    live.startedAt = now();
+    bags = { bible: [], history: [] };
+    bagHistory = [];
+    document.body.classList.remove('screen-setup');
+    document.body.classList.add('screen-stage');
+    el.screenSetup.hidden = true;
+    el.screenStage.hidden = false;
+    /* the stage is only measurable once it is visible */
+    sizeStage();
+    applyBranding();
+    applyChatSafe();
+    if (S.safeDefault) setSafe(true);
+    enterPhase(homePhase(), true);
+    ensureAudioCtx();
+    startMusic();
+    var intervalMin = effectivePromoIntervalMin();
+    var promoActive = !!S.promoAdsEnabled;
+    if (window.LNR_TRACK) {
+      window.LNR_TRACK('stream_start', {
+        engine: S.engine,
+        segment: S.segment,
+        tier: 'studio'
+      });
+    }
+    toast(S.engine === 'video'
+      ? ('Video engine \u00b7 ' + effectiveLoopHours() + ' hr on loop' + (promoActive ? ', then 1 break clip' : ' (breaks off)'))
+      : S.engine === 'players'
+        ? ('Player quiz \u00b7 milestones every 10 Qs' + (promoActive ? (' \u2192 break after ' + intervalMin + 'm+ quiz') : ' \u00b7 breaks off'))
+        : S.engine === 'story'
+          ? ('Storytelling mode \u00b7 continuous documentary narration' + (promoActive ? (' \u2192 break after ' + intervalMin + 'm+') : ''))
+          : (SEGMENTS[S.segment] + ' \u00b7 milestones every 10 Qs' + (promoActive ? (' \u2192 break after ' + intervalMin + 'm+ quiz') : ' \u00b7 breaks off')));
+  }
+  on(el.startBtn, 'click', startSession);
+
+  /* ---------- sponsor proof-of-play analytics ---------- */
+  var adLogs = [];
+
+  function formatTotalAdDuration(totalSec) {
+    totalSec = Math.max(0, Math.round(totalSec || 0));
+    var h = Math.floor(totalSec / 3600);
+    var m = Math.floor((totalSec % 3600) / 60);
+    var s = totalSec % 60;
+    if (h > 0) return h + 'h ' + pad(m) + 'm ' + pad(s) + 's';
+    return m + 'm ' + pad(s) + 's';
+  }
+
+  function renderAdAnalytics() {
+    var totalDur = 0;
+    adLogs.forEach(function (item) { totalDur += (Number(item.durationSec) || 0); });
+    if (el.alTotalCount) el.alTotalCount.textContent = String(adLogs.length);
+    if (el.alTotalDuration) el.alTotalDuration.textContent = formatTotalAdDuration(totalDur);
+    if (!el.alLogList) return;
+    el.alLogList.innerHTML = '';
+    if (!adLogs.length) {
+      var liEmpty = document.createElement('li');
+      liEmpty.innerHTML = '<div class="al-main"><b>No channel breaks logged yet</b><span>Break clips played during livestreams are recorded here automatically.</span></div>';
+      el.alLogList.appendChild(liEmpty);
+      return;
+    }
+    adLogs.slice(0, 25).forEach(function (item) {
+      var li = document.createElement('li');
+      var main = document.createElement('div');
+      main.className = 'al-main';
+      var b = document.createElement('b');
+      b.textContent = item.clipName || 'Partner break';
+      var sp = document.createElement('span');
+      var localStr = '';
+      try { localStr = new Date(item.startedAt).toLocaleString(); } catch (e) { localStr = item.isoTime || ''; }
+      sp.textContent = localStr + ' \u00b7 ' + (item.engine || 'quiz') + ' R' + (item.roundNum || 1);
+      main.appendChild(b);
+      main.appendChild(sp);
+
+      var dur = document.createElement('span');
+      dur.className = 'al-dur';
+      dur.textContent = formatShortSec(item.durationSec || 30);
+
+      li.appendChild(main);
+      li.appendChild(dur);
+      el.alLogList.appendChild(li);
+    });
+  }
+
+  function startActiveAdLog(clipLabel, returnPhase, plannedSec) {
+    var branding = effectiveBranding();
+    var roundNum = returnPhase === 'players' ? plLive.roundNum : live.quizRoundNum;
+    live.activeAdLog = {
+      id: 'ad_' + now() + '_' + Math.random().toString(36).slice(2, 6),
+      startedAt: now(),
+      isoTime: new Date().toISOString(),
+      clipName: clipLabel,
+      engine: returnPhase || S.engine,
+      roundNum: roundNum || 1,
+      plannedSec: Math.round(plannedSec || effectivePromoAdSec()),
+      watermark: branding.watermark,
+      brand: branding.brand
+    };
+  }
+
+  function finalizeActiveAdLog() {
+    if (!live.activeAdLog) return;
+    var rec = live.activeAdLog;
+    live.activeAdLog = null;
+    var actualSec = Math.max(1, Math.min(PROMO_MAX_SEC, Math.round((now() - rec.startedAt) / 1000)));
+    var entry = {
+      id: rec.id,
+      startedAt: rec.startedAt,
+      endedAt: now(),
+      isoTime: rec.isoTime,
+      clipName: rec.clipName,
+      engine: rec.engine,
+      roundNum: rec.roundNum,
+      durationSec: actualSec,
+      watermark: rec.watermark,
+      brand: rec.brand
+    };
+    adLogs.unshift(entry);
+    if (adLogs.length > 500) adLogs = adLogs.slice(0, 500);
+    idbPutStore('ad_logs', entry).catch(function () {});
+    renderAdAnalytics();
+    if (window.LNR_TRACK) {
+      window.LNR_TRACK('promo_ad_played', {
+        clip_name: entry.clipName,
+        duration_sec: entry.durationSec,
+        engine: entry.engine,
+        tier: 'studio'
+      });
+    }
+  }
+
+  function enterPhase(phase, first, opts) {
+    opts = opts || {};
+    var prevPhase = live.phase;
+    if (prevPhase === 'promo' && phase !== 'promo') {
+      finalizeActiveAdLog();
+    }
+    live.phase = phase;
+    live.quizMilestone = false;
+    clearPreAdNotice();
+    if (el.frameInner) {
+      el.frameInner.classList.remove('is-promo-pip', 'is-promo-split');
+    }
+
+    var activePromos = effectivePromoList();
+
+    if (phase === 'promo') {
+      live.promoReturnPhase = opts.returnPhase || (prevPhase && prevPhase !== 'promo' ? prevPhase : homePhase());
+      live.promoStartedAt = now();
+      live.quizActiveMs = 0;
+      var adSecDefault = effectivePromoAdSec();
+      var clipLabel = 'Fallback Partner Break Slot (' + formatShortSec(adSecDefault) + ')';
+      var plannedAdSec = adSecDefault;
+      if (activePromos.length) {
+        var adIdx;
+        if (S.promoOrder === 'shuffle' && activePromos.length > 1) {
+          adIdx = Math.floor(Math.random() * activePromos.length);
+          if (adIdx === live.clipIndex) adIdx = (adIdx + 1) % activePromos.length;
+        } else {
+          adIdx = live.promoCursor % activePromos.length;
+          live.promoCursor = (live.promoCursor + 1) % activePromos.length;
+        }
+        var adClip = activePromos[adIdx];
+        var adSec = (adClip && adClip.duration > 0) ? Math.min(PROMO_MAX_SEC, adClip.duration) : adSecDefault;
+        live.phaseLen = (adSec + 1.5) * 1000;
+        live.clipIndex = adIdx;
+        clipLabel = (adClip && adClip.name) || clipLabel;
+        plannedAdSec = adSec;
+      } else {
+        live.phaseLen = adSecDefault * 1000;
+      }
+      startActiveAdLog(clipLabel, live.promoReturnPhase, plannedAdSec);
+    } else {
+      live.promoStartedAt = 0;
+      var mins = phase === 'quiz' ? effectiveQuizMin()
+        : phase === 'players' ? effectivePlayerBlockMin()
+        : phase === 'story' ? effectiveStoryBlockMin()
+        : (effectiveLoopHours() * 60);
+      live.phaseLen = mins * 60 * 1000;
+    }
+    live.phaseEndsAt = now() + live.phaseLen;
+
+    if (phase === 'quiz') {
+      el.quizStage.hidden = false;
+      if (el.playerStage) el.playerStage.hidden = true;
+      if (el.milestoneStage) el.milestoneStage.hidden = true;
+      if (el.storyStage) el.storyStage.hidden = true;
+      el.videoStage.hidden = true;
+      releasePlayerVisual();
+      stopVideo();
+      nextQuestion();
+    } else if (phase === 'players') {
+      el.quizStage.hidden = true;
+      el.videoStage.hidden = true;
+      if (el.milestoneStage) el.milestoneStage.hidden = true;
+      if (el.storyStage) el.storyStage.hidden = true;
+      if (el.playerStage) el.playerStage.hidden = false;
+      stopVideo();
+      if (first) startPlayerRound();
+      else nextPlayerQuestion(false);
+    } else if (phase === 'story') {
+      el.quizStage.hidden = true;
+      el.videoStage.hidden = true;
+      if (el.milestoneStage) el.milestoneStage.hidden = true;
+      if (el.playerStage) el.playerStage.hidden = true;
+      if (el.storyStage) el.storyStage.hidden = false;
+      releasePlayerVisual();
+      stopVideo();
+      if (first || !storyLive.episode) startStoryRun();
+      else startNextStoryEpisode();
+    } else {
+      var displayMode = ((live.promoReturnPhase === 'quiz' || live.promoReturnPhase === 'players' || live.promoReturnPhase === 'story') && phase === 'promo')
+        ? (S.promoDisplayMode || 'full')
+        : 'full';
+      if (displayMode === 'pip' || displayMode === 'split') {
+        if (el.frameInner) el.frameInner.classList.add(displayMode === 'pip' ? 'is-promo-pip' : 'is-promo-split');
+        el.quizStage.hidden = live.promoReturnPhase !== 'quiz';
+        if (el.playerStage) el.playerStage.hidden = live.promoReturnPhase !== 'players';
+        if (el.storyStage) el.storyStage.hidden = live.promoReturnPhase !== 'story';
+        if (el.milestoneStage) el.milestoneStage.hidden = true;
+      } else {
+        el.quizStage.hidden = true;
+        if (el.playerStage) el.playerStage.hidden = true;
+        if (el.storyStage) el.storyStage.hidden = true;
+        if (el.milestoneStage) el.milestoneStage.hidden = true;
+        releasePlayerVisual();
+      }
+      el.videoStage.hidden = false;
+      stopSpeech();
+      playClip(phase === 'promo' ? live.clipIndex : 0);
+      updatePromoBrand();
+      updatePromoOverlay();
+    }
+
+    var isVideo = phase === 'video' || phase === 'promo';
+    if (isVideo) {
+      /* Video & Partner Break clips keep their own audio tracks clean */
+      stopMusic();
+    } else if (!first && live.running && !live.paused) {
+      startMusic();
+    }
+
+    var label = phase === 'quiz' ? 'Quiz block'
+      : phase === 'players' ? 'Player quiz'
+      : phase === 'story' ? 'Documentary'
+      : (phase === 'promo' ? 'Partner break' : 'Video engine');
+    el.phaseName.textContent = label;
+    el.phaseName.classList.toggle('is-video', isVideo);
+    el.phaseFill.classList.toggle('is-video', isVideo);
+    el.progFill.classList.toggle('is-video', isVideo);
+    if (el.segLabel && phase !== 'players' && phase !== 'story') {
+      el.segLabel.textContent = phase === 'quiz' ? SEGMENTS[S.segment] : label;
+    }
+    if (isVideo && el.counter) {
+      if (phase === 'video') {
+        el.counter.textContent = '';
+      } else {
+        el.counter.textContent = activePromos.length
+          ? 'Break 1 of 1 (' + ((live.clipIndex % activePromos.length) + 1) + '/' + activePromos.length + ')'
+          : ('Partner break (' + formatShortSec(effectivePromoAdSec()) + ' slot)');
+      }
+    }
+
+    if (el.frame) el.frame.classList.toggle('is-video-clean', phase === 'video');
+    el.onairPill.classList.remove('is-paused');
+    el.onairPill.innerHTML = '<i aria-hidden="true"></i> ' + (!isVideo ? 'On air' : 'On air \u00b7 ' + (phase === 'promo' ? 'partner break' : 'video'));
+
+    if (!first) {
+      flashCurtain();
+      toast(phase === 'quiz'
+        ? SEGMENTS[S.segment] + ' \u00b7 Round ' + live.quizRoundNum
+        : phase === 'players'
+          ? 'Player quiz \u00b7 Round ' + plLive.roundNum
+          : phase === 'story'
+            ? ('Documentary \u00b7 ' + (storyLive.episode ? storyLive.episode.title : 'Story Mode'))
+            : (phase === 'promo'
+              ? (activePromos.length ? 'Partner break \u00b7 playing 1 break clip' : 'Partner break \u00b7 ' + formatShortSec(effectivePromoAdSec()))
+              : 'Video engine \u00b7 ' + effectiveLoopHours() + ' hr on loop'));
+    }
+    updatePhaseUI();
+    updatePromoBrand();
+    updatePromoOverlay();
+    updateLoopBadge();
+    updateVoiceBtn();
+  }
+
+  function flashCurtain() {
+    if (!el.curtain) return;
+    el.curtain.hidden = false;
+    window.setTimeout(function () { el.curtain.hidden = true; }, 620);
+  }
+
+  function rotateNow() {
+    if (!live.inSession) return;
+    clearPreAdNotice();
+    if (live.phase === 'quiz' && live.quizMilestone) {
+      live.quizMilestone = false;
+      live.quizRoundAnswers = [];
+      live.quizRoundNum++;
+      if (el.milestoneStage) el.milestoneStage.hidden = true;
+    } else if (live.phase === 'players' && plLive.subPhase === 'milestone') {
+      plLive.roundAnswers = [];
+      plLive.roundNum++;
+      if (el.milestoneStage) el.milestoneStage.hidden = true;
+    }
+    enterPhase(nextPhaseFrom(live.phase), false);
+  }
+
+  /* jump straight into the prerecorded broadcast loop */
+  function startBroadcast() {
+    if (!live.inSession) return;
+    clearPreAdNotice();
+    enterPhase('video', false);
+  }
+
+  function updatePhaseUI() {
+    var remaining = live.phaseEndsAt - now();
+    if (live.paused) remaining = live.phaseEndsAt - live.pausedAt;
+    if (remaining < 0) remaining = 0;
+
+    el.phaseTime.textContent = clock(remaining);
+    var pct = live.phaseLen ? Math.min(100, Math.max(0, (1 - remaining / live.phaseLen) * 100)) : 0;
+    el.phaseFill.style.width = pct.toFixed(1) + '%';
+
+    var sessionMs = (live.paused ? live.pausedAt : now()) - live.startedAt;
+    el.sessionClock.textContent = sessionClock(sessionMs);
+
+    if (el.playGlyph) el.playGlyph.textContent = live.paused ? 'Resume' : 'Pause';
+
+    if (live.phase === 'quiz') {
+      if (live.quizMilestone) {
+        var mRem = live.quizMilestoneEndsAt - (live.paused ? live.pausedAt : now());
+        if (mRem < 0) mRem = 0;
+        el.frameTimer.textContent = clock(mRem);
+        var mTotal = Math.max(1000, live.quizMilestoneEndsAt - live.quizMilestoneStartedAt);
+        el.progFill.style.width = Math.min(100, Math.max(0, (1 - mRem / mTotal) * 100)).toFixed(1) + '%';
+        if (el.msTimer) el.msTimer.textContent = clock(mRem);
+      } else if (!live.revealed && live.waitingForSpeech && speechBusy()) {
+        el.frameTimer.textContent = clock(POST_READ_COUNTDOWN_MS);
+        el.progFill.style.width = '0.0%';
+      } else {
+        var qRem = live.qEndsAt - (live.paused ? live.pausedAt : now());
+        if (qRem < 0) qRem = 0;
+        el.frameTimer.textContent = clock(qRem);
+        var qTotal = live.revealed
+          ? Math.max(1000, revealHoldMs())
+          : (S.voiceOn ? POST_READ_COUNTDOWN_MS : Math.max(1000, S.qSec * 1000));
+        el.progFill.style.width = Math.min(100, Math.max(0, (1 - qRem / qTotal) * 100)).toFixed(1) + '%';
+      }
+    } else if (live.phase === 'players') {
+      var pRem = plLive.subEndsAt - (live.paused ? live.pausedAt : now());
+      if (pRem < 0) pRem = 0;
+      el.frameTimer.textContent = clock(pRem);
+      var pTotal = Math.max(1000, plLive.subEndsAt - plLive.subStartedAt);
+      el.progFill.style.width = Math.min(100, Math.max(0, (1 - pRem / pTotal) * 100)).toFixed(1) + '%';
+      if (plLive.subPhase === 'countdown' && el.plCountdownPill) {
+        el.plCountdownPill.textContent = clock(pRem) + ' \u00b7 Drop your answer in the comments!';
+        el.plCountdownPill.classList.toggle('is-urgent', pRem > 0 && pRem <= 5000);
+      }
+      if (plLive.subPhase === 'milestone' && el.msTimer) {
+        el.msTimer.textContent = clock(pRem);
+      }
+    } else if (live.phase === 'story') {
+      if (storyLive.waitingForSpeech && speechBusy()) {
+        var holdDef = Math.max(4, Number(S.storySceneSec) || 8) * 1000;
+        el.frameTimer.textContent = clock(holdDef);
+        el.progFill.style.width = '0.0%';
+      } else {
+        var sRem = storyLive.stepEndsAt - (live.paused ? live.pausedAt : now());
+        if (sRem < 0) sRem = 0;
+        el.frameTimer.textContent = clock(sRem);
+        var sTotal = Math.max(1000, storyLive.stepEndsAt - storyLive.stepStartedAt);
+        el.progFill.style.width = Math.min(100, Math.max(0, (1 - sRem / sTotal) * 100)).toFixed(1) + '%';
+      }
+    } else {
+      var v = activeVideo();
+      if (v && v.duration && !isNaN(v.duration) && !v.hidden) {
+        var capDur = live.phase === 'promo' ? Math.min(PROMO_MAX_SEC, v.duration) : v.duration;
+        var vRem = Math.max(0, (capDur - v.currentTime) * 1000);
+        el.frameTimer.textContent = clock(vRem);
+        el.progFill.style.width = Math.min(100, (v.currentTime / capDur) * 100).toFixed(1) + '%';
+      } else {
+        el.frameTimer.textContent = clock(remaining);
+        el.progFill.style.width = pct.toFixed(1) + '%';
+      }
+      if (live.phase === 'promo') updatePromoOverlay();
+    }
+    if (live.preAdPending) updateAdNoticeUI();
+  }
+
+  /* ---------- main tick ---------- */
+  var tickHandle = null;
+
+  /* The answer hold. It used to be up to 8s; the partner asked for 5s less,
+     so it is now up to 3s — with a 1.2s floor so the reveal is still readable
+     when the per-question clock is short. */
+  function revealHoldMs() {
+    return Math.max(1200, Math.min(8000, S.qSec * 400) - 5000);
+  }
+
+  var gaHeartbeatAcc = 0;
+
+  function tick() {
+    if (!live.inSession) return;
+
+    var t = now();
+    var dt = live.lastTickAt ? Math.max(0, Math.min(2000, t - live.lastTickAt)) : 0;
+    live.lastTickAt = t;
+
+    if (!live.paused) {
+      gaHeartbeatAcc += dt;
+      if (gaHeartbeatAcc >= 60000) {
+        gaHeartbeatAcc = 0;
+        if (window.LNR_TRACK) {
+          window.LNR_TRACK('stream_heartbeat', {
+            engine: live.phase,
+            tier: 'studio'
+          });
+        }
+      }
+
+      if (live.preAdPending) {
+        if (t >= live.preAdEndsAt) {
+          completePreAdIntoPromo();
+        }
+      } else if (live.phase === 'quiz') {
+        if (!live.quizMilestone) live.quizActiveMs += dt;
+        if (live.quizMilestone) {
+          if (t >= live.quizMilestoneEndsAt && !revealBusy()) {
+            finishQuizMilestone(false);
+          }
+        } else {
+          if (!live.revealed && live.waitingForSpeech) {
+            if (!speechBusy()) {
+              armPostReadQuizCountdown();
+              playCountdownTick(10);
+              live.lastTickCueSec = 10;
+            }
+          } else if (!live.revealed && !live.waitingForSpeech && !speechBusy()) {
+            var qRemSec = Math.ceil((live.qEndsAt - t) / 1000);
+            if (qRemSec >= 1 && qRemSec <= 10 && qRemSec !== live.lastTickCueSec) {
+              live.lastTickCueSec = qRemSec;
+              playCountdownTick(qRemSec);
+            }
+          }
+          if (t >= live.qEndsAt) {
+            if (!live.revealed) {
+              if (!speechBusy()) {
+                revealAnswer();
+                live.qEndsAt = t + revealHoldMs();
+              }
+            } else if (!revealBusy()) {
+              recordQuizRoundAnswer();
+              bagHistory.push(live.qIndex);
+              if (bagHistory.length > MAX_BAG_HISTORY) bagHistory.shift();
+              if (live.quizRoundAnswers.length >= 10) {
+                enterQuizMilestone();
+              } else {
+                nextQuestion();
+              }
+            }
+          }
+        }
+      } else if (live.phase === 'players') {
+        if (plLive.subPhase !== 'milestone') live.quizActiveMs += dt;
+        if (plLive.subPhase === 'countdown' && !speechBusy()) {
+          var pRemSec = Math.ceil((plLive.subEndsAt - t) / 1000);
+          if (pRemSec >= 1 && pRemSec <= 10 && pRemSec !== live.lastTickCueSec) {
+            live.lastTickCueSec = pRemSec;
+            playCountdownTick(pRemSec);
+          }
+        }
+        if (t >= plLive.subEndsAt) {
+          if (plLive.subPhase === 'intro') {
+            if (!speechBusy()) enterPlayerSubPhase('clue', 0);
+          } else if (plLive.subPhase === 'clue') {
+            if (!speechBusy()) {
+              var clues = (plLive.quiz && plLive.quiz.clues) || [];
+              if (plLive.clueIndex + 1 < clues.length) {
+                enterPlayerSubPhase('clue', plLive.clueIndex + 1);
+              } else {
+                enterPlayerSubPhase('countdown');
+              }
+            }
+          } else if (plLive.subPhase === 'countdown') {
+            if (!speechBusy()) enterPlayerReveal();
+          } else if (plLive.subPhase === 'reveal') {
+            if (!revealBusy()) {
+              recordCurrentRoundAnswer();
+              if (plLive.roundAnswers.length >= 10) {
+                enterMilestone();
+              } else {
+                nextPlayerQuestion(true);
+              }
+            }
+          } else if (plLive.subPhase === 'milestone') {
+            if (!revealBusy()) {
+              finishPlayerMilestone(false);
+            }
+          }
+        }
+      } else if (live.phase === 'story') {
+        live.quizActiveMs += dt;
+        if (storyLive.waitingForSpeech) {
+          if (!speechBusy()) {
+            armStoryHoldCountdown();
+          }
+        } else if (t >= storyLive.stepEndsAt) {
+          enterStoryStep(storyLive.stepIndex + 1);
+        }
+      } else if (live.phase === 'promo') {
+        var av = activeVideo();
+        var activePromos = effectivePromoList();
+        var promoPlaying = activePromos.length > 0 && av && !av.hidden && !av.ended && isFinite(av.duration) && av.duration > 0 && !av.paused;
+        var hitCap = live.promoStartedAt > 0 && (t - live.promoStartedAt) >= PROMO_MAX_SEC * 1000;
+        if (hitCap) {
+          if (S.autoRotate) enterPhase(nextPhaseFrom('promo'), false);
+          else playClip(live.clipIndex);
+        } else if (promoPlaying) {
+          var capped = Math.min(PROMO_MAX_SEC, av.duration);
+          live.phaseEndsAt = t + Math.max(500, (capped - av.currentTime) * 1000);
+        } else if (S.autoRotate && t >= live.phaseEndsAt) {
+          enterPhase(nextPhaseFrom('promo'), false);
+        }
+      } else if (S.autoRotate && t >= live.phaseEndsAt) {
+        enterPhase(nextPhaseFrom(live.phase), false);
+      }
+    }
+    if (live.phase === 'video' || live.phase === 'promo') updateLoopBadge();
+    updatePhaseUI();
+    if (el.devPanel && !el.devPanel.hidden) renderDev();
+  }
+
+  function startTick() {
+    if (tickHandle) return;
+    tickHandle = window.setInterval(tick, 250);
+  }
+
+  /* ---------- transport ---------- */
+  function togglePlay() {
+    if (!live.inSession) return;
+    live.paused = !live.paused;
+    if (live.paused) {
+      live.pausedAt = now();
+      el.onairPill.classList.add('is-paused');
+      el.onairPill.innerHTML = '<i aria-hidden="true"></i> Paused';
+      videoDecks.forEach(function (v) { try { v.pause(); } catch (e) {} });
+      if (synth && speaking && !synth.paused) { synth.pause(); pausedSpeech = true; updateVoiceBtn(); }
+      stopMusic();
+    } else {
+      var delta = now() - live.pausedAt;
+      live.phaseEndsAt += delta;
+      live.qEndsAt += delta;
+      live.quizMilestoneStartedAt += delta;
+      live.quizMilestoneEndsAt += delta;
+      live.preAdStartedAt += delta;
+      live.preAdEndsAt += delta;
+      storyLive.stepStartedAt += delta;
+      storyLive.stepEndsAt += delta;
+      if (live.promoStartedAt) live.promoStartedAt += delta;
+      if (speechDeadline) speechDeadline += delta;
+      if (revealDeadline) revealDeadline += delta;
+      live.lastTickAt = now();
+      plLive.subStartedAt += delta;
+      plLive.subEndsAt += delta;
+      live.pausedAt = 0;
+      el.onairPill.classList.remove('is-paused');
+      el.onairPill.innerHTML = '<i aria-hidden="true"></i> ' + (isAudioSuppressedPhase() ? 'On air \u00b7 ' + (live.phase === 'promo' ? 'partner break' : 'video') : 'On air');
+      var promoTotal = effectivePromoList().length;
+      if ((live.phase === 'video' || live.phase === 'promo') && (live.phase === 'promo' ? promoTotal : clips.length)) {
+        var av = activeVideo();
+        if (av) {
+          var p = av.play(); if (p && p.catch) p.catch(function () {});
+        }
+      }
+      if (synth && pausedSpeech) { synth.resume(); pausedSpeech = false; updateVoiceBtn(); }
+      startMusic();
+    }
+    updatePhaseUI();
+  }
+
+  function advanceNextStep() {
+    if (live.preAdPending) {
+      completePreAdIntoPromo();
+      return;
+    }
+    if (live.phase === 'video') {
+      if (clips.length > 1) transitionToClip((live.clipIndex + 1) % clips.length);
+      return;
+    }
+    if (live.phase === 'story') {
+      enterStoryStep(storyLive.stepIndex + 1);
+      return;
+    }
+    if (live.phase === 'players') {
+      if (plLive.subPhase === 'milestone') {
+        finishPlayerMilestone(true);
+      } else {
+        if (plLive.quiz) recordCurrentRoundAnswer();
+        if (plLive.roundAnswers.length >= 10) enterMilestone();
+        else nextPlayerQuestion(true);
+      }
+      return;
+    }
+    if (live.phase === 'quiz') {
+      if (live.quizMilestone) {
+        finishQuizMilestone(true);
+        return;
+      }
+      if (currentQ()) recordQuizRoundAnswer();
+      bagHistory.push(live.qIndex);
+      if (bagHistory.length > MAX_BAG_HISTORY) bagHistory.shift();
+      if (live.quizRoundAnswers.length >= 10) {
+        enterQuizMilestone();
+        return;
+      }
+      nextQuestion();
+    }
+  }
+
+  on(el.playBtn, 'click', togglePlay);
+  on(el.nextBtn, 'click', advanceNextStep);
+  on(el.prevBtn, 'click', function () {
+    if (live.phase === 'video') {
+      if (clips.length > 1) transitionToClip((live.clipIndex - 1 + clips.length) % clips.length);
+      return;
+    }
+    if (live.phase === 'story') {
+      enterStoryStep(Math.max(0, storyLive.stepIndex - 1));
+      return;
+    }
+    if (live.phase === 'players') { prevPlayerQuestion(); return; }
+    prevQuestion();
+  });
+  on(el.revealToggleBtn, 'click', function () {
+    if (live.phase === 'players') { enterPlayerReveal(); return; }
+    if (live.phase === 'story') { enterStoryStep(storyLive.stepIndex + 1); return; }
+    revealAnswer();
+  });
+  on(el.rotateBtn, 'click', rotateNow);
+  on(el.broadcastBtn, 'click', startBroadcast);
+
+  /* ---------- stream-safe ---------- */
+  function setSafe(on_) {
+    document.body.classList.toggle('safe', !!on_);
+    if (el.safeBtn) {
+      el.safeBtn.textContent = on_ ? 'Safe mode on' : 'Stream-safe';
+      el.safeBtn.classList.toggle('is-on', !!on_);
+    }
+    applyChatSafe();
+    if (on_ && el.drawer && !el.drawer.hidden) closeDrawer();
+    window.requestAnimationFrame(function () {
+      sizeStage();
+      if (live.phase === 'quiz' && currentQ() && !live.quizMilestone) applyQuestionFit(currentQ().q.length);
+      if (live.phase === 'players') applyPlayerFit();
+    });
+  }
+
+  on(el.safeBtn, 'click', function () {
+    var next = !document.body.classList.contains('safe');
+    setSafe(next);
+    toast(next ? 'Clean stream mode on \u2014 tap bottom-right corner or press S to restore controls' : 'Clean stream mode off');
+  });
+
+  on(el.safePeek, 'click', function () {
+    setSafe(false);
+    toast('Controls back');
+  });
+
+  /* ---------- dev panel: triple tap ---------- */
+  /* Three taps inside 900ms opens the panel. It is deliberately kept
+     hidden from the broadcast: the panel lives outside the capture
+     region and stream-safe never un-hides it on its own. */
+  var tapCount = 0, tapTimer = 0;
+
+  function toggleDev(force) {
+    if (!el.devPanel) return;
+    var show = typeof force === 'boolean' ? force : el.devPanel.hidden;
+    el.devPanel.hidden = !show;
+    if (show) renderDev();
+  }
+
+  function registerTap() {
+    tapCount++;
+    if (tapTimer) window.clearTimeout(tapTimer);
+    if (tapCount >= 3) {
+      tapCount = 0;
+      toggleDev();
+      return;
+    }
+    tapTimer = window.setTimeout(function () { tapCount = 0; }, 900);
+  }
+
+  [el.frame, el.videoStage, el.quizStage].forEach(function (target) {
+    on(target, 'pointerdown', function (e) {
+      if (e.target && e.target.closest && e.target.closest('button, input, select, a, label')) return;
+      registerTap();
+    });
+  });
+
+  on(el.devPanelClose, 'click', function () { toggleDev(false); });
+  on(el.devNextQ, 'click', function () {
+    advanceNextStep();
+    renderDev();
+  });
+  on(el.devReveal, 'click', function () {
+    if (live.phase === 'players') enterPlayerReveal();
+    else if (live.phase === 'story') enterStoryStep(storyLive.stepIndex + 1);
+    else revealAnswer();
+    renderDev();
+  });
+  on(el.devRotate, 'click', function () { rotateNow(); renderDev(); });
+  on(el.devSafe, 'click', function () { setSafe(!document.body.classList.contains('safe')); renderDev(); });
+  on(el.devRedraw, 'click', function () {
+    if (live.phase === 'players') renderPlayerStage();
+    else if (live.phase === 'story') enterStoryStep(storyLive.stepIndex);
+    else renderQuestion();
+    renderDev();
+  });
+
+  function row(label, value, cls) {
+    return '<div class="dev-row"><span>' + label + '</span><b' + (cls ? ' class="' + cls + '"' : '') + '>' + value + '</b></div>';
+  }
+
+  function renderDev() {
+    if (!el.devBody) return;
+    var b = bank.bible.length, h = bank.history.length;
+    var per = playlistSeconds(clips);
+    var loopTarget = Number(S.loopHours) || 2;
+    var loops = per ? Math.max(1, Math.ceil((loopTarget * 3600) / per)) : 0;
+    var frameRect = el.frame ? el.frame.getBoundingClientRect() : { width: 0, height: 0 };
+    var overflow = document.documentElement.scrollHeight - window.innerHeight;
+    var q = currentQ();
+
+    var html = '';
+    html += row('engine', S.engine);
+    html += row('phase', live.phase);
+    html += row('segment', live.phase === 'players' ? ('players:' + plLive.subPhase) : live.phase === 'story' ? ('story:' + S.storyCat) : (S.segment + (live.quizMilestone ? ':milestone' : '')));
+    if (live.phase === 'players' && plLive.quiz) {
+      html += row('player quiz', plLive.quiz.quiz_id + ' \u00b7 ' + plLive.quiz.answer_player_id + ' (' + plLive.quiz.mode + ')');
+      html += row('round answers', plLive.roundAnswers.length + ' / 10 (round ' + plLive.roundNum + ')');
+      html += row('visual', plLive.visualHandle ? 'SVG Player Card ready' : 'loading');
+      html += row('chat-safe', S.chatSafe ? 'on' : 'off');
+    } else if (live.phase === 'story' && storyLive.episode) {
+      var sLib = window.LNR_STORIES;
+      html += row('episode', storyLive.episode.title + ' (' + storyLive.episodesCompleted + ' aired)');
+      html += row('story step', (storyLive.stepIndex + 1) + ' / ' + storyLive.flatSteps.length);
+      html += row('story library', (sLib ? sLib.getAllEpisodes('all').length : 0) + ' episodes');
+    } else {
+      html += row('question', q ? (q.q.length + ' chars \u00b7 fit ' + (el.qText ? el.qText.getAttribute('data-fit') : '?')) : '\u2014');
+      html += row('round answers', live.quizRoundAnswers.length + ' / 10 (round ' + live.quizRoundNum + ')');
+      html += row('served / bag', live.served + ' / ' + (bags[S.segment] ? bags[S.segment].length : 0));
+    }
+    html += row('bank', b + ' bible \u00b7 ' + h + ' history');
+    html += row('phase left', clock(Math.max(0, live.phaseEndsAt - now())));
+    html += row('paused', live.paused ? 'yes' : 'no', live.paused ? 'is-bad' : 'is-good');
+    var activePromos = effectivePromoList();
+    html += row('clips / promos', clips.length + ' / ' + activePromos.length);
+    html += row('video loops', per ? (clock(per * 1000) + ' \u00d7 ' + loops + ' = ' + clock(loops * per * 1000)) : 'none');
+    html += row('break slot', activePromos.length ? ('1 clip after ' + effectivePromoIntervalMin() + 'm+ quiz (' + activePromos.length + ' clips)') : ('1 slot (' + formatShortSec(effectivePromoAdSec()) + ') after ' + effectivePromoIntervalMin() + 'm+ quiz'));
+    html += row('quiz before break', clock(live.quizActiveMs) + ' / ' + clock(promoThresholdMs()));
+    html += row('break cap', PROMO_MAX_SEC / 60 + ':00 ' + (activePromos.some(function (p) { return p.duration > PROMO_MAX_SEC; }) ? 'VIOLATED' : 'ok'),
+      activePromos.some(function (p) { return p.duration > PROMO_MAX_SEC; }) ? 'is-bad' : 'is-good');
+    html += row('frame', Math.round(frameRect.width) + '\u00d7' + Math.round(frameRect.height) + ' @ ' + window.innerWidth + 'w');
+    html += row('overflow', overflow + 'px' + (overflow > 1 ? ' OVERFLOW' : ' ok'), overflow > 1 ? 'is-bad' : 'is-good');
+    html += row('stream-safe', document.body.classList.contains('safe') ? 'on' : 'off');
+    html += row('voice', (S.voiceOn ? 'on' : 'off') + ' \u00b7 ' + voiceList.length + ' voices');
+    html += row('reader', revealBusy() ? 'speaking reveal \u00b7 holding scene' : 'idle',
+      revealBusy() ? 'is-bad' : 'is-good');
+    html += row('reveal hold', (revealHoldMs() / 1000).toFixed(1) + 's');
+    el.devBody.innerHTML = html;
+  }
+
+  /* ---------- exit ---------- */
+  function exitSession() {
+    var durSec = live.startedAt ? Math.max(0, Math.round((now() - live.startedAt) / 1000)) : 0;
+    if (window.LNR_TRACK && live.inSession) {
+      window.LNR_TRACK('stream_end', {
+        engine: S.engine,
+        tier: 'studio',
+        duration_sec: durSec
+      });
+    }
+    gaHeartbeatAcc = 0;
+    finalizeActiveAdLog();
+    live.inSession = false;
+    live.running = false;
+    live.paused = false;
+    live.quizMilestone = false;
+    live.quizActiveMs = 0;
+    live.lastTickAt = 0;
+    clearPreAdNotice();
+    if (el.frameInner) {
+      el.frameInner.classList.remove('is-promo-pip', 'is-promo-split');
+    }
+    if (el.storyStage) el.storyStage.hidden = true;
+    releasePlayerVisual();
+    stopSpeech();
+    stopAudioPreview();
+    stopMusic();
+    stopVideo();
+    document.body.classList.remove('screen-stage', 'safe');
+    document.body.classList.add('screen-setup');
+    el.screenStage.hidden = true;
+    el.screenSetup.hidden = false;
+    closeDrawer();
+    toggleDev(false);
+    setSafe(false);
+    refreshStats();
+  }
+  on(el.exitBtn, 'click', exitSession);
+
+  /* ---------- music button ---------- */
+  on(el.musicBtn, 'click', openDrawer);
+
+  /* ---------- keyboard ---------- */
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && el.accessModal && !el.accessModal.hidden) {
+      closeOperatorModal();
+      return;
+    }
+    if (!live.inSession) return;
+    if (/input|select|textarea/i.test((e.target && e.target.tagName) || '')) return;
+    if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePlay(); }
+    else if (e.key === 'ArrowRight') {
+      advanceNextStep();
+    }
+    else if (e.key === 'ArrowLeft') {
+      if (live.phase === 'video') {
+        if (clips.length > 1) transitionToClip((live.clipIndex - 1 + clips.length) % clips.length);
+      }
+      else if (live.phase === 'story') enterStoryStep(Math.max(0, storyLive.stepIndex - 1));
+      else if (live.phase === 'players') prevPlayerQuestion();
+      else prevQuestion();
+    }
+    else if (e.key === 'r' || e.key === 'R') {
+      if (live.phase === 'players') enterPlayerReveal();
+      else if (live.phase === 'story') enterStoryStep(storyLive.stepIndex + 1);
+      else revealAnswer();
+    }
+    else if (e.key === 'd' || e.key === 'D') { toggleDev(); }
+    else if (e.key === 's' || e.key === 'S') {
+      var next = !document.body.classList.contains('safe');
+      setSafe(next);
+      toast(next ? 'Clean stream mode on \u2014 tap bottom-right corner or press S to restore controls' : 'Clean stream mode off');
+    } else if (e.key === 'Escape') { closeDrawer(); toggleDev(false); }
+  });
+
+  /* ---------- Player Card Library Manager UI ---------- */
+  function setPlStatus(ok, title, lines) {
+    if (!el.plStatus) return;
+    el.plStatus.hidden = false;
+    el.plStatus.className = 'import-result ' + (ok ? 'is-ok' : 'is-bad');
+    var html = '<b>' + String(title).replace(/</g, '&lt;') + '</b>';
+    if (lines && lines.length) {
+      html += '<ul>' + lines.slice(0, 8).map(function (l) {
+        return '<li>' + String(l).replace(/</g, '&lt;') + '</li>';
+      }).join('') + '</ul>';
+      if (lines.length > 8) html += '<div>\u2026and ' + (lines.length - 8) + ' more.</div>';
+    }
+    el.plStatus.innerHTML = html;
+  }
+
+  function refreshPlayerLibraryUI() {
+    var pLib = window.LNR_PLAYERS;
+    if (!pLib) return;
+    pLib.runAudit().then(function (rep) {
+      if (el.plStatPlayers) el.plStatPlayers.textContent = rep.totalPlayers;
+      if (el.plStatFormat) el.plStatFormat.textContent = 'SVG 4:5';
+      if (el.plStatQuizzes) el.plStatQuizzes.textContent = rep.totalQuizzes;
+      if (el.plStatStorage) el.plStatStorage.textContent = (rep.storageUsageBytes / 1048576).toFixed(1) + ' MB';
+      if (el.plPersistTag) {
+        el.plPersistTag.textContent = rep.persisted ? 'Persistent storage active' : 'Device IndexedDB';
+      }
+      refreshStats();
+    });
+  }
+
+  function renderPlayerSearch(query) {
+    var pLib = window.LNR_PLAYERS;
+    if (!el.plSearchResults || !pLib) return;
+    var q = String(query || '').trim().toLowerCase();
+    if (!q) {
+      el.plSearchResults.hidden = true;
+      el.plSearchResults.innerHTML = '';
+      return;
+    }
+    var matches = pLib.getAllPlayers().filter(function (p) {
+      return p.player_id.toLowerCase().indexOf(q) >= 0 ||
+        p.name.toLowerCase().indexOf(q) >= 0 ||
+        (p.club && p.club.toLowerCase().indexOf(q) >= 0) ||
+        (p.nationality && p.nationality.toLowerCase().indexOf(q) >= 0);
+    }).slice(0, 12);
+
+    el.plSearchResults.hidden = false;
+    el.plSearchResults.innerHTML = '';
+    if (!matches.length) {
+      var empty = document.createElement('li');
+      empty.className = 'pl-search-empty';
+      empty.textContent = 'No matching player found in library.';
+      el.plSearchResults.appendChild(empty);
+      return;
+    }
+
+    matches.forEach(function (p) {
+      var li = document.createElement('li');
+      li.className = 'pl-search-row';
+
+      var thumb = document.createElement('div');
+      thumb.className = 'pl-search-thumb';
+      thumb.innerHTML = buildMilestoneGraphicSvg({
+        player_id: p.player_id,
+        number: p.number || '',
+        initials: (p.name || p.player_id).slice(0, 2).toUpperCase()
+      }, 'players', 0);
+
+      var info = document.createElement('div');
+      info.className = 'pl-search-info';
+      info.innerHTML = '<b>' + p.name.replace(/</g, '&lt;') + '</b><span>' + p.player_id + ' \u00b7 ' + (p.club || '').replace(/</g, '&lt;') + ' \u00b7 ' + (p.nationality || '').replace(/</g, '&lt;') + (p.number ? ' \u00b7 #' + p.number : '') + '</span>';
+
+      var previewBtn = document.createElement('button');
+      previewBtn.type = 'button';
+      previewBtn.className = 'btn btn-quiet btn-sm';
+      previewBtn.textContent = 'Preview card';
+
+      var cardWrap = document.createElement('div');
+      cardWrap.className = 'pl-search-preview';
+      cardWrap.hidden = true;
+
+      previewBtn.addEventListener('click', function () {
+        cardWrap.hidden = !cardWrap.hidden;
+        previewBtn.textContent = cardWrap.hidden ? 'Preview card' : 'Hide card';
+        if (!cardWrap.hidden && !cardWrap.firstChild) {
+          var img = document.createElement('img');
+          img.alt = p.name + ' Player Card';
+          img.src = pLib.renderFallbackCardDataUrl(p, { mystery: false });
+          cardWrap.appendChild(img);
+        }
+      });
+
+      var topRow = document.createElement('div');
+      topRow.className = 'pl-search-main';
+      topRow.appendChild(thumb);
+      topRow.appendChild(info);
+      topRow.appendChild(previewBtn);
+
+      li.appendChild(topRow);
+      li.appendChild(cardWrap);
+      el.plSearchResults.appendChild(li);
+    });
+  }
+
+  on(el.plSearchInput, 'input', function () {
+    renderPlayerSearch(el.plSearchInput.value);
+  });
+
+  on(el.plQuizJsonInput, 'change', function () {
+    var f = el.plQuizJsonInput.files && el.plQuizJsonInput.files[0];
+    var pLib = window.LNR_PLAYERS;
+    el.plQuizJsonInput.value = '';
+    if (!f || !pLib) return;
+    var r = new FileReader();
+    r.onload = function () {
+      var text = String(r.result || '');
+      try {
+        var parsed = JSON.parse(text);
+        if (!Array.isArray(parsed) && Array.isArray(parsed.players)) {
+          pLib.importPlayersJson(text).then(function (res) {
+            setPlStatus(res.added + res.updated > 0, 'Players JSON processed', [
+              'Added: ' + res.added + ' \u00b7 Updated: ' + res.updated,
+              res.errors.length ? 'Warnings: ' + res.errors.slice(0, 3).join('; ') : 'Zero errors'
+            ]);
+            refreshPlayerLibraryUI();
+          });
+        } else {
+          pLib.importQuizzesJson(text).then(function (res) {
+            setPlStatus(res.imported > 0, 'Player quizzes imported: ' + res.imported,
+              res.errors.length ? res.errors : ['All quizzes validated and added to the Player Quiz rotation.']);
+            plLive.bag = [];
+            refreshPlayerLibraryUI();
+            refreshAccessUI();
+            toast('Imported ' + res.imported + ' player quizzes');
+          });
+        }
+      } catch (e) {
+        setPlStatus(false, 'Invalid JSON', [e.message]);
+        toast('Invalid JSON file', true);
+      }
+    };
+    r.readAsText(f);
+  });
+
+  var clearConfirmArmed = false;
+  var clearConfirmTimer = 0;
+  on(el.plClearBtn, 'click', function () {
+    var pLib = window.LNR_PLAYERS;
+    if (!pLib) return;
+    if (!clearConfirmArmed) {
+      clearConfirmArmed = true;
+      el.plClearBtn.textContent = 'Confirm reset custom pack?';
+      clearConfirmTimer = window.setTimeout(function () {
+        clearConfirmArmed = false;
+        if (el.plClearBtn) el.plClearBtn.textContent = 'Reset Custom Pack';
+      }, 4000);
+      return;
+    }
+    window.clearTimeout(clearConfirmTimer);
+    clearConfirmArmed = false;
+    el.plClearBtn.textContent = 'Reset Custom Pack';
+      pLib.clearCustomLibrary().then(function () {
+      plLive.bag = [];
+      setPlStatus(true, 'Custom library cleared', [
+        'Reverted to built-in 150+ Player Card pack.'
+      ]);
+      refreshPlayerLibraryUI();
+      refreshAccessUI();
+      toast('Custom player pack cleared');
+    });
+  });
+
+  /* ---------- Templates & AI Generator Prompts ---------- */
+  function downloadTextFile(filename, content, mime) {
+    try {
+      var blob = new Blob([content], { type: mime || 'application/json;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    } catch (e) {
+      toast('Download failed on this browser', true);
+    }
+  }
+
+  function copyText(text, successMsg) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        toast(successMsg || 'Copied to clipboard');
+      }).catch(function () {
+        fallbackCopy(text, successMsg);
+      });
+      return;
+    }
+    fallbackCopy(text, successMsg);
+  }
+
+  function fallbackCopy(text, successMsg) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      toast(successMsg || 'Copied to clipboard');
+    } catch (e) {
+      toast('Copy failed — select and copy manually', true);
+    }
+  }
+
+  on(el.dlQuizTemplateBtn, 'click', function () {
+    var tpl = {
+      segment: S.segment || 'bible',
+      questions: [
+        {
+          question: 'Which prophet confronted the prophets of Baal on Mount Carmel?',
+          options: ['Elisha', 'Elijah', 'Isaiah', 'Jeremiah'],
+          answer: 1,
+          reference: '1 Kings 18:20-39',
+          insight: 'Fire fell from heaven and consumed Elijah\'s water-soaked sacrifice.',
+          difficulty: 'Easy'
+        },
+        {
+          question: 'Which ancient empire built the Royal Road from Susa to Sardis?',
+          options: ['Persian Empire', 'Roman Empire', 'Assyrian Empire', 'Byzantine Empire'],
+          answer: 0,
+          reference: 'Darius I, c. 5th century BCE',
+          insight: 'Couriers could cover roughly 2,700 kilometres in about seven days.',
+          difficulty: 'Medium'
+        }
+      ]
+    };
+    downloadTextFile('lnr-quiz-template.json', JSON.stringify(tpl, null, 2));
+    toast('Downloaded lnr-quiz-template.json');
+  });
+
+  on(el.copyQuizPromptBtn, 'click', function () {
+    var segLabel = S.segment === 'history' ? 'history' : 'bible';
+    var prompt = [
+      'Generate 50 completely original multiple-choice trivia questions formatted strictly as valid JSON (no markdown code fences, just raw JSON) for this livestream schema:',
+      '{',
+      '  "segment": "' + segLabel + '",',
+      '  "questions": [',
+      '    {',
+      '      "question": "Clear concise question under 110 characters?",',
+      '      "options": ["Option A", "Option B", "Option C", "Option D"],',
+      '      "answer": 0,',
+      '      "reference": "Short verified citation or year",',
+      '      "insight": "One interesting sentence read aloud after the reveal.",',
+      '      "difficulty": "Easy"',
+      '    }',
+      '  ]',
+      '}',
+      'Rules: 4 distinct options per question, "answer" must be the 0-3 index of the correct option, vary difficulty (Easy, Medium, Hard), and ensure 100% factual accuracy.'
+    ].join('\n');
+    copyText(prompt, 'Quiz AI prompt copied — paste into any AI tool');
+  });
+
+  on(el.dlPlayerTemplateBtn, 'click', function () {
+    var tpl = {
+      players: [
+        {
+          player_id: 'CUSTOM01',
+          name: 'Thierry Henry',
+          club: 'Arsenal',
+          nationality: 'France',
+          position: 'Forward',
+          number: '14',
+          era: 'Legend'
+        },
+        {
+          player_id: 'CUSTOM02',
+          name: 'Luka Modric',
+          club: 'Real Madrid',
+          nationality: 'Croatia',
+          position: 'Midfielder',
+          number: '10',
+          era: 'Active'
+        }
+      ],
+      quizzes: [
+        {
+          quiz_id: 'CQ001',
+          category: 'Football',
+          mode: 'clues',
+          question: 'Guess the player!',
+          clues: [
+            'I won the 1998 World Cup with France as a young winger.',
+            'I finished unbeaten in the 2003-04 Premier League Invincibles season.',
+            'My number 14 statue stands outside the Emirates Stadium.'
+          ],
+          answer_player_id: 'CUSTOM01',
+          reveal_text: 'Thierry Henry',
+          insight: 'Arsenal\'s all-time top goalscorer with 228 goals across all competitions.',
+          difficulty: 'Easy'
+        }
+      ]
+    };
+    downloadTextFile('lnr-player-quiz-template.json', JSON.stringify(tpl, null, 2));
+    toast('Downloaded lnr-player-quiz-template.json');
+  });
+
+  on(el.copyPlayerPromptBtn, 'click', function () {
+    var prompt = [
+      'Generate 30 original sports/celebrity "Guess the Player" clue quizzes and their matching player records in valid raw JSON matching this schema:',
+      '{',
+      '  "players": [',
+      '    { "player_id": "CUSTOM01", "name": "Full Name", "club": "Iconic Club", "nationality": "Country", "position": "Forward", "number": "10", "era": "Active" }',
+      '  ],',
+      '  "quizzes": [',
+      '    {',
+      '      "quiz_id": "CQ001",',
+      '      "category": "Football",',
+      '      "mode": "clues",',
+      '      "question": "Guess the player!",',
+      '      "clues": ["Clue 1 (career hint)", "Clue 2 (achievement)", "Clue 3 (signature stat/jersey)"],',
+      '      "answer_player_id": "CUSTOM01",',
+      '      "reveal_text": "Full Name",',
+      '      "insight": "One-sentence career highlight spoken at reveal.",',
+      '      "difficulty": "Medium"',
+      '    }',
+      '  ]',
+      '}',
+      'Rules: Do not name the player inside the clues. Allowed modes: clues, blur_reveal, zoom_crop, silhouette.'
+    ].join('\n');
+    copyText(prompt, 'Player Quiz AI prompt copied');
+  });
+
+  /* ---------- Support Contact & Break Playback Log Export ---------- */
+  var STUDIO_EMAIL = 'lnrstrokes@gmail.com';
+
+  function syncSupportEmailLink() {
+    var support = {
+      subject: 'Studio Question or Custom Pack Inquiry \u2014 lnr Studio',
+      body: [
+        'Hello lnr Studio,',
+        '',
+        'My Channel / Site URL: [Enter URL]',
+        'Question or Custom Pack Request: [Describe here]',
+        '',
+        'Thanks!'
+      ].join('\n')
+    };
+    if (el.contactFormBtn) {
+      el.contactFormBtn.href = 'mailto:' + STUDIO_EMAIL + '?subject=' + encodeURIComponent(support.subject) + '&body=' + encodeURIComponent(support.body);
+    }
+  }
+
+  on(el.copyContactTemplateBtn, 'click', function () {
+    var txt = [
+      'To: ' + STUDIO_EMAIL,
+      'Subject: Studio Question or Custom Pack Inquiry \u2014 lnr Studio',
+      '',
+      'Hello lnr Studio,',
+      '',
+      'My Channel / Site URL: [Enter URL]',
+      'Question or Custom Pack Request: [Describe here]'
+    ].join('\n');
+    copyText(txt, 'Support email template copied');
+  });
+
+  function csvCell(val) {
+    var s = String(val === null || typeof val === 'undefined' ? '' : val);
+    if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  function openSponsorLogsDrawer() {
+    openDrawer();
+    window.setTimeout(function () {
+      if (el.sponsorAnalyticsSection && el.sponsorAnalyticsSection.scrollIntoView) {
+        el.sponsorAnalyticsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 120);
+  }
+  on(el.openAnalyticsBtn, 'click', openSponsorLogsDrawer);
+  on(el.stViewLogsBtn, 'click', openSponsorLogsDrawer);
+
+  function triggerSponsorCsvExport() {
+    if (!adLogs.length) {
+      toast('No channel breaks recorded yet');
+      return;
+    }
+    var lines = ['Timestamp (ISO UTC),Local Date/Time,Clip / Slot,Engine,Round,Duration (sec),Watermark,Brand'];
+    adLogs.forEach(function (item) {
+      var localStr = '';
+      try { localStr = new Date(item.startedAt).toLocaleString(); } catch (e) { localStr = ''; }
+      lines.push([
+        csvCell(item.isoTime || ''),
+        csvCell(localStr),
+        csvCell(item.clipName || 'Partner break slot'),
+        csvCell(item.engine || ''),
+        csvCell(item.roundNum || 1),
+        csvCell(item.durationSec || 0),
+        csvCell(item.watermark || ''),
+        csvCell(item.brand || '')
+      ].join(','));
+    });
+    var stamp = new Date().toISOString().slice(0, 10);
+    downloadTextFile('lnr-break-log-' + stamp + '.csv', lines.join('\r\n'), 'text/csv;charset=utf-8');
+    toast('Exported ' + adLogs.length + ' break record' + (adLogs.length === 1 ? '' : 's'));
+  }
+  on(el.alExportCsvBtn, 'click', triggerSponsorCsvExport);
+  on(el.stExportCsvBtn, 'click', triggerSponsorCsvExport);
+
+  var adClearArmed = false;
+  var adClearTimer = 0;
+  on(el.alClearBtn, 'click', function () {
+    if (!adLogs.length) { toast('Playback log is already empty'); return; }
+    if (!adClearArmed) {
+      adClearArmed = true;
+      el.alClearBtn.textContent = 'Confirm clear logs?';
+      adClearTimer = window.setTimeout(function () {
+        adClearArmed = false;
+        if (el.alClearBtn) el.alClearBtn.textContent = 'Clear logs';
+      }, 3500);
+      return;
+    }
+    window.clearTimeout(adClearTimer);
+    adClearArmed = false;
+    el.alClearBtn.textContent = 'Clear logs';
+    adLogs = [];
+    idbClearStore('ad_logs').then(function () {
+      renderAdAnalytics();
+      toast('Break playback logs cleared');
+    });
+  });
+
+  /* ---------- Studio Operator Tools Modal (7-Tap Brand Logo) ---------- */
+  function refreshAccessUI() {
+    var segCount = bank[S.segment] ? bank[S.segment].length : 0;
+    var customCount = (custom[S.segment] && custom[S.segment].length) || 0;
+    if (el.quizPrivateNotice) {
+      el.quizPrivateNotice.textContent = usingDemo[S.segment]
+        ? 'Demo active \u00b7 import JSON'
+        : (segCount + ' Built-in' + (customCount ? (' + ' + customCount + ' Custom') : ' + Custom JSON'));
+    }
+    if (el.playerPrivateNotice) {
+      var pLib = window.LNR_PLAYERS;
+      var pDemo = pLib && pLib.isDemoOnly ? pLib.isDemoOnly() : false;
+      var pCount = pLib ? pLib.getAllPlayers().length : 0;
+      el.playerPrivateNotice.textContent = pDemo
+        ? 'Demo active \u00b7 import JSON'
+        : (pCount + ' Built-in Cards + Custom');
+    }
+    applyBranding();
+    syncInputs();
+    renderAdminPromoList();
+    syncSupportEmailLink();
+  }
+
+  function openOperatorModal() {
+    if (!el.accessModal) return;
+    if (el.panelAdmin) el.panelAdmin.hidden = false;
+    if (el.adminToolsBox) el.adminToolsBox.hidden = false;
+    refreshAccessUI();
+    el.accessModal.hidden = false;
+  }
+
+  function closeOperatorModal() {
+    if (!el.accessModal) return;
+    el.accessModal.hidden = true;
+  }
+
+  /* 7-tap trigger on top-left brand logo or footer brand */
+  var adminTapCount = 0;
+  var adminTapTimer = 0;
+  function handleSecretAdminTap(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    adminTapCount++;
+    if (adminTapTimer) window.clearTimeout(adminTapTimer);
+    if (adminTapCount >= 7) {
+      adminTapCount = 0;
+      openOperatorModal();
+      toast('Studio Operator Tools opened');
+      return;
+    }
+    adminTapTimer = window.setTimeout(function () { adminTapCount = 0; }, 2600);
+  }
+  on(el.brandHome, 'click', function (e) {
+    if (live.inSession) {
+      e.preventDefault();
+      exitSession();
+      return;
+    }
+    if (currentPage !== 'home') setPage('home');
+    handleSecretAdminTap(e);
+  });
+  on(document.querySelector('.foot-brand'), 'click', handleSecretAdminTap);
+
+  on(el.accessModalClose, 'click', closeOperatorModal);
+  on(el.accessModal, 'click', function (e) {
+    if (e.target === el.accessModal) closeOperatorModal();
+  });
+
+  /* Operator Break Folder display layout, order & disclosure bindings */
+  on(el.adminPromoDisplay, 'change', function () {
+    S.promoDisplayMode = el.adminPromoDisplay.value || 'full';
+    save();
+    toast('Break display: ' + S.promoDisplayMode);
+  });
+  on(el.adminPromoOrder, 'change', function () {
+    S.promoOrder = el.adminPromoOrder.value || 'sequential';
+    save();
+    toast('Break order: ' + S.promoOrder);
+  });
+  on(el.adminPromoOverlay, 'change', function () {
+    S.promoOverlayStyle = el.adminPromoOverlay.value || 'disclosure';
+    save();
+    updatePromoBrand();
+    updatePromoOverlay();
+    toast('Break disclosure: ' + S.promoOverlayStyle);
+  });
+
+  function syncPublicPromosManifest(silent) {
+    fetch('/promos/manifest.json')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        var list = (data && Array.isArray(data.clips)) ? data.clips : [];
+        if (!list.length) {
+          if (!silent) toast('No files listed inside /public/promos/manifest.json');
+          return;
+        }
+        var nextDefault = [];
+        var added = 0;
+        list.forEach(function (entry) {
+          var url = typeof entry === 'string' ? entry : (entry && (entry.src || entry.url));
+          if (!url) return;
+          var absUrl = url.indexOf('/') === 0 ? url : ('/promos/' + url);
+          var id = 'pub_' + absUrl.replace(/[^a-z0-9]/gi, '_');
+          var item = {
+            id: id,
+            name: (entry && entry.name) || absUrl.split('/').pop(),
+            size: 0,
+            duration: (entry && Number(entry.duration)) || 0,
+            enabled: true,
+            externalUrl: absUrl
+          };
+          nextDefault.push(item);
+          if (!adminPromos.some(function (p) { return p.id === id; })) {
+            adminPromos.push(Object.assign({}, item));
+            added++;
+          }
+        });
+        defaultFolderPromos = nextDefault;
+        renderClips();
+        refreshPromoText();
+        refreshStats();
+        if (!silent) toast(added ? ('Synced ' + added + ' clip(s) from /promos/') : 'All /promos/ manifest clips already synced');
+      })
+      .catch(function () {
+        if (!silent) toast('Could not read /promos/manifest.json', true);
+      });
+  }
+  on(el.syncPublicPromosBtn, 'click', function () { syncPublicPromosManifest(false); });
+
+  window.addEventListener('pagehide', function () {
+    finalizeActiveAdLog();
+  });
+
+  function sizeStage() {
+    var wrap = document.querySelector('.stage-wrap');
+    if (!wrap) return;
+    var h = wrap.clientHeight;
+    if (h > 0) document.documentElement.style.setProperty('--stage-h', h + 'px');
+  }
+
+  /* re-fit the question when the frame changes size (resize / rotate) */
+  var resizeTimer = 0;
+  window.addEventListener('resize', function () {
+    sizeStage();
+    if (resizeTimer) window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(function () {
+      sizeStage();
+      if (live.phase === 'quiz' && currentQ()) applyQuestionFit(currentQ().q.length);
+      if (live.phase === 'players') applyPlayerFit();
+      if (el.devPanel && !el.devPanel.hidden) renderDev();
+    }, 180);
+  });
+
+  /* ---------- Storytelling Setup & Catalog UI ---------- */
+  function setStoryStatus(ok, title, lines) {
+    if (!el.storyImportResult) return;
+    el.storyImportResult.hidden = false;
+    el.storyImportResult.className = 'import-result ' + (ok ? 'is-ok' : 'is-bad');
+    var html = '<b>' + escHtml(title) + '</b>';
+    if (lines && lines.length) {
+      html += '<ul>' + lines.slice(0, 6).map(function (l) {
+        return '<li>' + escHtml(l) + '</li>';
+      }).join('') + '</ul>';
+    }
+    el.storyImportResult.innerHTML = html;
+  }
+
+  function renderStoryCatalogUI() {
+    var sApi = window.LNR_STORIES;
+    if (!sApi || !el.storyEpisodeList) return;
+    var list = sApi.getAllEpisodes(S.storyCat);
+    el.storyEpisodeList.innerHTML = '';
+    [[el.storyCatAll, 'all'], [el.storyCatHistory, 'world-history'], [el.storyCatBiblical, 'biblical']].forEach(function (pair) {
+      if (pair[0]) pair[0].classList.toggle('is-selected', pair[1] === S.storyCat);
+    });
+    list.forEach(function (ep) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      var isChosen = S.storyStartId === ep.id;
+      btn.className = 'story-ep-item' + (isChosen ? ' is-selected' : '');
+      var sceneTotal = 0;
+      (ep.acts || []).forEach(function (a) { sceneTotal += (a.scenes || []).length; });
+      btn.innerHTML =
+        '<div class="story-ep-top"><span>' + escHtml(ep.category === 'biblical' ? 'Biblical' : 'History') + ' \u00b7 ' + escHtml(ep.era) + '</span><span>' + (ep.acts || []).length + ' acts \u00b7 ' + sceneTotal + ' scenes</span></div>' +
+        '<b>' + escHtml(ep.title) + '</b>' +
+        '<span>' + escHtml(ep.subtitle) + '</span>';
+      btn.addEventListener('click', function () {
+        S.storyStartId = (S.storyStartId === ep.id) ? '' : ep.id;
+        save();
+        renderStoryCatalogUI();
+        toast(S.storyStartId ? ('Starts with: ' + ep.title) : 'Automatic documentary rotation');
+      });
+      el.storyEpisodeList.appendChild(btn);
+    });
+    refreshStats();
+  }
+
+  [[el.storyCatAll, 'all'], [el.storyCatHistory, 'world-history'], [el.storyCatBiblical, 'biblical']].forEach(function (pair) {
+    on(pair[0], 'click', function () {
+      S.storyCat = pair[1];
+      S.storyStartId = '';
+      save();
+      renderStoryCatalogUI();
+    });
+  });
+
+  on(el.setupStoryImportInput, 'change', function () {
+    var f = el.setupStoryImportInput.files && el.setupStoryImportInput.files[0];
+    el.setupStoryImportInput.value = '';
+    var sApi = window.LNR_STORIES;
+    if (!f || !sApi) return;
+    var r = new FileReader();
+    r.onload = function () {
+      var res = sApi.importEpisodesJson(String(r.result || ''));
+      setStoryStatus(res.added > 0, res.added ? ('Imported ' + res.added + ' documentary episode(s)') : 'No new episodes added', [
+        'Added: ' + res.added + ' \u00b7 Skipped duplicates: ' + res.skipped,
+        res.errors && res.errors.length ? ('Notes: ' + res.errors.slice(0, 3).join('; ')) : 'Ready for continuous broadcast'
+      ]);
+      renderStoryCatalogUI();
+      toast(res.added ? ('Imported ' + res.added + ' episode(s)') : 'Check Story JSON report', !res.added);
+    };
+    r.readAsText(f);
+  });
+
+  on(el.dlStoryTemplateBtn, 'click', function () {
+    var tpl = {
+      episodes: [
+        {
+          id: 'custom-episode-1',
+          title: 'Sample Documentary: The Printing Revolution',
+          subtitle: 'How movable metal type multiplied books across continents',
+          category: 'world-history',
+          era: '1440 - 1500 CE',
+          centralQuestion: 'Why did one Mainz workshop spark a continental shift within fifty years?',
+          takeaway: 'Ideas spread fastest when shared tools lower the cost of writing and reading.',
+          acts: [
+            {
+              actNum: 1,
+              title: 'Before the Press',
+              hook: 'Copying one volume took a team of scribes an entire winter.',
+              scenes: [
+                {
+                  sceneType: 'comparison',
+                  headline: 'Quill Copyists vs. Movable Alloy Type',
+                  narration: 'In 1440, European libraries rarely held more than a few dozen manuscripts. Johannes Gutenberg fused oil-based ink, adjustable metal molds, and screw presses into one rapid printing system.',
+                  engagement: 'Live chat: Which invention transformed human knowledge even faster?',
+                  visual: {
+                    dateLabel: 'c. 1450 CE',
+                    leftTitle: 'Hand Scriptorium',
+                    leftItems: ['Months per volume', 'High error drift'],
+                    rightTitle: 'Movable Press',
+                    rightItems: ['Thousands of pages daily', 'Identical editions']
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+    downloadTextFile('lnr-story-documentary-template.json', JSON.stringify(tpl, null, 2));
+    toast('Downloaded lnr-story-documentary-template.json');
+  });
+
+  on(el.copyStoryPromptBtn, 'click', function () {
+    var prompt = [
+      'Generate 3 multi-act Documentary Storytelling episodes in raw valid JSON matching this schema:',
+      '{',
+      '  "episodes": [{',
+      '    "id": "ep-slug",',
+      '    "title": "Documentary Title",',
+      '    "subtitle": "One-sentence premise",',
+      '    "category": "world-history | biblical",',
+      '    "era": "Date Span",',
+      '    "centralQuestion": "Core question explored across the episode",',
+      '    "takeaway": "Final reflective takeaway",',
+      '    "acts": [{',
+      '      "actNum": 1,',
+      '      "title": "Act Title",',
+      '      "hook": "Short dramatic opener",',
+      '      "scenes": [{',
+      '        "sceneType": "document | map | timeline | profile | comparison | artifact",',
+      '        "headline": "Scene Title",',
+      '        "narration": "2-3 natural spoken documentary sentences transitioning smoothly.",',
+      '        "engagement": "Optional viewer chat question",',
+      '        "visual": { "dateLabel": "...", "location": "...", "quote": "...", "attribution": "...", "points": ["..."], "route": ["..."], "accentStat": "...", "statLabel": "..." }',
+      '      }]',
+      '    }]',
+      '  }]',
+      '}'
+    ].join('\n');
+    copyText(prompt, 'Documentary AI prompt copied');
+  });
+
+  on(el.storyClearBtn, 'click', function () {
+    var sApi = window.LNR_STORIES;
+    if (!sApi) return;
+    sApi.clearCustomEpisodes();
+    S.storyStartId = '';
+    save();
+    renderStoryCatalogUI();
+    toast('Custom story episodes cleared (built-in episodes preserved)');
+  });
+
+  /* ---------- boot ---------- */
+  window.addEventListener('lnr:banks-ready', function () {
+    rebuildQuizBanks();
+    refreshAccessUI();
+    refreshStats();
+    if (el.devPanel && !el.devPanel.hidden) renderDev();
+  });
+
+  window.addEventListener('lnr:stories-ready', function () {
+    renderStoryCatalogUI();
+    refreshStats();
+  });
+
+  function boot() {
+    rebuildQuizBanks();
+    initRouting();
+    setEngine(S.engine);
+    setSegment(S.segment);
+    setPlayerMode(S.playerMode);
+    syncInputs();
+    syncMusicCardsUI();
+    syncAudioPreviewUI();
+    renderStoryCatalogUI();
+    renderClips();
+    updateVoiceBtn();
+    updatePromoBrand();
+    refreshAccessUI();
+    renderAdAnalytics();
+    if (el.startBtn) el.startBtn.disabled = false;
+    startTick();
+
+    if (window.LNR_PLAYERS) {
+      window.LNR_PLAYERS.initLibrary().then(function () {
+        refreshPlayerLibraryUI();
+        refreshAccessUI();
+      });
+    }
+
+    idbGetStore('vault', 'custom_audio_track').then(function (rec) {
+      if (rec && rec.blob) {
+        loadCustomAudioBlob(rec.blob, rec.name || 'Custom track.mp3');
+      }
+    });
+
+    idbList().then(function (rows) {
+      clips = rows.filter(function (r) { return r.kind !== 'promo' && r.kind !== 'admin_promo'; })
+        .map(function (r) { return { id: r.id, name: r.name, size: r.size, duration: r.duration || 0 }; });
+      promos = rows.filter(function (r) { return r.kind === 'promo'; })
+        .map(function (r) { return { id: r.id, name: r.name, size: r.size, duration: r.duration || 0 }; });
+      adminPromos = rows.filter(function (r) { return r.kind === 'admin_promo'; })
+        .map(function (r) { return { id: r.id, name: r.name, size: r.size, duration: r.duration || 0, enabled: r.enabled !== false }; });
+      warmClipUrls(clips);
+      warmClipUrls(promos);
+      warmClipUrls(adminPromos);
+      renderClips();
+      refreshPromoText();
+      syncPublicPromosManifest(true);
+    });
+
+    idbListStore('ad_logs').then(function (logs) {
+      adLogs = (logs || []).slice().sort(function (a, b) { return (b.startedAt || 0) - (a.startedAt || 0); });
+      renderAdAnalytics();
+    });
+
+    if (el.loopHours) el.loopHours.value = effectiveLoopHours();
+    if (el.loopHoursDrawer) el.loopHoursDrawer.value = effectiveLoopHours();
+    refreshLoopMath();
+    refreshPromoText();
+
+    if (S.autoRotate === false && el.autoRotate) el.autoRotate.checked = false;
+
+    syncMusicCardsUI();
+    toggleDev(false);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+
+  /* exposed for diagnostics & tests */
+  window.LNR_DEBUG = {
+    tier: function () { return 'studio'; },
+    bankCount: function () {
+      var pLib = window.LNR_PLAYERS;
+      var sLib = window.LNR_STORIES;
+      return {
+        bible: bank.bible.length,
+        history: bank.history.length,
+        bibleDemo: usingDemo.bible,
+        historyDemo: usingDemo.history,
+        players: pLib ? pLib.getAllPlayers().length : 0,
+        playerQuizzes: pLib ? pLib.getAllQuizzes('all').length : 0,
+        stories: sLib ? sLib.getAllEpisodes('all').length : 0
+      };
+    },
+    importText: function (text, name) {
+      var file = new File([text], name || 'test.json', { type: 'application/json' });
+      handleImport(file);
+    },
+    state: function () {
+      return {
+        tier: 'studio',
+        engine: S.engine,
+        phase: live.phase,
+        subPhase: plLive.subPhase,
+        storyEpisode: storyLive.episode ? storyLive.episode.id : null,
+        storyStep: storyLive.stepIndex,
+        quizMilestone: live.quizMilestone,
+        quizRoundAnswers: live.quizRoundAnswers.length,
+        quizRoundNum: live.quizRoundNum,
+        quizActiveMs: live.quizActiveMs,
+        promoAdsEnabled: !!S.promoAdsEnabled,
+        promoDisplayMode: S.promoDisplayMode,
+        promoOrder: S.promoOrder,
+        promoOverlayStyle: S.promoOverlayStyle,
+        demoVideoMode: demoVideoMode,
+        promoThresholdMs: promoThresholdMs(),
+        preAdPending: live.preAdPending,
+        qIndex: live.qIndex,
+        served: live.served,
+        roundAnswers: plLive.roundAnswers.length,
+        roundNum: plLive.roundNum,
+        paused: live.paused,
+        adLogsCount: adLogs.length
+      };
+    },
+    setSegment: setSegment,
+    setEngine: setEngine,
+    startSession: startSession,
+    rotate: rotateNow,
+    startBroadcast: startBroadcast,
+    toggleDev: toggleDev,
+    fits: function () {
+      return {
+        qText: el.qText ? el.qText.getAttribute('data-fit') : null,
+        qFont: el.qText ? getComputedStyle(el.qText).fontSize : null,
+        opts: Array.prototype.map.call(el.options.children, function (cc) { return cc.getAttribute('data-fit'); })
+      };
+    },
+    promoCap: function () { return PROMO_MAX_SEC; },
+    promo: function () {
+      var activePromos = effectivePromoList();
+      return {
+        enabled: !!S.promoAdsEnabled,
+        minutes: Math.round((S.promoAdSec / 60) * 10) / 10,
+        promoAdSec: S.promoAdSec,
+        promoIntervalMin: S.promoIntervalMin,
+        clips: activePromos.length,
+        seconds: playlistSeconds(activePromos)
+      };
+    },
+    brand: function () { var b = effectiveBranding(); return { text: b.brand, watermark: b.watermark, site: b.site, locked: b.locked, visible: el.promoBrand ? !el.promoBrand.hidden : false, loopBadgeVisible: el.loopBadge ? !el.loopBadge.hidden : false }; },
+    loopMath: function () {
+      var per = playlistSeconds(clips);
+      var targetS = effectiveLoopHours() * 3600;
+      var loops = per ? Math.max(1, Math.ceil(targetS / per)) : 0;
+      return {
+        clipSeconds: per,
+        clips: clips.length,
+        promos: promos.length,
+        adminPromos: adminPromos.length,
+        targetHours: effectiveLoopHours(),
+        loops: loops,
+        totalSeconds: loops * per
+      };
+    },
+    storeClip: function (file, kind) { storeMedia(file, kind); },
+    layout: function () {
+      var f = el.frame.getBoundingClientRect();
+      var t = document.querySelector('.transport');
+      var tb = t ? t.getBoundingClientRect() : null;
+      return {
+        vh: window.innerHeight,
+        frameH: Math.round(f.height),
+        frameW: Math.round(f.width),
+        onScreen: tb ? (tb.bottom <= window.innerHeight + 1) : true,
+        overflow: document.documentElement.scrollHeight - window.innerHeight
+      };
+    }
+  };
+})();

@@ -1,0 +1,316 @@
+/* ==========================================================================
+   DOCKS.CSS — rotation bar, rotation settings panel, engine cross-fade
+   --------------------------------------------------------------------------
+   The rotation feature is rendered by RotationDock.tsx, which main.tsx mounts
+   as a sibling of <App /> and just before <ReaderDock />. So this bar and the
+   reader bar stack at the bottom of the column, in that order: rotation first,
+   reader underneath it.
+
+   Two hard constraints shaped these rules:
+
+   1. NOTHING here may be an overlay. A screencast captures the frame and the
+      area around it, so a floating widget would be burned into the broadcast.
+      The bar therefore lives in the layout (position: relative), exactly like
+      reader.css. Same reason the panel expands INSIDE the bar instead of
+      appearing as a floating card.
+
+   2. The switch itself must never show a blank frame. The curtain is raised by
+      rotationDriver.ts as an inline-styled #lnr-rotation-curtain clone of the
+      live stage, so its PIXEL geometry (left/top/width/height/z-index/opacity)
+      is deliberately not set here — the driver measures the frame at switch
+      time and React cannot know those numbers. Only the paint-level properties
+      the clone would otherwise miss are set below, and the driver's inline
+      values always win.
+
+   Colours are the same literal values reader.css uses for the reader bar, so
+   the two bars read as one dock rather than two cards that happen to touch.
+   ========================================================================== */
+
+/* -------------------------------------------------------------- the bar ---- */
+
+.rotation-dock {
+  position: relative; /* in the layout, not floating over the app */
+  z-index: 901; /* above the reader bar (900), below toasts (2000) */
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  /* Sits directly on top of .reader-dock: its top edge is the seam, so no
+     top border, and the reader bar keeps its own bottom padding. */
+  background: #0b1119;
+  border-top: 1px solid #253347;
+  padding: 8px 12px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  /* The bar is above the reader bar, so the home-indicator inset is the
+     reader's business, not ours. */
+}
+
+/* -------------------------------------------------------------- buttons ---- */
+/* Smaller than the reader's 42px transport buttons on purpose: rotation is a
+   set-and-forget control, so it should read as secondary to Play/Stop. */
+
+.rotation-dock button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 6px 11px;
+  border-radius: 9px;
+  border: 1px solid #2b394b;
+  background: #172230;
+  color: #c2d0df;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.rotation-dock button:hover {
+  background: #1f2c3d;
+  color: #fff;
+}
+
+/* On-state uses the app's green, matching .reader-dock button.is-on, so "on"
+   looks identical wherever the streamer sees it. */
+.rotation-dock .rotation-toggle.is-on,
+.rotation-dock button.is-on {
+  background: #14351f;
+  border-color: #22c55e;
+  color: #bbf7d0;
+}
+
+/* The chevron is icon-only: pin it square so it never stretches when the
+   summary text wraps. */
+.rotation-dock .rotation-expand {
+  width: 34px;
+  min-width: 34px;
+  padding: 6px;
+  color: #93a8bc;
+}
+
+.rotation-dock .rotation-expand:hover {
+  color: #fff;
+}
+
+.rotation-dock .rotation-expand svg,
+.rotation-dock .rotation-toggle svg {
+  flex-shrink: 0;
+  display: block;
+}
+
+.rotation-dock button:focus-visible,
+.rotation-dock input:focus-visible,
+.rotation-dock select:focus-visible {
+  outline: 2px solid #f7d896;
+  outline-offset: 2px;
+}
+
+/* -------------------------------------------------------------- summary ---- */
+/* The one-line status ("Quiz 15 min, then Video 45 min"). It is the only
+   elastic item in the bar: it takes the remaining width and can shrink below
+   its content, which keeps the buttons from being pushed off a phone screen. */
+
+.rotation-summary {
+  flex: 1 1 120px;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #93a8bc;
+  letter-spacing: 0.1px;
+}
+
+/* ---------------------------------------------------------------- panel ---- */
+/* Expands inside the bar (see constraint 1). Full width of the bar, below the
+   controls, separated by a hairline instead of a floating shadow. */
+
+.rotation-panel {
+  flex: 1 1 100%;
+  order: 10; /* always wraps under the controls, whatever the DOM order */
+  box-sizing: border-box;
+  margin-top: 7px;
+  padding: 11px 12px;
+  background: #0e1622;
+  border: 1px solid #253347;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  animation: rotation-panel-in 0.16s ease-out;
+}
+
+@keyframes rotation-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The explainer. Muted and small — it is reassurance, not a control. */
+.rotation-hint {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  font-weight: 500;
+  color: #93a8bc;
+}
+
+/* --------------------------------------------------------------- a row ---- */
+/* label / input / unit. The label takes the slack so inputs line up in a
+   column down the panel, which is what makes three rows scan quickly. */
+
+.rotation-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: #c2d0df;
+}
+
+.rotation-row > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 16px on purpose, same reason as reader.css: below that, iOS Safari zooms the
+   whole page when the field is focused, which would jerk the broadcast layout
+   mid-stream. */
+.rotation-row input[type='number'],
+.rotation-row select {
+  flex: 0 0 auto;
+  width: 84px;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: #e6eef8;
+  background: #131c29;
+  border: 1px solid #2b394b;
+  border-radius: 9px;
+  padding: 7px 9px;
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: center;
+}
+
+.rotation-row select {
+  width: auto;
+  flex: 1 1 auto;
+  max-width: 180px;
+  text-align: left;
+}
+
+.rotation-row select option {
+  background: #131c29;
+  color: #e6eef8;
+}
+
+.rotation-row input[type='number']::-webkit-outer-spin-button,
+.rotation-row input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.rotation-unit {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 800;
+  color: #93a8bc;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.rotation-note {
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid #1a2432;
+  font-size: 10.5px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: #6f8298;
+}
+
+/* ------------------------------------------------------------- curtain ---- */
+/* Painted by rotationDriver.ts as #lnr-rotation-curtain, an inline-styled
+   clone of .stage-frame. The driver sets left/top/width/height/z-index/
+   opacity/background/transition/pointer-events inline because it measures the
+   live frame at switch time. Everything here is what the clone would NOT
+   inherit from an inline style block:
+
+     - the frame's 16px corners and 2px border, which the clone otherwise
+       loses (it copies the frame's children, not the frame's own border box)
+     - an opaque fallback background so an uncovered sliver is content-coloured,
+       never black
+     - no interaction: the curtain is a picture of a frozen frame
+     - a safety fade so the curtain can never stay stuck over the stage if the
+       transition is somehow skipped (prefers-reduced-motion, a dropped frame).
+       The driver drives opacity to 0; parity here guarantees the end state. */
+
+#lnr-rotation-curtain {
+  box-sizing: border-box;
+  border-radius: 16px;
+  border: 2px solid #2a374a;
+  background: #060a10;
+  pointer-events: none;
+  will-change: opacity;
+  contain: layout paint;
+}
+
+/* ------------------------------------------------------------ responsive --- */
+
+@media (max-width: 480px) {
+  .rotation-dock {
+    gap: 6px;
+    padding: 7px 10px;
+  }
+  /* The summary is the first thing to go: the state is already legible from
+     the button label ("Rotation On"), and the panel restates it. */
+  .rotation-summary {
+    flex: 1 1 100%;
+    order: 5;
+    font-size: 11px;
+  }
+  .rotation-panel {
+    padding: 10px;
+    gap: 8px;
+  }
+  .rotation-hint {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 380px) {
+  /* Drop the word, keep the glyph — same trick reader.css uses at this width. */
+  .rotation-toggle span {
+    display: none;
+  }
+  .rotation-dock .rotation-toggle {
+    width: 34px;
+    min-width: 34px;
+    padding: 6px;
+  }
+  .rotation-row input[type='number'] {
+    width: 70px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rotation-dock button {
+    transition: none;
+  }
+  .rotation-panel {
+    animation: none;
+  }
+}

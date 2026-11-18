@@ -1,0 +1,648 @@
+/* ===================================================================
+   responsive.css
+   -------------------------------------------------------------------
+   A responsive + typography "patch layer" for lnr Studio.
+
+   WHY THIS FILE EXISTS
+   The original stylesheet (faithstream.css) had ZERO media queries and
+   used pixel font sizes as small as 8.5px. That means the app was
+   designed for one screen width and simply did not adapt to phones.
+   Rather than rewrite 1,396 lines of working CSS (risky), this file
+   loads AFTER it and overrides only what needs to change. Easy to
+   review, easy to revert.
+
+   Load order (see index.css):
+     tailwind  ->  faithstream.css  ->  responsive.css
+   =================================================================== */
+
+/* ===================================================================
+   1. DESIGN TOKENS
+   =================================================================== */
+:root {
+  /* Muted text was #8c9ea8. Lightened so small text stays comfortable
+     to read against the near-black background. */
+  --text-muted: #9aacb9;
+  --text-dim: #8899a8;
+
+  /* Minimum readable sizes. Nothing in the UI should drop below these. */
+  --caption-size: 11px;
+  --body-size: 13.5px;
+
+  /* One consistent corner radius scale (the old UI mixed 4/5/6/8/9/10/12/14/16/18) */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  /* Comfortable minimum touch target for fingers (WCAG 2.5.5 = 44px) */
+  --tap-min: 44px;
+}
+
+/* ===================================================================
+   2. GLOBAL FIXES
+   =================================================================== */
+
+/* PWA standalone mode on notched phones: keep content out of the
+   status bar / home indicator area. */
+.fs-app,
+.top-pill-bar,
+.stage-view-wrapper {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+.stage-view-wrapper {
+  padding-bottom: max(30px, env(safe-area-inset-bottom));
+}
+
+/* Keyboard accessibility: the original UI had no visible focus ring,
+   so tabbing through controls gave no feedback at all. */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid #f7d896;
+  outline-offset: 2px;
+}
+
+/* Respect the OS "reduce motion" setting. The app runs four infinite
+   animations (pulsing banners, pills, live button, scrolling ticker);
+   for motion-sensitive users those are genuinely unpleasant. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ===================================================================
+   3. TYPOGRAPHY — no text smaller than 11px, body copy raised
+   =================================================================== */
+
+.engine-card-desc {
+  font-size: var(--body-size);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.gateway-sub {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.engine-feature-item {
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.engine-card-corner-tag {
+  font-size: 10.5px;
+  letter-spacing: 0.9px;
+}
+
+.gateway-badge {
+  font-size: 11px;
+  letter-spacing: 1.2px;
+}
+
+.pack-selector-label {
+  font-size: 11.5px;
+}
+
+/* Form controls: 13px inputs cause mobile Safari to zoom the whole
+   page on tap. 16px is the threshold that prevents it. */
+.fs-field input,
+.fs-field select,
+.fs-field textarea,
+.pack-select-dropdown {
+  font-size: 16px;
+  padding: 11px 13px;
+}
+
+.fs-field label {
+  font-size: 11.5px;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.melody-card-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.melody-preview-tag {
+  font-size: 10.5px;
+}
+
+/* Quiz viewport micro-labels — these were 8.5–9.5px, effectively
+   unreadable on a phone. Raised to a legible floor. */
+.quiz-tag {
+  font-size: 10.5px;
+  letter-spacing: 0.8px;
+}
+
+.quiz-question-kicker,
+.reveal-head {
+  font-size: 10.5px;
+  letter-spacing: 1.1px;
+}
+
+.live-chat-callout-banner {
+  font-size: 11px;
+}
+
+.progressive-countdown-bar {
+  font-size: 10.5px;
+}
+
+.quiz-image-tag {
+  font-size: 10.5px;
+}
+
+.cast-active-pill {
+  font-size: 10.5px;
+}
+
+.lower-third-church {
+  font-size: 10.5px;
+}
+
+.lower-third-sub {
+  font-size: 11.5px;
+}
+
+.controller-info small {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.reveal-insight.font-normal-text {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Answer option text: raise the worst-case minimum. */
+.quiz-opt-text.font-normal-text {
+  font-size: clamp(12px, 1.6vw, 13px);
+  line-height: 1.3;
+}
+
+/* The font files loaded are 400–800. Weight 650 / 750 / 850 do not
+   exist, so browsers silently synthesise (fake) bold. Snapping them to
+   real weights makes the text render crisp and consistently. */
+.quiz-question-text.font-medium-text {
+  font-weight: 800;
+}
+
+.quiz-question-text.font-normal-text {
+  font-weight: 700;
+}
+
+.quiz-opt-text.font-normal-text {
+  font-weight: 600;
+}
+
+/* ===================================================================
+   4. GATEWAY / HUB SCREEN
+   =================================================================== */
+
+.gateway-container {
+  padding: 20px 16px 56px;
+  gap: 22px;
+}
+
+/* Bug fix: grid was `minmax(320px, 1fr)`. On a 320px-wide phone the
+   usable column is only 288px, so the card overflowed sideways and got
+   clipped by `body { overflow-x: hidden }`. min() lets it shrink. */
+.engines-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+
+/* Equal-height cards: push the feature list + buttons to the bottom so
+   the two cards line up instead of leaving a ragged gap in the middle. */
+.engine-features-list {
+  margin-top: auto;
+  gap: 9px;
+}
+
+.engine-card {
+  padding: 22px 18px;
+}
+
+/* The two secondary buttons in the pack row now match the primary
+   buttons' height and centre their icon+label the same way. */
+.btn-action-freemium,
+.btn-action-premium {
+  min-height: 44px;
+  font-size: 12px;
+  gap: 7px;
+  justify-content: center;
+}
+
+.pack-actions-row {
+  gap: 10px;
+}
+
+/* Action row: primary button and the square tool buttons share one
+   baseline instead of three different heights. */
+.engine-actions-row {
+  gap: 10px;
+  align-items: stretch;
+}
+
+.btn-launch-engine {
+  min-height: 48px;
+  font-size: 13px;
+}
+
+.btn-engine-tool {
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* ===================================================================
+   5. HEADER UTILITY BAR
+   Horizontal scroll is the right pattern here (8 pills will never fit
+   a phone), so it is kept — but with finger-sized targets and a hint
+   that there is more to the right. */
+.top-pill-bar {
+  padding: 9px 14px;
+  gap: 9px;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 92%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 92%, transparent 100%);
+}
+
+.nav-pill {
+  min-height: 40px;
+  padding: 9px 14px;
+  font-size: 12px;
+  gap: 7px;
+}
+
+/* ===================================================================
+   6. STAGE / BROADCAST SCREEN
+   =================================================================== */
+
+.stage-view-wrapper {
+  padding: 0 14px 30px;
+}
+
+/* Portrait broadcast frame. On desktop it was capped at 440px which
+   looked lost in a 1440px window; on mobile `max-height: 82vh` plus the
+   control panel below pushed the controls off-screen. Both handled. */
+.stage-frame.portrait {
+  max-width: 480px;
+  max-height: 74vh;
+}
+
+.stage-frame.landscape {
+  max-height: 60vh;
+}
+
+/* Quiz content inside the frame was fighting the watermark for space. */
+.quiz-viewport-stage {
+  padding: 10px 12px 12px;
+  gap: 0;
+}
+
+.quiz-meta-row,
+.live-chat-callout-banner {
+  max-width: calc(100% - 76px);
+}
+
+.quiz-options-list {
+  gap: 7px;
+}
+
+/* Taller answer targets, but text stays centred and readable. */
+.quiz-opt-btn {
+  min-height: 44px;
+  padding: 8px 11px;
+  gap: 10px;
+}
+
+.opt-badge {
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+}
+
+/* The "casting" pill was pinned at `left: 120px`, which overlapped the
+   watermark and the question kicker on narrow screens. Anchored to the
+   frame's own top-left instead. */
+.cast-active-pill {
+  left: 10px;
+  top: 10px;
+}
+
+/* ===================================================================
+   7. CONTROL PANEL — the worst offender on mobile
+   -------------------------------------------------------------------
+   6 tool buttons at 36px + a timer + a play button + a text block
+   needed ~382px in a 358px space, so the right-hand icons were pushed
+   off the edge. Now it wraps into two tidy rows.
+   =================================================================== */
+.stage-control-panel {
+  padding: 14px;
+  gap: 12px;
+}
+
+.stage-controller-row {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.controller-info {
+  flex: 1 1 150px;
+}
+
+.controller-tools {
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.btn-stage-tool {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+
+.btn-transport-play {
+  width: 52px;
+  height: 52px;
+}
+
+.timer-dial-wrap {
+  width: 52px;
+  height: 52px;
+}
+
+.btn-live-unlocked {
+  min-height: 52px;
+  font-size: 13.5px;
+  line-height: 1.25;
+  padding: 14px 16px;
+  text-align: center;
+}
+
+.btn-live-locked {
+  min-height: 46px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  padding: 12px 14px;
+  text-align: center;
+}
+
+/* ===================================================================
+   8. MODALS
+   =================================================================== */
+.fs-modal-content {
+  padding: 20px;
+  max-height: 90vh;
+}
+
+.btn-close-modal {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.melody-categories-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 165px), 1fr));
+}
+
+/* ===================================================================
+   9. BREAKPOINT: PHONES (<= 640px)
+   =================================================================== */
+@media (max-width: 640px) {
+  .gateway-container {
+    padding: 16px 14px 48px;
+    gap: 18px;
+  }
+
+  .gateway-hero {
+    padding: 14px 8px 6px;
+  }
+
+  .gateway-title {
+    font-size: clamp(22px, 6.5vw, 28px);
+    line-height: 1.2;
+  }
+
+  .engine-card {
+    padding: 20px 16px;
+    border-radius: 14px;
+  }
+
+  .engine-icon-wrap {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 12px;
+  }
+
+  .engine-card-name {
+    font-size: 18px;
+    line-height: 1.25;
+  }
+
+  /* Broadcast frame: leave room for the controls below so the whole
+     control panel is reachable without scrolling. */
+  .stage-frame.portrait {
+    max-width: 100%;
+    max-height: 58vh;
+  }
+
+  .stage-view-wrapper.panel-hidden .stage-frame.portrait {
+    max-height: 88vh;
+  }
+
+  .stage-frame.landscape {
+    max-height: 42vh;
+  }
+
+  .stage-top-bar {
+    padding: 8px 2px 10px;
+    gap: 8px;
+  }
+
+  .btn-home {
+    padding: 9px 12px;
+    min-height: 40px;
+  }
+
+  .stage-top-actions {
+    gap: 6px;
+  }
+
+  /* Full-width rows: info text on its own line, tools wrap beneath. */
+  .controller-info {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .controller-tools {
+    order: 4;
+    flex-basis: 100%;
+  }
+
+  .btn-stage-tool {
+    width: 44px;
+    height: 44px;
+  }
+
+  .stage-control-panel {
+    border-radius: 12px;
+    padding: 12px;
+  }
+
+  /* Two equal buttons side by side instead of cramped half-width ones. */
+  .pack-actions-row {
+    flex-direction: column;
+  }
+
+  .btn-action-freemium,
+  .btn-action-premium {
+    width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .fs-modal-backdrop {
+    padding: 10px;
+  }
+
+  .fs-modal-content {
+    padding: 16px;
+    max-height: 92vh;
+    border-radius: 14px;
+  }
+
+  .fs-modal-head h3 {
+    font-size: 16px;
+  }
+
+  /* Stop the QR/label text in the callout banner from overflowing. */
+  .live-chat-callout-banner {
+    max-width: 100%;
+    font-size: 10.5px;
+    padding: 5px 7px;
+  }
+}
+
+/* ===================================================================
+   10. BREAKPOINT: VERY NARROW PHONES (<= 380px)
+   =================================================================== */
+@media (max-width: 380px) {
+  .gateway-container {
+    padding: 12px 11px 40px;
+  }
+
+  .engine-card {
+    padding: 18px 14px;
+  }
+
+  .quiz-meta-row,
+  .live-chat-callout-banner {
+    max-width: 100%;
+  }
+
+  .stage-watermark {
+    font-size: 10px;
+    padding: 3px 6px;
+  }
+}
+
+/* ===================================================================
+   11. BREAKPOINT: TABLET / SMALL LAPTOP (>= 768px)
+   =================================================================== */
+@media (min-width: 768px) {
+  .gateway-container {
+    padding: 28px 22px 64px;
+    max-width: 1060px;
+  }
+
+  .stage-view-wrapper {
+    max-width: 940px;
+  }
+
+  .stage-frame.portrait {
+    max-height: 78vh;
+  }
+
+  .btn-stage-tool {
+    width: 42px;
+    height: 42px;
+  }
+}
+
+/* ===================================================================
+   12. BREAKPOINT: DESKTOP (>= 1100px)
+   =================================================================== */
+@media (min-width: 1100px) {
+  .gateway-container {
+    max-width: 1140px;
+    padding: 36px 28px 80px;
+  }
+
+  .engine-card {
+    padding: 26px 24px;
+  }
+
+  .engine-card-desc {
+    font-size: 14px;
+  }
+
+  /* More breathing room in the 9:16 broadcast preview on large screens. */
+  .stage-frame.portrait {
+    max-width: 520px;
+    max-height: 80vh;
+  }
+}
+
+/* ===================================================================
+   13. COARSE POINTER / TOUCH DEVICES
+   Any device without a mouse gets finger-sized targets everywhere,
+   including pills and secondary buttons.
+   =================================================================== */
+@media (pointer: coarse) {
+  .nav-pill {
+    min-height: 44px;
+    padding: 10px 15px;
+  }
+
+  .btn-stage-tool {
+    width: 44px;
+    height: 44px;
+  }
+
+  .btn-engine-tool {
+    width: 48px;
+    min-height: 48px;
+  }
+
+  .btn-close-modal {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Hover-only affordances are meaningless on touch; keep the layout
+     still so tapping never shifts neighbouring elements. */
+  .engine-card:hover,
+  .btn-launch-engine:hover,
+  .btn-action-premium:hover,
+  .btn-live-unlocked:hover {
+    transform: none;
+  }
+}

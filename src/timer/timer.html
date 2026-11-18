@@ -1,0 +1,1160 @@
+<div class="app">
+
+  <!-- ============ TOP BAR ============ -->
+  <header class="topbar">
+    <a class="brand" href="#home" id="brandHome">
+      <span class="brand-mark" aria-hidden="true">lnr</span>
+      <span class="brand-text">lnr Studio</span>
+    </a>
+    <nav class="topnav" aria-label="Site">
+      <a class="topnav-link is-active" href="#home" data-page-link="home">Home</a>
+      <a class="topnav-link" href="#studio" data-page-link="studio">Studio</a>
+      <a class="topnav-link" href="#settings" data-page-link="settings">Settings</a>
+      <a class="topnav-link" href="#contact" data-page-link="contact">Contact</a>
+    </nav>
+    <div class="topbar-actions">
+      <button class="btn btn-primary btn-sm" id="topbarStartBtn" type="button">Open Studio</button>
+    </div>
+  </header>
+
+  <!-- ============ SETUP PAGES ============ -->
+  <main class="screen screen-setup" id="screenSetup">
+
+    <!-- PAGE 1: HOME -->
+    <section class="page-view" id="pageHome" data-page="home">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Livestream control room</p>
+          <h1>Four engines.<br />One calm studio.</h1>
+          <p class="hero-sub">Run 1,800+ non-repeating trivia questions, multi-act Historical &amp; Biblical Storytelling documentaries, Guess the Player SVG rounds, or seamless looped video &mdash; with active voice narration, embedded ambient beds, and optional breaks you control.</p>
+          <div class="hero-cta-row">
+            <button class="btn btn-primary btn-lg" id="homeGoStudioBtn" type="button">
+              <span class="play-glyph" aria-hidden="true"></span>
+              <span>Start Studio Setup</span>
+            </button>
+            <a class="btn btn-quiet btn-lg" href="#settings" data-page-link="settings">Voice &amp; Audio Settings</a>
+          </div>
+        </div>
+        <div class="hero-stat-card">
+          <div class="hstat"><b id="statBank">0</b><span>questions, episodes &amp; cards ready</span></div>
+          <div class="hstat"><b id="statRun">0h&nbsp;00m</b><span>built-in non-repeating</span></div>
+          <div class="hstat"><b>0</b><span>repeats per cycle</span></div>
+        </div>
+      </section>
+
+      <section class="quickstart" id="quickStart" aria-label="How it works">
+        <div class="qs-head">
+          <h2>How the studio works</h2>
+          <p>Everything is unlocked out of the box &mdash; pick an engine, customize timing, audio, and branding, and broadcast safely for hours.</p>
+        </div>
+        <ol class="qs-steps">
+          <li class="qs-step">
+            <span class="qs-num" aria-hidden="true">1</span>
+            <div class="qs-body">
+              <b>Choose an engine</b>
+              <span>Classic Quiz, Guess the Player with 4:5 SVG cards, Documentary Storytelling Mode, or dual-deck prerecorded Video playback.</span>
+            </div>
+          </li>
+          <li class="qs-step">
+            <span class="qs-num" aria-hidden="true">2</span>
+            <div class="qs-body">
+              <b>Multi-hour built-in banks</b>
+              <span>1,150+ Bible questions, 510+ World History questions, 8 multi-act Documentary episodes, and 150+ Player Quizzes included.</span>
+            </div>
+          </li>
+          <li class="qs-step">
+            <span class="qs-num" aria-hidden="true">3</span>
+            <div class="qs-body">
+              <b>YouTube-safe broadcast</b>
+              <span>Active TTS narration, 1,500-item repeat prevention, copyright-safe ambient audio, and clear break disclosures.</span>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="info-grid">
+        <article class="info-card">
+          <h3>14+ hours non-repeating</h3>
+          <p>Built-in shuffle bags and cross-session memory prevent consecutive repeats so long broadcasts stay fresh and engaging.</p>
+        </article>
+        <article class="info-card">
+          <h3>YouTube-safe guardrails</h3>
+          <p>Active voice narration, procedural copyright-safe music beds, and honest Partner Break disclosures replace deceptive ad overlays.</p>
+        </article>
+        <article class="info-card">
+          <h3>Full channel branding</h3>
+          <p>Customize your own watermark, site URL, brand strap, and CSV playback logs freely with zero paywalls or daily limits.</p>
+        </article>
+      </section>
+    </section>
+
+    <!-- PAGE 2: STUDIO WIZARD -->
+    <section class="page-view" id="pageStudio" data-page="studio" hidden>
+      <div class="wizard-header">
+        <div>
+          <p class="eyebrow">Guided studio setup</p>
+          <h1 class="page-title">Build your broadcast</h1>
+        </div>
+        <span class="meta-inline" id="wizContextTag">Quiz engine selected</span>
+      </div>
+
+      <nav class="wizard-steps" aria-label="Setup steps">
+        <button class="wizard-tab is-active" type="button" data-wiz-tab="1" id="wizTab1">
+          <span class="wizard-tab-num">1</span>
+          <span>Choose engine</span>
+        </button>
+        <button class="wizard-tab" type="button" data-wiz-tab="2" id="wizTab2">
+          <span class="wizard-tab-num">2</span>
+          <span>Content &amp; timing</span>
+        </button>
+        <button class="wizard-tab" type="button" data-wiz-tab="3" id="wizTab3">
+          <span class="wizard-tab-num">3</span>
+          <span>Promo &amp; go live</span>
+        </button>
+      </nav>
+
+      <!-- STEP 1: ENGINE -->
+      <div class="wiz-panel" id="wizStep1" data-wiz-panel="1">
+        <section class="panel-block">
+          <div class="block-head">
+            <h2><span class="step-num">1</span> Select an engine to configure</h2>
+            <p>Tap an engine card below to jump straight to its content loader and broadcast timing.</p>
+          </div>
+          <div class="engine-grid" role="radiogroup" aria-label="Engine">
+            <button class="engine-card is-selected" type="button" role="radio" aria-checked="true" data-engine="quiz" id="engQuiz">
+              <span class="engine-top">
+                <span class="engine-glyph" aria-hidden="true">?</span>
+                <span class="engine-check" aria-hidden="true"></span>
+              </span>
+              <span class="engine-kind">Engine 01</span>
+              <span class="engine-name">Quiz engine</span>
+              <span class="engine-desc">Non-repeating shuffle bag, adaptive countdown, 10-question milestone grading, and built-in TTS voice reader.</span>
+              <span class="engine-foot"><b id="engQuizCount">0</b> questions <i>&middot;</i> <span id="engQuizRun">loading built-in packs&hellip;</span></span>
+            </button>
+            <button class="engine-card" type="button" role="radio" aria-checked="false" data-engine="players" id="engPlayers">
+              <span class="engine-top">
+                <span class="engine-glyph glyph-player" aria-hidden="true">&#9917;</span>
+                <span class="engine-check" aria-hidden="true"></span>
+              </span>
+              <span class="engine-kind">Engine 02</span>
+              <span class="engine-name">Player quiz</span>
+              <span class="engine-desc">Guess the Player, Blur Reveal &amp; Zoom Mystery with 4:5 SVG broadcast cards and 10-question milestone boards.</span>
+              <span class="engine-foot"><b id="engPlayersCount">0</b> players <i>&middot;</i> <span id="engPlayersRun">ready to stream</span></span>
+            </button>
+            <button class="engine-card" type="button" role="radio" aria-checked="false" data-engine="video" id="engVideo">
+              <span class="engine-top">
+                <span class="engine-glyph glyph-alt" aria-hidden="true">&#9654;</span>
+                <span class="engine-check" aria-hidden="true"></span>
+              </span>
+              <span class="engine-kind">Engine 03</span>
+              <span class="engine-name">Video engine</span>
+              <span class="engine-desc">Prerecorded clips looped seamlessly for hours. Upload clips and the studio calculates your loop schedule automatically.</span>
+              <span class="engine-foot"><b id="engVideoCount">0</b> clips <i>&middot;</i> <span id="engVideoRun">up to 12 clips</span></span>
+            </button>
+            <button class="engine-card" type="button" role="radio" aria-checked="false" data-engine="story" id="engStory">
+              <span class="engine-top">
+                <span class="engine-glyph glyph-story" aria-hidden="true">&#167;</span>
+                <span class="engine-check" aria-hidden="true"></span>
+              </span>
+              <span class="engine-kind">Engine 04</span>
+              <span class="engine-name">Storytelling engine</span>
+              <span class="engine-desc">Automated documentary studio: multi-act narrative episodes, animated map &amp; archive scenes, and continuous TTS narration.</span>
+              <span class="engine-foot"><b id="engStoryCount">0</b> episodes <i>&middot;</i> <span id="engStoryRun">ready to broadcast</span></span>
+            </button>
+          </div>
+          <div class="wiz-nav-row wiz-nav-end">
+            <button class="btn btn-primary btn-lg" type="button" id="wizToStep2Btn">Continue to Content &amp; Timing &rarr;</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- STEP 2: CONTENT & TIMING -->
+      <div class="wiz-panel" id="wizStep2" data-wiz-panel="2" hidden>
+        <div class="wiz-step-bar">
+          <span class="wiz-step-label" id="wizStep2Title">Configuring: Quiz engine</span>
+          <button class="btn btn-ghost btn-sm" type="button" id="wizChangeEngineBtn">&larr; Change engine</button>
+        </div>
+
+        <!-- 2 · QUIZ ENGINE -->
+        <section class="panel-block" id="quizSetup">
+          <div class="block-head">
+            <h2><span class="step-num">2</span> Quiz pack &amp; rhythm <span class="meta-inline" id="quizPrivateNotice">1,150+ Built-in + Custom JSON</span></h2>
+            <p>Multi-hour Bible and World History packs are already loaded. Optionally import your own JSON question pack below to expand your rotation.</p>
+          </div>
+
+          <div class="segment-grid" role="radiogroup" aria-label="Quiz segment">
+            <button class="segment-card is-selected" type="button" role="radio" aria-checked="true" data-segment="bible" id="segBible">
+              <span class="segment-top">
+                <span class="segment-glyph" aria-hidden="true">&#10022;</span>
+                <span class="segment-check" aria-hidden="true"></span>
+              </span>
+              <span class="segment-name">Bible / Faith</span>
+              <span class="segment-desc">Scripture trivia, references, and insights formatted for read-aloud clarity and 10-question milestone recaps.</span>
+              <span class="segment-foot"><b id="countBible">0</b> questions <i>&middot;</i> <span id="runBible">&asymp; 0h 00m</span></span>
+            </button>
+            <button class="segment-card" type="button" role="radio" aria-checked="false" data-segment="history" id="segHistory">
+              <span class="segment-top">
+                <span class="segment-glyph glyph-alt" aria-hidden="true">&#8987;</span>
+                <span class="segment-check" aria-hidden="true"></span>
+              </span>
+              <span class="segment-name">World History / Trivia</span>
+              <span class="segment-desc">Dated events, discoveries, science, and civilizations saved directly on your device for non-repeating playback.</span>
+              <span class="segment-foot"><b id="countHistory">0</b> questions <i>&middot;</i> <span id="runHistory">&asymp; 0h 00m</span></span>
+            </button>
+          </div>
+
+          <div class="guide-box" id="quizGuideBox">
+            <div class="guide-head">
+              <div>
+                <h3>Expand with your own custom quiz pack (optional)</h3>
+                <p>Download the starter template, paste our prompt into any AI tool or spreadsheet to build fresh original questions, save as <code>.json</code>, and import directly on phone or desktop.</p>
+              </div>
+              <label class="btn btn-primary btn-sm pl-file-btn">
+                <input type="file" id="setupQuizImportInput" accept="application/json,.json" />
+                <span>Import Quiz JSON</span>
+              </label>
+            </div>
+            <div class="guide-actions">
+              <button class="btn btn-quiet btn-sm" type="button" id="dlQuizTemplateBtn">Download Quiz Template (.json)</button>
+              <button class="btn btn-quiet btn-sm" type="button" id="copyQuizPromptBtn">Copy AI Generator Prompt</button>
+            </div>
+            <ol class="guide-steps">
+              <li><strong>Step 1:</strong> Tap <em>Copy AI Generator Prompt</em> (or download the <code>.json</code> template) and generate 30&ndash;100 fresh questions on your niche.</li>
+              <li><strong>Step 2:</strong> Save the JSON output into your Downloads folder on your phone or computer.</li>
+              <li><strong>Step 3:</strong> Tap <em>Import Quiz JSON</em> above. Duplicates are skipped automatically and packs stay offline on your device.</li>
+            </ol>
+            <div class="import-result" id="setupImportResult" hidden></div>
+          </div>
+
+          <div class="sub-block">
+            <h3 class="sub-title">Quiz rhythm</h3>
+            <div class="dial-row">
+              <label class="dial">
+                <span class="dial-label">Quiz block</span>
+                <span class="dial-input"><input type="number" id="setupQuizMin" min="5" max="240" step="5" value="60" inputmode="numeric" /><em>min</em></span>
+                <span class="dial-hint" id="quizTierLimitNote">Up to 240 min per block &middot; auto-rotates continuously</span>
+              </label>
+              <label class="dial">
+                <span class="dial-label">Per question</span>
+                <span class="dial-input"><input type="number" id="setupQSec" min="5" max="90" step="1" value="10" inputmode="numeric" /><em>sec</em></span>
+                <span class="dial-hint">10s think timer with tick sound after voice reads (or custom when Voice is off)</span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2 · PLAYER QUIZ ENGINE -->
+        <section class="panel-block" id="playersSetup" hidden>
+          <div class="block-head">
+            <h2><span class="step-num">2</span> Player quiz &amp; card library <span class="meta-inline" id="playerPrivateNotice">150+ Built-in Cards + Custom</span></h2>
+            <p>150+ built-in sports player cards and clue rounds are ready immediately. Optionally import additional player packs in JSON; every answer reveals as a 4:5 SVG broadcast card.</p>
+          </div>
+
+          <div class="sub-block">
+            <h3 class="sub-title">Show format <em>from your player database</em></h3>
+            <div class="seg-inline" role="radiogroup" aria-label="Player quiz format">
+              <button class="seg-pill is-selected" type="button" data-pmode="all" id="pmodeAll">All formats &middot; <b id="pmodeAllCount">0</b></button>
+              <button class="seg-pill" type="button" data-pmode="clues" id="pmodeClues">Guess the Player (Clues)</button>
+              <button class="seg-pill" type="button" data-pmode="visual" id="pmodeVisual">Blur &amp; Zoom Mystery</button>
+            </div>
+          </div>
+
+          <div class="sub-block">
+            <h3 class="sub-title">Livestream sequence timing <em>plus 10-question milestone grading</em></h3>
+            <div class="dial-row dial-row-5">
+              <label class="dial">
+                <span class="dial-label">Player block</span>
+                <span class="dial-input"><input type="number" id="setupPlayerMin" min="10" max="240" step="5" value="60" inputmode="numeric" /><em>min</em></span>
+                <span class="dial-hint" id="playerTierLimitNote">Up to 240 min per block &middot; auto-rotates continuously</span>
+              </label>
+              <label class="dial">
+                <span class="dial-label">Per clue</span>
+                <span class="dial-input"><input type="number" id="setupClueSec" min="3" max="20" step="1" value="6" inputmode="numeric" /><em>sec</em></span>
+                <span class="dial-hint">Waits for reader too</span>
+              </label>
+              <label class="dial">
+                <span class="dial-label">Comment clock</span>
+                <span class="dial-input"><input type="number" id="setupGuessSec" min="5" max="45" step="1" value="12" inputmode="numeric" /><em>sec</em></span>
+                <span class="dial-hint">Drop answer in chat</span>
+              </label>
+              <label class="dial">
+                <span class="dial-label">Answer reveal</span>
+                <span class="dial-input"><input type="number" id="setupPlayerRevealSec" min="3" max="20" step="1" value="6" inputmode="numeric" /><em>sec</em></span>
+                <span class="dial-hint">Card + voice insight</span>
+              </label>
+              <label class="dial">
+                <span class="dial-label">Milestone board</span>
+                <span class="dial-input"><input type="number" id="setupMilestoneSec" min="10" max="60" step="5" value="30" inputmode="numeric" /><em>sec</em></span>
+                <span class="dial-hint">Every 10 Qs &rarr; ad check</span>
+              </label>
+            </div>
+
+            <div class="chat-safe-options">
+              <label class="switch-row">
+                <input type="checkbox" id="setupChatSafe" checked />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Chat-safe upper broadcast zone <em>keeps clues, countdown &amp; reveal above mobile live chat and typing boxes</em></span>
+              </label>
+              <label class="switch-row">
+                <input type="checkbox" id="setupChatGuide" />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Preview chat-safe boundary line <em>shows the safe margin line while setting up (hidden in Stream-safe mode)</em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="sub-block player-lib-box" id="playerLibPanel">
+            <div class="pl-lib-head">
+              <div>
+                <h3 class="sub-title" style="margin-bottom:4px">Player Card &amp; Quiz Library</h3>
+                <p class="block-note" style="margin-top:0">No image uploads required &mdash; every player card renders as a crisp 4:5 SVG broadcast card with kit details.</p>
+              </div>
+              <span class="dsec-tag" id="plPersistTag">Device IndexedDB</span>
+            </div>
+
+            <div class="pl-stats-grid">
+              <div class="pl-stat"><b id="plStatPlayers">0</b><span>Player cards</span></div>
+              <div class="pl-stat"><b id="plStatFormat">SVG 4:5</b><span>Reveal card format</span></div>
+              <div class="pl-stat"><b id="plStatQuizzes">0</b><span>Player quizzes</span></div>
+              <div class="pl-stat"><b id="plStatStorage">0 MB</b><span>Custom pack data</span></div>
+            </div>
+
+            <div class="pl-actions">
+              <label class="btn btn-primary btn-sm pl-file-btn">
+                <input type="file" id="plQuizJsonInput" accept="application/json,.json" />
+                <span>Import Players / Quiz JSON</span>
+              </label>
+              <button class="btn btn-quiet btn-sm" type="button" id="dlPlayerTemplateBtn">Download Player Template (.json)</button>
+              <button class="btn btn-quiet btn-sm" type="button" id="copyPlayerPromptBtn">Copy Player AI Prompt</button>
+              <button class="btn btn-ghost btn-sm" type="button" id="plClearBtn">Reset Custom Pack</button>
+            </div>
+
+            <div class="import-result" id="plStatus" hidden></div>
+
+            <div class="pl-search-wrap">
+              <label class="field field-wide">
+                <span>Search &amp; preview player cards</span>
+                <input type="search" id="plSearchInput" placeholder="Type name, ID (e.g. PLY001), or club&hellip;" autocomplete="off" />
+              </label>
+              <ul class="pl-search-list" id="plSearchResults" hidden></ul>
+            </div>
+
+            <details class="schema">
+              <summary>Player &amp; quiz JSON import format</summary>
+              <pre>{ "players": [{ "player_id": "PLY001", "name": "...", "club": "...", "nationality": "...", "position": "Forward", "number": "7" }] }
+
+{ "quizzes": [{ "quiz_id": "Q001", "mode": "clues|blur_reveal|zoom_crop|silhouette", "question": "Guess the player!", "clues": ["..."], "answer_player_id": "PLY001", "reveal_text": "...", "insight": "..." }] }</pre>
+            </details>
+          </div>
+        </section>
+
+        <!-- 2 · VIDEO ENGINE -->
+        <section class="panel-block" id="videoSetup" hidden>
+          <div class="block-head">
+            <h2><span class="step-num">2</span> Video clips &amp; loop duration</h2>
+            <p>Upload one or more prerecorded videos and choose playback length. Multiple clips transition cleanly via dual-deck preload.</p>
+          </div>
+
+          <label class="dropzone" id="videoDrop">
+            <input type="file" id="videoInput" accept="video/*" multiple />
+            <span class="dz-glyph" aria-hidden="true">&uarr;</span>
+            <span class="dz-title">Drop your prerecorded video here</span>
+            <span class="dz-sub" id="videoTierLimitNote">Upload up to 12 prerecorded clips (MP4/WebM/MOV) &middot; dual-deck crossfade &middot; stored locally on device</span>
+          </label>
+          <div class="demo-video-bar">
+            <button class="btn btn-quiet btn-sm" type="button" id="loadDemoVideoBtn">Preview 15s Built-in Video Demo</button>
+            <span class="block-note" id="demoVideoStatus" style="margin:0">Try Engine 03 right now without uploading an MP4.</span>
+          </div>
+          <ul class="clip-list" id="clipList"></ul>
+
+          <div class="sub-block">
+            <h3 class="sub-title">Playback length</h3>
+            <div class="loop-calc" id="loopCalc">
+              <div class="loop-math" id="loopMath">
+                <div class="lm-cell"><b id="lmDuration">&mdash;</b><span>video length</span></div>
+                <div class="lm-op" aria-hidden="true">&times;</div>
+                <div class="lm-cell"><b id="lmLoops">&mdash;</b><span>loops</span></div>
+                <div class="lm-op" aria-hidden="true">=</div>
+                <div class="lm-cell is-total"><b id="lmTotal">&mdash;</b><span>on air</span></div>
+              </div>
+              <div class="preset-row" id="loopPresets" role="group" aria-label="Playback length">
+                <button class="preset" type="button" data-hours="0.5" data-preset="30m">30m</button>
+                <button class="preset" type="button" data-hours="1" data-preset="1h">1h</button>
+                <button class="preset is-selected" type="button" data-hours="2" data-preset="2h">2h</button>
+                <button class="preset" type="button" data-hours="3" data-preset="3h">3h</button>
+                <button class="preset" type="button" data-hours="6" data-preset="6h">6h</button>
+                <button class="preset" type="button" data-hours="12" data-preset="12h">12h</button>
+              </div>
+              <label class="field field-wide"><span>Or type exact hours</span><input type="number" id="loopHours" min="0.1" max="168" step="0.1" value="2" inputmode="decimal" /><em>hr</em></label>
+              <p class="loop-note" id="loopNote">Set a length and the studio repeats your video playlist smoothly &mdash; your stream never drops.</p>
+            </div>
+            <p class="block-note" id="loopClipInfo">no video yet</p>
+          </div>
+        </section>
+
+        <!-- 2 · STORYTELLING ENGINE -->
+        <section class="panel-block" id="storySetup" hidden>
+          <div class="block-head">
+            <h2><span class="step-num">2</span> Documentary episodes &amp; pacing <span class="meta-inline" id="storyCatalogNotice">8 Built-in Episodes + Custom JSON</span></h2>
+            <p>Each documentary unfolds in deliberate acts &mdash; Opening Hook, Escalation, Turning Point, and Legacy &mdash; pairing animated map, archive, profile, timeline, comparison, and artifact compositions with continuous voice narration.</p>
+          </div>
+
+          <div class="sub-block">
+            <h3 class="sub-title">Documentary track filter <em>plays seamlessly in rotation</em></h3>
+            <div class="seg-inline" role="radiogroup" aria-label="Story documentary category">
+              <button class="seg-pill is-selected" type="button" data-storycat="all" id="storyCatAll">All episodes &middot; <b id="storyCatAllCount">0</b></button>
+              <button class="seg-pill" type="button" data-storycat="world-history" id="storyCatHistory">World History &middot; <b id="storyCatHistoryCount">0</b></button>
+              <button class="seg-pill" type="button" data-storycat="biblical" id="storyCatBiblical">Biblical Chronicles &middot; <b id="storyCatBiblicalCount">0</b></button>
+            </div>
+          </div>
+
+          <div class="sub-block">
+            <h3 class="sub-title">Documentary pacing</h3>
+            <div class="dial-row">
+              <label class="dial">
+                <span class="dial-label">Story block</span>
+                <span class="dial-input"><input type="number" id="setupStoryMin" min="10" max="240" step="5" value="60" inputmode="numeric" /><em>min</em></span>
+                <span class="dial-hint">Auto-advances through episodes until break check</span>
+              </label>
+              <label class="dial">
+                <span class="dial-label">Scene breathe hold</span>
+                <span class="dial-input"><input type="number" id="setupStorySceneSec" min="4" max="30" step="1" value="8" inputmode="numeric" /><em>sec</em></span>
+                <span class="dial-hint">Brief pause after narrator finishes each scene (or full duration when Voice is off)</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="sub-block player-lib-box" id="storyCatalogBox">
+            <div class="pl-lib-head">
+              <div>
+                <h3 class="sub-title" style="margin-bottom:4px">Curated &amp; Custom Story Episodes</h3>
+                <p class="block-note" style="margin-top:0">Select a starting episode or let the studio rotate cleanly through every act without repeating.</p>
+              </div>
+              <span class="dsec-tag" id="storySceneTag">0 scenes ready</span>
+            </div>
+
+            <div class="story-episode-list" id="storyEpisodeList"></div>
+
+            <div class="pl-actions" style="margin-top:14px">
+              <label class="btn btn-primary btn-sm pl-file-btn">
+                <input type="file" id="setupStoryImportInput" accept="application/json,.json" />
+                <span>Import Story JSON</span>
+              </label>
+              <button class="btn btn-quiet btn-sm" type="button" id="dlStoryTemplateBtn">Download Story Template (.json)</button>
+              <button class="btn btn-quiet btn-sm" type="button" id="copyStoryPromptBtn">Copy Documentary AI Prompt</button>
+              <button class="btn btn-ghost btn-sm" type="button" id="storyClearBtn">Reset Custom Episodes</button>
+            </div>
+            <div class="import-result" id="storyImportResult" hidden></div>
+          </div>
+        </section>
+
+        <div class="wiz-nav-row">
+          <button class="btn btn-quiet btn-lg" type="button" id="wizBackTo1Btn">&larr; Back: Choose engine</button>
+          <button class="btn btn-primary btn-lg" type="button" id="wizToStep3Btn">Next: Breaks &amp; Go Live &rarr;</button>
+        </div>
+      </div>
+
+      <!-- STEP 3: BREAKS, YOUTUBE SAFETY & LAUNCH -->
+      <div class="wiz-panel" id="wizStep3" data-wiz-panel="3" hidden>
+        <section class="panel-block" id="promoSetup">
+          <div class="block-head">
+            <h2>
+              <span class="step-num">3</span> Channel &amp; partner breaks
+              <span class="meta-inline"><span id="promoToggleMeta">Breaks off</span> &middot; <b id="promoCount">0 clips</b></span>
+            </h2>
+            <p>Optional sponsor, ministry, or channel break clips between 10-question rounds. Off by default so streams never show empty break placeholders unless you add clips.</p>
+          </div>
+
+          <div class="chat-safe-options" style="margin-top:0; margin-bottom:14px">
+            <label class="switch-row" id="setupPromoSwitchRow">
+              <input type="checkbox" id="setupPromoEnabled" />
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-label">Show channel / partner breaks between rounds <em>enable only when you have uploaded break clips (or check "Includes paid promotion" in YouTube Studio if airing sponsors)</em></span>
+            </label>
+          </div>
+
+          <div id="promoConfigWrap">
+            <label class="dropzone dropzone-sm" id="promoDrop">
+              <input type="file" id="promoInput" accept="video/*" multiple />
+              <span class="dz-glyph" aria-hidden="true">&uarr;</span>
+              <span class="dz-title">Drop channel or partner break video(s)</span>
+              <span class="dz-sub" id="promoTierLimitNote">Upload up to 5 break clips (max 5:00 each) &middot; optional CSV playback log</span>
+            </label>
+            <ul class="clip-list" id="promoList"></ul>
+
+            <div class="sub-block">
+              <h3 class="sub-title">Break frequency &amp; fallback slot <em id="promoCalc">After 10m+ quiz &amp; milestone</em></h3>
+              <div id="promoFreqControls">
+                <div class="preset-row" id="promoIntervalPresets" role="group" aria-label="Break frequency" style="grid-template-columns: repeat(5, minmax(0, 1fr));">
+                  <button class="preset" type="button" data-promointerval="5">Every 5m</button>
+                  <button class="preset is-selected" type="button" data-promointerval="10">Every 10m</button>
+                  <button class="preset" type="button" data-promointerval="15">Every 15m</button>
+                  <button class="preset" type="button" data-promointerval="20">Every 20m</button>
+                  <button class="preset" type="button" data-promointerval="30">Every 30m</button>
+                </div>
+                <div class="dial-row" style="margin-bottom:14px">
+                  <label class="dial">
+                    <span class="dial-label">Break frequency (quiz time)</span>
+                    <span class="dial-input"><input type="number" id="setupPromoIntervalMin" min="5" max="60" step="1" value="10" inputmode="numeric" /><em>min</em></span>
+                    <span class="dial-hint">Plays after milestone once quiz hits threshold</span>
+                  </label>
+                </div>
+                <label class="slider-row"><span>Fallback slot (when no video loaded)</span><input type="range" id="promoAdRange" min="15" max="300" step="5" value="30" /><b id="promoAdLabel">30s</b></label>
+                <div class="preset-row" role="group" aria-label="Break slot length">
+                  <button class="preset" type="button" data-promosec="15">15s</button>
+                  <button class="preset is-selected" type="button" data-promosec="30">30s</button>
+                  <button class="preset" type="button" data-promosec="45">45s</button>
+                  <button class="preset" type="button" data-promosec="60">60s</button>
+                  <button class="preset" type="button" data-promosec="120">2 min</button>
+                  <button class="preset" type="button" data-promosec="300">5 min</button>
+                </div>
+              </div>
+              <p class="loop-note" id="promoNote">Milestones show every 10 questions; once your frequency interval elapses, a brief Partner Break notice plays 1 clip right after the milestone.</p>
+              <div class="analytics-actions">
+                <button class="btn btn-quiet btn-sm" type="button" id="openAnalyticsBtn">View break playback log (CSV)</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="yt-safety-card" id="ytPolicyCard" aria-label="YouTube channel safety checklist">
+          <div class="yt-safety-head">
+            <h3>YouTube Live Policy Safeguards</h3>
+            <span class="dsec-tag">Active Protection</span>
+          </div>
+          <ul class="yt-safety-list">
+            <li><strong>Non-repetitious broadcasts:</strong> 1,800+ unique built-in questions &amp; cards with 1,500-item session memory and active TTS narration so frames change dynamically.</li>
+            <li><strong>Copyright-safe audio:</strong> Procedural ambient pads (Sacred, Drift, Focus) generate royalty-free audio on-device &mdash; only upload tracks you hold broadcast rights to.</li>
+            <li><strong>Honest disclosures:</strong> Fake ad badges are removed. If airing paid sponsor clips, check <em>&ldquo;My video contains paid promotion&rdquo;</em> in YouTube Studio before going live.</li>
+            <li><strong>12-hour VOD limit:</strong> YouTube stops archiving streams longer than 12 hours; restart your broadcast before 11h&ndash;12h to keep full VOD replays.</li>
+          </ul>
+        </section>
+
+        <section class="start-row">
+          <div class="start-lead">
+            <h2><span class="step-num">4</span> Ready when you are</h2>
+            <p id="startSummary">Quiz engine &middot; 10-question rounds &rarr; milestone cards &rarr; uninterrupted rotation.</p>
+          </div>
+          <button class="btn btn-primary btn-lg" id="startBtn" type="button">
+            <span class="play-glyph" aria-hidden="true"></span> <span id="startLabel">Start quiz session</span>
+          </button>
+          <button class="btn btn-quiet btn-lg" id="openSettingsBtn" type="button">Voice &amp; audio settings</button>
+          <p class="start-hint" id="startHint">Music, voice narration and partner breaks are configurable. Press start and everything runs locally on this device.</p>
+        </section>
+
+        <div class="wiz-nav-row">
+          <button class="btn btn-quiet btn-lg" type="button" id="wizBackTo2Btn">&larr; Back: Content &amp; timing</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- PAGE 3: SETTINGS -->
+    <section class="page-view" id="pageSettings" data-page="settings" hidden>
+      <div class="page-head-row">
+        <div>
+          <p class="eyebrow">Studio preferences</p>
+          <h1 class="page-title">Voice, music &amp; broadcast settings</h1>
+          <p class="page-sub">Configure voice narration, ambient audio, stream-safe framing, and your channel brand overlay. All changes save automatically on this device.</p>
+        </div>
+        <span class="saved-tag" id="savedTag">All changes saved on this device</span>
+      </div>
+
+      <div class="settings-grid">
+        <section class="settings-card">
+          <div class="dsec-head">
+            <h3>Voice reader</h3>
+            <span class="dsec-tag" id="stVoiceTag">On</span>
+          </div>
+          <label class="switch-row">
+            <input type="checkbox" id="stVoiceOn" checked />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Read questions aloud <em>waits cleanly for question &amp; options before reveal</em></span>
+          </label>
+          <label class="switch-row">
+            <input type="checkbox" id="stVoiceReveal" checked />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Announce the answer <em>answer, reference and note on reveal</em></span>
+          </label>
+          <label class="field field-wide" style="margin-top:12px">
+            <span>Voice</span>
+            <select id="stVoiceSelect"></select>
+          </label>
+          <label class="slider-row">
+            <span>Speaking rate</span>
+            <input type="range" id="stVoiceRate" min="70" max="130" value="96" />
+            <b id="stVoiceRateLabel">0.96&times;</b>
+          </label>
+          <p class="dsec-note">First question begins directly with the question stem; <em>&ldquo;Next question.&rdquo;</em> plays automatically starting from question 2.</p>
+          <details class="schema">
+            <summary>Free natural voices setup (Android &amp; Desktop)</summary>
+            <p class="schema-note"><strong>Android (Samsung):</strong> Open <em>Settings &rarr; General management &rarr; Text-to-speech output</em>, choose <em>Speech Recognition and Synthesis from Google</em>, and download English (US/UK) high-quality voices free &amp; offline.<br /><strong>Windows / Mac:</strong> Open in Microsoft Edge or Chrome to access free natural Neural voices right inside the dropdown above.</p>
+          </details>
+        </section>
+
+        <section class="settings-card">
+          <div class="dsec-head">
+            <h3>Background music bed</h3>
+            <span class="dsec-tag" id="stMusicTag">Sacred pad</span>
+          </div>
+          <div class="music-grid" id="stMusicGrid">
+            <button class="music-card is-selected" type="button" data-music="sacred">
+              <b>Sacred pad</b><span>Warm, slow, church-friendly</span>
+            </button>
+            <button class="music-card" type="button" data-music="ambient">
+              <b>Ambient drift</b><span>Airy, wide, low distraction</span>
+            </button>
+            <button class="music-card" type="button" data-music="focus">
+              <b>Focus pulse</b><span>Soft rhythm for countdowns</span>
+            </button>
+            <button class="music-card" type="button" data-music="off">
+              <b>No music</b><span>Silence between segments</span>
+            </button>
+          </div>
+          <label class="slider-row">
+            <span>Bed volume</span>
+            <input type="range" id="stMusicVol" min="0" max="100" value="35" />
+            <b id="stMusicVolLabel">35%</b>
+          </label>
+          <label class="switch-row">
+            <input type="checkbox" id="stSfxOn" checked />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Embedded scene cues &amp; ticks <em>soft chimes &amp; countdown ticks on Quiz, Player, and Story engines (never plays during Video clips)</em></span>
+          </label>
+          <div class="file-row">
+            <label class="file-pick">
+              <input type="file" id="stAudioInput" accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac" />
+              <span>Upload MP3 / audio track</span>
+            </label>
+            <span class="file-name" id="stAudioName">No custom track</span>
+            <button class="btn btn-quiet btn-sm audio-preview-btn" type="button" id="stAudioPreviewBtn">Preview audio</button>
+            <button class="btn btn-ghost btn-sm" type="button" id="stAudioClearBtn" hidden>Remove</button>
+          </div>
+        </section>
+
+        <section class="settings-card">
+          <div class="dsec-head">
+            <h3>Broadcast framing &amp; rotation</h3>
+          </div>
+          <label class="switch-row">
+            <input type="checkbox" id="stAutoRotate" checked />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Auto-rotate after milestone <em>notifies viewers first, then plays 1 promo &amp; resumes Round N+1</em></span>
+          </label>
+          <label class="switch-row">
+            <input type="checkbox" id="stSafeDefault" />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Start sessions in stream-safe mode <em>hides controls from screen capture</em></span>
+          </label>
+          <label class="switch-row">
+            <input type="checkbox" id="stChatSafe" checked />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Chat-safe upper broadcast zone <em>keeps content above mobile live chat overlays</em></span>
+          </label>
+          <label class="switch-row">
+            <input type="checkbox" id="stChatGuide" />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Preview chat-safe boundary line <em>auto-hidden when Stream-safe is active</em></span>
+          </label>
+        </section>
+
+        <section class="settings-card">
+          <div class="dsec-head">
+            <h3>Look, branding &amp; break logs</h3>
+            <span class="dsec-tag">Unlocked</span>
+          </div>
+          <div class="field-row">
+            <label class="field field-wide"><span>Watermark</span><input type="text" id="stWatermarkInput" maxlength="14" value="LNR" /></label>
+            <label class="field field-wide"><span>Site line</span><input type="text" id="stSiteInput" maxlength="42" value="lnr-studio-247-livestream-engine.vercel.app" /></label>
+            <label class="field field-wide"><span>Break brand strap</span><input type="text" id="stBrandOverlayInput" maxlength="28" value="LNR STUDIO" /></label>
+          </div>
+          <div class="analytics-actions" style="margin-top:14px">
+            <button class="btn btn-quiet btn-sm" type="button" id="stViewLogsBtn">View Break Playback Log</button>
+            <button class="btn btn-primary btn-sm" type="button" id="stExportCsvBtn">Export Break Log CSV</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- PAGE 4: CONTACT -->
+    <section class="page-view" id="pageContact" data-page="contact" hidden>
+      <section class="contact" id="contact" aria-labelledby="contactTitle" style="margin-top:0">
+        <div class="contact-copy">
+          <p class="eyebrow">Direct support</p>
+          <h1 id="contactTitle">Questions, custom trivia packs, or setup help</h1>
+          <p class="contact-sub">Send your channel name, site line, or question straight to our inbox. All studio tools are free &mdash; reach out anytime for technical help or custom pack inquiries.</p>
+          <p class="contact-line">
+            <span class="contact-label">Email</span>
+            <a class="contact-mail" href="mailto:lnrstrokes@gmail.com">lnrstrokes@gmail.com</a>
+          </p>
+          <p class="contact-line">
+            <span class="contact-label">Studio URL</span>
+            <a class="contact-mail" style="font-size:15px" href="https://lnr-studio-247-livestream-engine.vercel.app/" target="_blank" rel="noopener noreferrer">https://lnr-studio-247-livestream-engine.vercel.app/</a>
+          </p>
+        </div>
+        <div class="contact-actions">
+          <a class="btn btn-primary btn-lg" id="contactFormBtn" href="mailto:lnrstrokes@gmail.com">Send Pre-filled Email</a>
+          <button class="btn btn-quiet btn-lg" type="button" id="copyContactTemplateBtn">Copy Support Email Template</button>
+        </div>
+      </section>
+    </section>
+
+  </main>
+
+  <!-- ============ STAGE ============ -->
+  <main class="screen screen-stage" id="screenStage" hidden>
+    <div class="stage-chrome stage-chrome-top">
+      <div class="chrome-left">
+        <span class="onair" id="onairPill"><i aria-hidden="true"></i> On air</span>
+        <span class="chip-chip" id="sessionClock">00:00:00</span>
+      </div>
+      <div class="chrome-center">
+        <div class="phase-meter" id="phaseMeter">
+          <span class="phase-name" id="phaseName">Quiz block</span>
+          <span class="phase-time" id="phaseTime">60:00</span>
+        </div>
+        <div class="phase-track"><span id="phaseFill"></span></div>
+      </div>
+      <div class="chrome-right">
+        <button class="btn btn-ghost btn-sm" id="broadcastBtn" type="button">Video engine</button>
+        <button class="btn btn-ghost btn-sm" id="rotateBtn" type="button">Rotate now</button>
+        <button class="btn btn-ghost btn-sm" id="safeBtn" type="button">Stream-safe</button>
+        <button class="btn btn-ghost btn-sm" id="settingsBtn" type="button">Settings</button>
+        <button class="btn btn-ghost btn-sm" id="exitBtn" type="button">Exit</button>
+      </div>
+    </div>
+
+    <div class="stage-wrap">
+      <div class="frame" id="frame">
+        <div class="frame-inner" id="frameInner">
+          <div class="frame-top">
+            <span class="frame-seg" id="segLabel">Bible / Faith</span>
+            <span class="frame-meta" id="counter">Question 1 of 10</span>
+            <span class="frame-timer" id="frameTimer">60:00</span>
+          </div>
+
+          <div class="quiz-stage" id="quizStage">
+            <div class="q-kicker" id="qKicker">Quiz &middot; Medium</div>
+            <h2 class="q-text" id="qText">Import a quiz pack to begin&hellip;</h2>
+            <div class="options" id="options"></div>
+            <div class="reveal" id="reveal" hidden>
+              <div class="reveal-head"><span class="reveal-answer" id="revealAnswer">Answer: A</span><span class="reveal-ref" id="revealRef"></span></div>
+              <p class="reveal-note" id="revealNote"></p>
+            </div>
+          </div>
+
+          <div class="player-stage" id="playerStage" hidden>
+            <div class="player-safe-zone">
+              <div class="player-main-col">
+                <div class="pl-top-pills">
+                  <span class="pl-stage-badge" id="plStageBadge">STAGE 1 &middot; LISTEN</span>
+                  <span class="pl-countdown-pill" id="plCountdownPill" hidden>00:12 &middot; Drop your answer in chat!</span>
+                </div>
+                <h2 class="pl-headline" id="plHeadline">GUESS THE PLAYER!</h2>
+                <ul class="pl-clues" id="plCluesList"></ul>
+                <div class="pl-reveal-meta" id="plRevealMeta" hidden>
+                  <div class="pl-reveal-name" id="plRevealName">Player Name</div>
+                  <div class="pl-reveal-sub" id="plRevealSub">Club &middot; Nationality</div>
+                  <p class="pl-reveal-insight" id="plRevealInsight"></p>
+                </div>
+              </div>
+              <div class="player-visual-col" id="plVisualCol">
+                <div class="pl-card-frame" id="plCardFrame">
+                  <div class="pl-mystery-cover" id="plMysteryCover">
+                    <span class="pl-mystery-q">?</span>
+                    <span class="pl-mystery-label" id="plMysteryLabel">Listen to clues</span>
+                  </div>
+                  <img id="plPhoto" alt="Player reveal" hidden />
+                  <span class="pl-card-tag" id="plCardTag">MYSTERY</span>
+                </div>
+              </div>
+            </div>
+            <div class="chat-safe-guide" id="chatSafeGuide" hidden>
+              <span>LIVE COMMENT &amp; TYPING ZONE &mdash; KEPT CLEAR FOR MOBILE VIEWERS</span>
+            </div>
+          </div>
+
+          <div class="milestone-stage" id="milestoneStage" hidden>
+            <div class="player-safe-zone ms-safe-zone">
+              <div class="ms-header">
+                <div class="ms-title-wrap">
+                  <span class="pl-stage-badge" id="msRoundBadge">ROUND 1 COMPLETE</span>
+                  <h2 class="ms-title" id="msTitle">Self-Score Check &mdash; Last 10 Answers</h2>
+                </div>
+                <span class="pl-countdown-pill" id="msTimer">00:30</span>
+              </div>
+              <div class="ms-grid" id="msGrid"></div>
+              <div class="ms-grades" id="msGrades">
+                <div class="ms-grade-item"><b>9&ndash;10</b><span id="msGrade0">Master Scholar</span></div>
+                <div class="ms-grade-item"><b>7&ndash;8</b><span id="msGrade1">Honor Roll</span></div>
+                <div class="ms-grade-item"><b>5&ndash;6</b><span id="msGrade2">Faithful Learner</span></div>
+                <div class="ms-grade-item"><b>0&ndash;4</b><span id="msGrade3">Warm Up</span></div>
+                <div class="ms-cta" id="msCta">Tally your score &amp; drop your rank in the live chat!</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="story-stage" id="storyStage" hidden>
+            <div class="story-head">
+              <div class="story-head-meta">
+                <span class="story-act-pill" id="storyActPill">ACT 1</span>
+                <span class="story-ep-title" id="storyEpTitle">Episode Title</span>
+                <span class="story-era-tag" id="storyEraTag">Era</span>
+              </div>
+              <div class="story-act-rail" id="storyActRail" aria-hidden="true"></div>
+            </div>
+            <div class="story-canvas" id="storyCanvas">
+              <div class="story-visual-host" id="storyVisualHost"></div>
+            </div>
+            <div class="story-lower">
+              <div class="story-narration-box">
+                <span class="story-scene-type-tag" id="storySceneTypeTag">DOCUMENT</span>
+                <p class="story-narration-text" id="storyNarrationText"></p>
+              </div>
+              <p class="story-engagement-line" id="storyEngagementLine" hidden></p>
+            </div>
+          </div>
+
+          <div class="video-stage" id="videoStage" hidden>
+            <video id="stageVideo" playsinline preload="auto" class="is-active"></video>
+            <video id="stageVideoB" playsinline preload="auto" class="is-standby" hidden></video>
+            <canvas id="demoVideoCanvas" class="demo-video-canvas" hidden></canvas>
+            <div class="video-empty" id="videoEmpty">
+              <span class="ve-glyph" aria-hidden="true">&#9654;</span>
+              <h2 id="videoEmptyTitle">Video break</h2>
+              <p id="videoEmptyNote">No clip loaded yet. Add one in the studio settings &mdash; the timer keeps running either way.</p>
+            </div>
+            <div class="studio-break-card" id="promoAdOverlay" hidden>
+              <div class="studio-break-card-top">
+                <span class="studio-break-pill" id="promoAdBadge">PARTNER</span>
+                <span class="studio-break-title" id="promoAdTitle">Partner spotlight</span>
+                <span class="studio-break-clock" id="promoAdClock">0:30</span>
+              </div>
+              <div class="studio-break-card-sub">
+                <span id="promoAdReturn">Returns to Round 1 after break</span>
+                <button class="studio-break-unmute" id="promoUnmuteBtn" type="button" hidden>Tap for sound</button>
+              </div>
+            </div>
+            <div class="promo-brand" id="promoBrand" hidden><span id="promoBrandText">LNR STUDIO</span></div>
+            <div class="loop-badge" id="loopBadge" hidden>
+              <span id="loopBadgeText">Loop 1</span>
+            </div>
+          </div>
+
+          <div class="frame-bottom">
+            <div class="frame-progress"><span id="progFill"></span></div>
+            <div class="frame-foot">
+              <span class="watermark" id="watermark">LNR</span>
+              <span class="frame-site" id="frameSite">lnr-studio-247-livestream-engine.vercel.app</span>
+            </div>
+          </div>
+
+          <div class="studio-break-notice" id="adNotice" hidden role="status" aria-live="polite">
+            <div class="studio-break-notice-row">
+              <span class="studio-break-pill" id="adNoticeBadge">BREAK</span>
+              <div class="studio-break-notice-copy">
+                <b id="adNoticeTitle">Partner break starting soon</b>
+                <span id="adNoticeSub">Plays 1 break clip, then returns to the next round</span>
+              </div>
+              <span class="studio-break-notice-timer" id="adNoticeTimer">5s</span>
+            </div>
+            <div class="studio-break-bar"><span id="adNoticeFill"></span></div>
+          </div>
+
+          <div class="curtain" id="curtain" hidden><span>Rotating&hellip;</span></div>
+        </div>
+        <button class="safe-peek" id="safePeek" type="button" aria-label="Show controls">&hellip;</button>
+      </div>
+    </div>
+
+    <div class="stage-chrome stage-chrome-bottom">
+      <div class="transport">
+        <button class="btn btn-icon" id="prevBtn" type="button" title="Previous question (&larr;)">&#8249;</button>
+        <button class="btn btn-play" id="playBtn" type="button" title="Play or pause (space)"><span id="playGlyph">Pause</span></button>
+        <button class="btn btn-icon" id="revealToggleBtn" type="button" title="Reveal answer (R)">Reveal</button>
+        <button class="btn btn-icon" id="nextBtn" type="button" title="Next question (&rarr;)">&#8250;</button>
+      </div>
+      <div class="transport-side">
+        <button class="btn btn-ghost btn-sm" id="voiceBtn" type="button">Voice: on</button>
+        <button class="btn btn-ghost btn-sm" id="musicBtn" type="button">Music: off</button>
+        <span class="kbd-hint" id="kbdHint">Space play &middot; &larr; &rarr; skip &middot; R reveal &middot; S stream-safe &middot; tap 3&times; for dev panel</span>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-foot">
+    <span class="foot-brand">lnr Studio &mdash; lnr-studio-247-livestream-engine.vercel.app</span>
+    <nav class="foot-nav" aria-label="Footer">
+      <a href="#studio" data-page-link="studio">Studio</a>
+      <a href="#settings" data-page-link="settings">Settings</a>
+      <a href="#contact" data-page-link="contact">Contact</a>
+      <a href="mailto:lnrstrokes@gmail.com">lnrstrokes@gmail.com</a>
+    </nav>
+  </footer>
+</div>
+
+<!-- ============ DEV PANEL (triple tap) ============ -->
+<aside class="devpanel" id="devPanel" hidden aria-label="Developer panel">
+  <div class="dev-head">
+    <div>
+      <b>Developer panel</b>
+      <span>triple tap on the broadcast &middot; hidden from capture</span>
+    </div>
+    <button class="btn btn-icon btn-dev" id="devPanelClose" type="button" aria-label="Close developer panel">&#10005;</button>
+  </div>
+  <div class="dev-body" id="devBody"></div>
+  <div class="dev-actions">
+    <button class="btn btn-quiet btn-sm" id="devNextQ" type="button">Next question</button>
+    <button class="btn btn-quiet btn-sm" id="devReveal" type="button">Reveal</button>
+    <button class="btn btn-quiet btn-sm" id="devRotate" type="button">Rotate phase</button>
+    <button class="btn btn-quiet btn-sm" id="devSafe" type="button">Toggle stream-safe</button>
+    <button class="btn btn-quiet btn-sm" id="devRedraw" type="button">Redraw</button>
+  </div>
+</aside>
+
+<!-- ============ SETTINGS DRAWER (live stage & break log overlay) ============ -->
+<aside class="drawer" id="drawer" hidden aria-label="Studio settings">
+  <div class="drawer-head">
+    <div>
+      <h2>Music, breaks &amp; settings</h2>
+      <p>Timing, break clips, music, questions, branding &amp; playback logs.</p>
+    </div>
+    <button class="btn btn-icon" id="drawerClose" type="button" aria-label="Close settings">&#10005;</button>
+  </div>
+
+  <div class="drawer-body">
+
+    <section class="dsec">
+      <div class="dsec-head"><h3>Channel breaks &amp; rotation</h3><span class="dsec-tag" id="drawerPromoTag">Breaks off</span></div>
+
+      <label class="switch-row" id="drawerPromoSwitchRow" style="margin-top:0; margin-bottom:12px">
+        <input type="checkbox" id="promoEnabledDrawer" />
+        <span class="switch-ui" aria-hidden="true"></span>
+        <span class="switch-label">Show channel / partner breaks <em>plays 1 clip after milestone once frequency elapses</em></span>
+      </label>
+
+      <div class="sub-head"><span>Rotation timer</span><em>interval &rarr; milestone &rarr; break</em></div>
+      <div class="field-row">
+        <label class="field"><span>Quiz block</span><input type="number" id="quizMin" min="5" max="240" step="5" value="60" inputmode="numeric" /><em>min</em></label>
+        <label class="field"><span>Break freq</span><input type="number" id="promoIntervalMin" min="5" max="60" step="1" value="10" inputmode="numeric" /><em>min</em></label>
+        <label class="field"><span>Break slot</span><input type="number" id="promoSec" min="15" max="300" step="5" value="30" inputmode="numeric" /><em>sec</em></label>
+        <label class="field"><span>Per question</span><input type="number" id="qSec" min="5" max="90" step="1" value="10" inputmode="numeric" /><em>sec</em></label>
+      </div>
+      <label class="switch-row">
+        <input type="checkbox" id="autoRotate" checked />
+        <span class="switch-ui" aria-hidden="true"></span>
+        <span class="switch-label">Auto-rotate after milestone <em>notifies viewers first, then returns to Round N+1</em></span>
+      </label>
+
+      <div class="sub-head"><span>Music bed</span><em>plays under the quiz</em></div>
+      <div class="music-grid" id="musicGrid">
+        <button class="music-card is-selected" type="button" data-music="sacred">
+          <b>Sacred pad</b><span>Warm, slow, church-friendly</span>
+        </button>
+        <button class="music-card" type="button" data-music="ambient">
+          <b>Ambient drift</b><span>Airy, wide, low distraction</span>
+        </button>
+        <button class="music-card" type="button" data-music="focus">
+          <b>Focus pulse</b><span>Soft rhythm for countdowns</span>
+        </button>
+        <button class="music-card" type="button" data-music="off">
+          <b>No music</b><span>Silence between segments</span>
+        </button>
+      </div>
+      <label class="slider-row"><span>Bed volume</span><input type="range" id="musicVol" min="0" max="100" value="35" /><b id="musicVolLabel">35%</b></label>
+      <label class="switch-row">
+        <input type="checkbox" id="sfxOn" checked />
+        <span class="switch-ui" aria-hidden="true"></span>
+        <span class="switch-label">Embedded scene cues &amp; ticks <em>active in Quiz, Player, &amp; Story engines (muted in Video)</em></span>
+      </label>
+      <div class="file-row">
+        <label class="file-pick">
+          <input type="file" id="audioInput" accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac" />
+          <span>Upload MP3 / audio track</span>
+        </label>
+        <span class="file-name" id="audioName">No custom track</span>
+        <button class="btn btn-quiet btn-sm audio-preview-btn" type="button" id="audioPreviewBtn">Preview audio</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="audioClearBtn" hidden>Remove</button>
+      </div>
+    </section>
+
+    <section class="dsec">
+      <div class="dsec-head"><h3>Storytelling pacing</h3><span class="dsec-tag" id="drawerStoryTag">0 episodes</span></div>
+      <div class="field-row">
+        <label class="field"><span>Story block</span><input type="number" id="storyMin" min="10" max="240" step="5" value="60" inputmode="numeric" /><em>min</em></label>
+        <label class="field"><span>Scene hold</span><input type="number" id="storySceneSec" min="4" max="30" step="1" value="8" inputmode="numeric" /><em>sec</em></label>
+      </div>
+    </section>
+
+    <section class="dsec">
+      <div class="dsec-head"><h3>Prerecorded video</h3><span class="dsec-tag" id="clipCount">0 clips</span></div>
+      <div class="field-row">
+        <label class="field"><span>Playback</span><input type="number" id="loopHoursDrawer" min="0.1" max="168" step="0.1" value="2" inputmode="decimal" /><em>hr</em></label>
+        <label class="field field-wide"><span>Break brand strap</span><input type="text" id="brandOverlayInput" maxlength="28" value="LNR STUDIO" /></label>
+      </div>
+      <p class="dsec-note">The video engine loops your clips until playback length is reached &mdash; seamless dual-deck transition between videos.</p>
+    </section>
+
+    <section class="dsec">
+      <div class="dsec-head"><h3>Quiz questions &amp; import</h3><span class="dsec-tag" id="bankTag">0 loaded</span></div>
+      <div class="seg-inline">
+        <button class="seg-pill is-selected" type="button" data-segment="bible" id="pillBible">Bible / Faith &middot; <b id="pillBibleCount">0</b></button>
+        <button class="seg-pill" type="button" data-segment="history" id="pillHistory">World History &middot; <b id="pillHistoryCount">0</b></button>
+      </div>
+      <label class="file-pick file-pick-wide">
+        <input type="file" id="importInput" accept="application/json,.json" />
+        <span>Import a JSON question file</span>
+      </label>
+      <div class="import-result" id="importResult" hidden></div>
+      <details class="schema">
+        <summary>What the JSON file must look like</summary>
+        <pre>{
+  "segment": "bible",
+  "questions": [
+    {
+      "question": "Who built the ark?",
+      "options": ["Moses", "Noah", "Abraham", "Joshua"],
+      "answer": 1,
+      "reference": "Genesis 6:14",
+      "insight": "God told Noah to build it from gopher wood.",
+      "difficulty": "Easy"
+    }
+  ]
+}</pre>
+        <p class="schema-note">Accepted: a top-level array, or an object with <code>questions</code>. <code>answer</code> may be an index (0&ndash;3) or a letter (A&ndash;D). Duplicates are skipped.</p>
+      </details>
+    </section>
+
+    <section class="dsec">
+      <div class="dsec-head"><h3>Voice reader</h3></div>
+      <label class="switch-row">
+        <input type="checkbox" id="voiceOn" checked />
+        <span class="switch-ui" aria-hidden="true"></span>
+        <span class="switch-label">Read questions aloud <em>question, then each option</em></span>
+      </label>
+      <label class="switch-row">
+        <input type="checkbox" id="voiceReveal" checked />
+        <span class="switch-ui" aria-hidden="true"></span>
+        <span class="switch-label">Announce the answer <em>answer, reference and note on reveal</em></span>
+      </label>
+      <label class="field field-wide"><span>Voice</span><select id="voiceSelect"></select></label>
+      <label class="slider-row"><span>Speaking rate</span><input type="range" id="voiceRate" min="70" max="130" value="96" /><b id="voiceRateLabel">0.96&times;</b></label>
+      <p class="dsec-note">Numbers, verse references and dates read naturally (&ldquo;1 John 3:16&rdquo; reads as &ldquo;First John, chapter three, verse sixteen&rdquo;).</p>
+      <details class="schema" id="voiceGuide">
+        <summary>Free natural voices setup (Android &amp; Desktop)</summary>
+        <p class="schema-note"><strong>Android (Samsung):</strong> Open <em>Settings &rarr; General management &rarr; Text-to-speech output</em>, choose <em>Speech Recognition and Synthesis from Google</em>, and download English (US/UK) high-quality voices free &amp; offline.<br /><strong>Windows / Mac:</strong> Open in Microsoft Edge or Chrome to access free natural Neural voices right inside the dropdown above.</p>
+      </details>
+    </section>
+
+    <section class="dsec">
+      <div class="dsec-head"><h3>Player Quiz &amp; Chat-Safe</h3><span class="dsec-tag" id="drawerPlayerTag">0 quizzes</span></div>
+      <div class="field-row">
+        <label class="field"><span>Player block</span><input type="number" id="playerBlockMin" min="10" max="240" step="10" value="60" inputmode="numeric" /><em>min</em></label>
+        <label class="field"><span>Per clue</span><input type="number" id="clueSec" min="3" max="20" step="1" value="6" inputmode="numeric" /><em>sec</em></label>
+        <label class="field"><span>Comment</span><input type="number" id="guessSec" min="5" max="45" step="1" value="12" inputmode="numeric" /><em>sec</em></label>
+      </div>
+      <div class="field-row" style="margin-top:8px">
+        <label class="field"><span>Reveal hold</span><input type="number" id="playerRevealSec" min="3" max="20" step="1" value="6" inputmode="numeric" /><em>sec</em></label>
+        <label class="field"><span>Milestone</span><input type="number" id="milestoneSec" min="10" max="60" step="5" value="30" inputmode="numeric" /><em>sec</em></label>
+      </div>
+      <label class="switch-row">
+        <input type="checkbox" id="drawerChatSafe" checked />
+        <span class="switch-ui" aria-hidden="true"></span>
+        <span class="switch-label">Chat-safe upper broadcast zone <em>keeps content above mobile live chat &amp; typing</em></span>
+      </label>
+      <label class="switch-row">
+        <input type="checkbox" id="drawerChatGuide" />
+        <span class="switch-ui" aria-hidden="true"></span>
+        <span class="switch-label">Show chat-safe boundary line <em>preview guide (auto-hidden in Stream-safe)</em></span>
+      </label>
+    </section>
+
+    <section class="dsec">
+      <div class="dsec-head"><h3>Look &amp; branding</h3><span class="dsec-tag">Unlocked</span></div>
+      <div class="field-row">
+        <label class="field field-wide"><span>Watermark</span><input type="text" id="watermarkInput" maxlength="14" value="LNR" /></label>
+        <label class="field field-wide"><span>Site line</span><input type="text" id="siteInput" maxlength="42" value="lnr-studio-247-livestream-engine.vercel.app" /></label>
+      </div>
+      <label class="switch-row">
+        <input type="checkbox" id="safeDefault" />
+        <span class="switch-ui" aria-hidden="true"></span>
+        <span class="switch-label">Start every session in stream-safe mode <em>controls hidden from capture</em></span>
+      </label>
+    </section>
+
+    <section class="dsec" id="sponsorAnalyticsSection">
+      <div class="dsec-head"><h3>Break Playback Log</h3><span class="dsec-tag">On-device CSV</span></div>
+      <div class="analytics-summary">
+        <div class="analytics-metric"><b id="alTotalCount">0</b><span>Breaks logged</span></div>
+        <div class="analytics-metric"><b id="alTotalDuration">0m 00s</b><span>Total break airtime</span></div>
+      </div>
+      <ul class="analytics-list" id="alLogList"></ul>
+      <div class="analytics-actions">
+        <button class="btn btn-primary btn-sm" type="button" id="alExportCsvBtn">Export Break Log CSV</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="alClearBtn">Clear logs</button>
+      </div>
+      <p class="dsec-note">Pair these exact UTC &amp; local playback timestamps with your YouTube Studio Real-Time Viewers chart for session records.</p>
+    </section>
+
+  </div>
+</aside>
+
+<!-- ============ STUDIO OPERATOR TOOLS MODAL (7-tap brand logo) ============ -->
+<div class="modal-backdrop" id="accessModal" hidden role="dialog" aria-modal="true" aria-labelledby="accessModalTitle">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div>
+        <h2 id="accessModalTitle">Studio Operator Tools</h2>
+        <p>Manage local break clip folders, PiP / split-screen layouts, and Partner / Paid Promotion disclosures.</p>
+      </div>
+      <button class="btn btn-icon" id="accessModalClose" type="button" aria-label="Close operator dialog">&#10005;</button>
+    </div>
+
+    <div class="modal-sec" id="panelAdmin">
+      <div id="adminToolsBox" style="display:flex; flex-direction:column; gap:14px;">
+        <div class="sub-head" style="margin:4px 0 0"><span>Break Folder &amp; Display Layout</span><em id="adminPromoCountTag">0 clips</em></div>
+        <div class="promo-folder-box">
+          <div class="field-row">
+            <label class="field">
+              <span>Display layout</span>
+              <select id="adminPromoDisplay">
+                <option value="full">Full Screen Takeover</option>
+                <option value="pip">Corner PiP Overlay</option>
+                <option value="split">Split Screen Stage + Break</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Rotation order</span>
+              <select id="adminPromoOrder">
+                <option value="sequential">Sequential</option>
+                <option value="shuffle">Shuffle</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Break disclosure style</span>
+              <select id="adminPromoOverlay">
+                <option value="disclosure">Paid Promotion / Break Card</option>
+                <option value="clean-brand">Brand Strap Only</option>
+                <option value="raw">Clean Video (No Overlay)</option>
+              </select>
+            </label>
+          </div>
+          <div class="promo-folder-actions">
+            <label class="btn btn-quiet btn-sm pl-file-btn">
+              <input type="file" id="adminPromoFolderInput" webkitdirectory directory multiple accept="video/*" />
+              <span>Pick Device Folder</span>
+            </label>
+            <label class="btn btn-quiet btn-sm pl-file-btn">
+              <input type="file" id="adminPromoFilesInput" multiple accept="video/*" />
+              <span>Add Break Clips</span>
+            </label>
+            <button class="btn btn-ghost btn-sm" type="button" id="syncPublicPromosBtn">Sync /promos/ Folder</button>
+          </div>
+          <ul class="promo-folder-list" id="adminPromoList"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
