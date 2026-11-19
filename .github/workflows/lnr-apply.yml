@@ -11,19 +11,21 @@ jobs:
       - name: Reassemble patch
         run: |
           set -e
-          cat .lnr-chunks/c0 .lnr-chunks/c1 .lnr-chunks/c2 .lnr-chunks/c3 > /tmp/patch.b64
-          wc -c /tmp/patch.b64
+          cat .lnr-chunks/c0 .lnr-chunks/c1 .lnr-chunks/c2 .lnr-chunks/c3 | tr -d ' \t\r\n' > /tmp/patch.b64
+          echo -n "b64 bytes: "; wc -c < /tmp/patch.b64
           python3 - <<'PY'
           import base64, gzip
           raw = open('/tmp/patch.b64','rb').read().strip()
           out = gzip.decompress(base64.b64decode(raw))
           open('/tmp/fix.patch','wb').write(out)
           print('patch bytes', len(out))
+          print(out[:120].decode('utf8','replace'))
           PY
       - name: Apply patch
         run: |
           git apply --check -p1 /tmp/fix.patch && echo CHECK_OK
           git apply -p1 /tmp/fix.patch && echo APPLIED_OK
+          grep -c "speechGapTimers\|prosodyPauseMs" src/timer/engine.js || true
       - name: Commit and push
         run: |
           set -e
