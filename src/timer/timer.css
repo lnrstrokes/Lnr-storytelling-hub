@@ -1069,23 +1069,41 @@ body.screen-stage .screen-stage {
   justify-content: center;   /* text sits in the middle of the frame */
   text-align: center;
   min-height: 0;
-  gap: 1.4cqw;
-  padding: .5cqw 1cqw;
+  gap: 1.6cqw;
+  padding: 1.2cqw 2.4cqw 1.4cqw;
 }
 
+/* The kicker is a quiet eyebrow, not a second headline: small caps, wide
+   tracking, and a hairline rule either side so it frames the question
+   instead of competing with it. */
 .q-kicker {
-  font-size: max(12px, 1.5cqw);
-  letter-spacing: .16em;
+  display: inline-flex;
+  align-items: center;
+  gap: 1cqw;
+  font-size: max(12px, 1.42cqw);
+  letter-spacing: .22em;
   text-transform: uppercase;
-  color: #8c9b93;
+  color: #9aa9a0;
   font-weight: 600;
+  white-space: nowrap;
+}
+.q-kicker::before,
+.q-kicker::after {
+  content: "";
+  display: block;
+  width: 2.2cqw;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(217, 171, 99, .55));
+}
+.q-kicker::after {
+  background: linear-gradient(90deg, rgba(217, 171, 99, .55), transparent);
 }
 
 /* Length-driven type scale.
    The engine measures the string and sets data-fit on #qText.
 
    These tiers are deliberately LARGE. The frame is a 16:9 broadcast with a
-   lot of vertical room, and the earlier scale left most of it empty — the
+   lot of vertical room, and the earlier scale left most of it empty - the
    content read as a small island in a big dark box. The scale now fills the
    frame: a short question is a headline, a long one still fits.
 
@@ -1097,12 +1115,15 @@ body.screen-stage .screen-stage {
   font-family: var(--display);
   font-size: 5.2cqw;
   line-height: 1.16;
-  letter-spacing: -.024em;
+  letter-spacing: -.022em;
   margin: 0;
-  max-width: 96%;
-  color: #f7f2e6;
+  max-width: 92%;
+  color: #fbf7ee;
   text-wrap: balance;
   transition: font-size .18s ease;
+  /* A very soft top-light reads as studio key lighting rather than as a
+     text-shadow, and survives H.264 compression far better than a glow. */
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .35), 0 0 3.4cqw rgba(217, 171, 99, .14);
 }
 
 /* Every tier carries a px floor. cqw alone is width-driven, so on a narrow
@@ -1118,24 +1139,28 @@ body.screen-stage .screen-stage {
 .options {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1.05cqw 1.2cqw;
-  margin-top: .5cqw;
+  gap: 1.15cqw 1.3cqw;
+  margin-top: .9cqw;
   width: 100%;
-  max-width: 94%;
+  max-width: 90%;
   text-align: left;
 }
 
+/* Options read as one calm instrument panel: a single hairline, a warm
+   tint, and a clear badge anchor. No double borders, no card chrome inside
+   the card - that is what made the old surface look clunky. */
 .opt {
   display: flex;
   align-items: center;
-  gap: .95cqw;
-  padding: 1cqw 1.2cqw;
-  background: rgba(245, 239, 226, .055);
-  border: 1px solid rgba(240, 232, 212, .13);
-  border-radius: .95cqw;
+  gap: 1.15cqw;
+  padding: 1.15cqw 1.35cqw;
+  background: linear-gradient(180deg, rgba(245, 239, 226, .062), rgba(245, 239, 226, .032));
+  border: 1px solid rgba(240, 232, 212, .10);
+  border-left: 2px solid rgba(217, 171, 99, .38);
+  border-radius: .85cqw;
   font-size: 2.3cqw;
-  line-height: 1.3;
-  color: #e4dccb;
+  line-height: 1.28;
+  color: #ece5d6;
   transition: background .25s ease, border-color .25s ease, color .25s ease, transform .25s ease;
   min-height: 0;
 }
@@ -1150,34 +1175,37 @@ body.screen-stage .screen-stage {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: 2.9cqw; height: 2.9cqw;
-  border-radius: .5cqw;
-  background: rgba(240, 232, 212, .09);
-  font-size: 1.7cqw;
+  width: 3.05cqw; height: 3.05cqw;
+  border-radius: 50%;
+  background: rgba(217, 171, 99, .13);
+  border: 1px solid rgba(217, 171, 99, .30);
+  font-size: 1.62cqw;
   font-weight: 700;
-  color: #a9b5ac;
-  transition: background .25s ease, color .25s ease;
+  letter-spacing: .01em;
+  color: #e8cfa4;
+  transition: background .25s ease, color .25s ease, border-color .25s ease;
 }
 
 .opt-text { min-width: 0; overflow-wrap: break-word; }
 
 .opt.is-correct {
-  background: rgba(217, 171, 99, .16);
-  border-color: var(--brass);
-  color: #ffedcb;
+  background: linear-gradient(180deg, rgba(217, 171, 99, .22), rgba(217, 171, 99, .12));
+  border-color: rgba(217, 171, 99, .72);
+  border-left-color: var(--brass);
+  color: #fff3dc;
   font-weight: 600;
 }
-.opt.is-correct .opt-badge { background: var(--brass); color: #1c1408; }
+.opt.is-correct .opt-badge { background: var(--brass); border-color: var(--brass); color: #1c1408; }
 
 /* reveal */
 .reveal {
-  border-top: 1px solid rgba(240, 232, 212, .13);
-  padding-top: 1.1cqw;
+  border-top: 1px solid rgba(240, 232, 212, .11);
+  padding-top: 1.15cqw;
   display: flex;
   flex-direction: column;
-  gap: .65cqw;
+  gap: .7cqw;
   animation: rise .32s ease both;
-  max-width: 90%;
+  max-width: 88%;
 }
 
 @keyframes rise {

@@ -88,7 +88,7 @@
     promoOrder: 'sequential',      /* 'sequential' | 'shuffle' */
     promoOverlayStyle: 'disclosure', /* 'disclosure' | 'clean-brand' | 'raw' */
     autoRotate: true,
-    music: 'sacred',
+    music: 'uplift',
     musicVol: 35,
     sfxOn: true,
     voiceOn: true,
@@ -1097,24 +1097,53 @@
       if (el.stMusicVol) el.stMusicVol.value = S.musicVol;
       if (el.musicVolLabel) el.musicVolLabel.textContent = S.musicVol + '%';
       if (el.stMusicVolLabel) el.stMusicVolLabel.textContent = S.musicVol + '%';
-      var duckMult = musicDucked ? 0.26 : 1;
+      var duckMult = musicDucked ? 0.55 : 1;
       if (musicGain) musicGain.gain.value = (S.musicVol / 100) * 0.14 * duckMult;
-      if (customAudioEl) customAudioEl.volume = (S.musicVol / 100) * duckMult;
+      if (customAudioEl) {
+        if (previewingAudio) customAudioEl.volume = Math.min(1, Math.max(0.05, (S.musicVol / 100) * 1.75));
+        else applyCustomVolume(musicDucked);
+      }
       if (previewGain) previewGain.gain.value = (S.musicVol / 100) * 0.18;
       save();
     });
   });
 
-  /* procedural music bed & SFX — excluded on video/promo phases */
+  /* procedural music bed & SFX - excluded on video/promo phases */
   var audioCtx = null, musicNodes = null, musicGain = null, musicDucked = false;
   var customAudioEl = null, customAudioUrl = '', customAudioName = '';
   var previewingAudio = false, previewSynthNodes = null, previewGain = null, previewStopTimer = 0;
 
+  /* ------------------------------------------------------------------
+     BACKGROUND LEVELS
+
+     The old code multiplied the user's bed volume by 0.26 whenever the
+     narrator was speaking. At the default 35% bed that works out to ~9%
+     of full scale - quieter than the room noise on most livestreams, which
+     is exactly why an uploaded MP3 was reported as "not playing": it was
+     playing perfectly, just inaudibly.
+
+     Two changes:
+      - the MP3 bed gets a real gain curve (a chosen track should sit at a
+        listenable level at the default slider position), and
+      - ducking is a gentle 0.55 dip instead of a near-mute 0.26, so the
+        music stays present under speech without fighting the voice.
+     ------------------------------------------------------------------ */
+  function customBedGain(ducked) {
+    /* 35% on the slider ~= 62% of the track's own level - present, not loud. */
+    var base = Math.min(1, Math.max(0.02, (S.musicVol / 100) * 1.75));
+    return base * (ducked ? 0.55 : 1);
+  }
+
+  function applyCustomVolume(ducked) {
+    if (!customAudioEl || previewingAudio) return;
+    customAudioEl.volume = customBedGain(ducked);
+  }
+
   function setMusicDucking(duck) {
     musicDucked = !!duck;
-    var duckMult = musicDucked ? 0.26 : 1;
+    var duckMult = musicDucked ? 0.55 : 1;
     if (musicGain) musicGain.gain.value = (S.musicVol / 100) * 0.14 * duckMult;
-    if (customAudioEl && !previewingAudio) customAudioEl.volume = (S.musicVol / 100) * duckMult;
+    applyCustomVolume(musicDucked);
   }
 
   function musicProfile(name) {
@@ -1164,6 +1193,206 @@
     return { oscs: oscs, gain: gMaster };
   }
 
+  /* ------------------------------------------------------------------
+     ROBUST PLAYBACK
+
+     Browsers refuse audio until the page has seen a real user gesture, and
+     they refuse it with a rejected promise rather than an error event. The
+     old code called play() and swallowed the rejection, so an uploaded MP3
+     could sit there "not playing" with no explanation and no retry.
+
+     safePlay():
+       1. calls play() and awaits the promise (so a rejection is caught),
+       2. if the browser blocked it, remembers the element and retries once
+          the next real gesture arrives (pointerdown / keydown),
+       3. only after that reports a failure, and only once per element,
+          instead of failing silently forever.
+     ------------------------------------------------------------------ */
+  var gestureBlocked = [];
+
+  function flushGestureBlocked() {
+    var pending = gestureBlocked;
+    gestureBlocked = [];
+    pending.forEach(function (item) {
+      try {
+        var p = item.el.play();
+        if (p && p.catch) p.catch(function () {});
+      } catch (e) {}
+    });
+  }
+
+  function installGestureUnlock() {
+    var unlock = function () {
+      try { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
+      if (gestureBlocked.length) flushGestureBlocked();
+    };
+    ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
+      document.addEventListener(ev, unlock, { passive: true });
+    });
+  }
+
+  /* ------------------------------------------------------------------
+     SHIPPED SHOW BED
+
+     A real file, not a synth pad: it loops seamlessly, sounds identical on
+     every machine, and keeps playing at the right level for hours. Created
+     lazily so it never costs anything when another bed is selected.
+     ------------------------------------------------------------------ */
+  var builtinBedEl = null;   /* legacy: the bed is synthesised, no file needed */
+
+  /* ------------------------------------------------------------------
+     UPLIFT SHOW BED — an original upbeat bed, synthesised live in the
+     browser. Because every note is generated here there is no third-party
+     recording in the stream: nothing to license and nothing for Content ID
+     to match. A lookahead scheduler keeps the groove steady even when the
+     tab is throttled, which a plain setInterval-per-note would not.
+     ------------------------------------------------------------------ */
+  var upliftTimer = null;
+  var upliftNextTime = 0;
+  var upliftStep = 0;
+  var upliftGain = null;
+
+  var UPLIFT_BPM = 104;
+  var UPLIFT_STEP = 60 / UPLIFT_BPM / 2;      /* one eighth note */
+  /* I - V - vi - IV in C major, one bar each */
+  var UPLIFT_CHORDS = [
+    { root: 130.81, notes: [261.63, 329.63, 392.00] },   /* C  */
+    { root: 196.00, notes: [293.66, 392.00, 493.88] },   /* G  */
+    { root: 220.00, notes: [261.63, 329.63, 440.00] },   /* Am */
+    { root: 174.61, notes: [261.63, 349.23, 440.00] }    /* F  */
+  ];
+
+  function upliftVoice(ctx, freq, t, dur, type, peak) {
+    var o = ctx.createOscillator();
+    var g = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    g.connect(upliftGain);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  function upliftHat(ctx, t, peak) {
+    /* short filtered noise burst = a soft closed hi-hat */
+    var len = Math.floor(ctx.sampleRate * 0.045);
+    var buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    var data = buf.getChannelData(0);
+    for (var i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+    }
+    var src = ctx.createBufferSource();
+    var hp = ctx.createBiquadFilter();
+    var g = ctx.createGain();
+    src.buffer = buf;
+    hp.type = 'highpass';
+    hp.frequency.value = 7000;
+    g.gain.value = peak;
+    src.connect(hp); hp.connect(g); g.connect(upliftGain);
+    src.start(t);
+  }
+
+  function upliftKick(ctx, t, peak) {
+    var o = ctx.createOscillator();
+    var g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(120, t);
+    o.frequency.exponentialRampToValueAtTime(46, t + 0.11);
+    g.gain.setValueAtTime(peak, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(g); g.connect(upliftGain);
+    o.start(t); o.stop(t + 0.18);
+  }
+
+  function upliftScheduleStep(ctx, step, t) {
+    var bar = Math.floor(step / 8) % UPLIFT_CHORDS.length;
+    var beat = step % 8;
+    var chord = UPLIFT_CHORDS[bar];
+    var vol = (S.musicVol / 100) * (musicDucked ? 0.5 : 1);
+
+    /* bass: root on 1 and 3, fifth on 5 */
+    if (beat === 0) upliftVoice(ctx, chord.root, t, 0.42, 'triangle', 0.20 * vol);
+    if (beat === 4) upliftVoice(ctx, chord.root * 1.5, t, 0.34, 'triangle', 0.16 * vol);
+    if (beat === 6) upliftVoice(ctx, chord.root, t, 0.22, 'triangle', 0.13 * vol);
+
+    /* arpeggio: a bright pluck on the off-beats keeps it moving */
+    if (beat === 1) upliftVoice(ctx, chord.notes[0] * 2, t, 0.20, 'sine', 0.075 * vol);
+    if (beat === 3) upliftVoice(ctx, chord.notes[1] * 2, t, 0.20, 'sine', 0.070 * vol);
+    if (beat === 5) upliftVoice(ctx, chord.notes[2] * 2, t, 0.20, 'sine', 0.070 * vol);
+    if (beat === 7) upliftVoice(ctx, chord.notes[1] * 2, t, 0.18, 'sine', 0.060 * vol);
+
+    /* pad: soft sustained chord at the top of each bar */
+    if (beat === 0) {
+      chord.notes.forEach(function (f, i) {
+        upliftVoice(ctx, f, t, UPLIFT_STEP * 8, 'sine', (0.030 - i * 0.006) * vol);
+      });
+    }
+
+    /* light percussion */
+    if (beat === 0 || beat === 4) upliftKick(ctx, t, 0.16 * vol);
+    if (beat === 2 || beat === 6) upliftHat(ctx, t, 0.045 * vol);
+    if (beat === 7) upliftHat(ctx, t, 0.030 * vol);
+  }
+
+  function startBuiltinBed() {
+    var ctx = ensureAudioCtx();
+    if (!ctx) return;
+    if (upliftTimer) return;                 /* already running */
+    upliftGain = ctx.createGain();
+    upliftGain.gain.value = 1;
+    upliftGain.connect(ctx.destination);
+    upliftNextTime = ctx.currentTime + 0.08;
+    upliftStep = 0;
+    /* 25 ms lookahead, 120 ms of notes queued ahead of the clock */
+    upliftTimer = setInterval(function () {
+      if (!audioCtx || audioCtx.state !== 'running') return;
+      while (upliftNextTime < audioCtx.currentTime + 0.12) {
+        upliftScheduleStep(audioCtx, upliftStep, upliftNextTime);
+        upliftNextTime += UPLIFT_STEP;
+        upliftStep++;
+      }
+    }, 25);
+  }
+
+  function stopBuiltinBed() {
+    if (upliftTimer) {
+      clearInterval(upliftTimer);
+      upliftTimer = null;
+    }
+    if (upliftGain) {
+      try { upliftGain.disconnect(); } catch (e) {}
+      upliftGain = null;
+    }
+  }
+
+  function safePlay(el, onFail) {
+    if (!el) return;
+    var p;
+    try {
+      p = el.play();
+    } catch (e) {
+      gestureBlocked.push({ el: el });
+      if (onFail) onFail(e);
+      return;
+    }
+    if (!p || !p.catch) return;
+    p.catch(function (err) {
+      var name = (err && err.name) || '';
+      if (name === 'NotAllowedError' || name === 'AbortError') {
+        /* Autoplay policy: retry on the next real gesture instead of dying. */
+        if (gestureBlocked.indexOf(el) === -1 &&
+            !gestureBlocked.some(function (i) { return i.el === el; })) {
+          gestureBlocked.push({ el: el });
+        }
+        return;
+      }
+      if (onFail) onFail(err);
+    });
+  }
+
   function startMusic() {
     stopMusic();
     /* Never embed background sound during prerecorded Video or Partner Break phases */
@@ -1177,10 +1406,17 @@
     }
     stopAudioPreview();
     if (customAudioEl) {
-      customAudioEl.volume = (S.musicVol / 100) * (musicDucked ? 0.26 : 1);
+      customAudioEl.volume = customBedGain(musicDucked);
       customAudioEl.loop = true;
-      var p = customAudioEl.play();
-      if (p && p.catch) p.catch(function () {});
+      safePlay(customAudioEl);
+      updateVoiceBtn();
+      return;
+    }
+    /* The shipped upbeat show bed. It is a real audio file (so it survives
+       tab throttling and sounds the same on every device) rather than a
+       synthesised pad, which is what makes it usable for a long stream. */
+    if (S.music === 'uplift') {
+      startBuiltinBed();
       updateVoiceBtn();
       return;
     }
@@ -1210,6 +1446,7 @@
     if (customAudioEl && !previewingAudio) {
       try { customAudioEl.pause(); } catch (e) {}
     }
+    stopBuiltinBed();
     if (musicNodes) {
       musicNodes.forEach(function (n) { try { n.stop(); } catch (e) {} });
       musicNodes = null;
@@ -1314,19 +1551,19 @@
     ensureAudioCtx();
     if (customAudioEl) {
       previewingAudio = true;
-      customAudioEl.currentTime = 0;
-      customAudioEl.volume = S.musicVol / 100;
+      try { customAudioEl.currentTime = 0; } catch (e) {}
+      /* Preview at the same level the bed will actually run at, so what the
+         operator hears is what the stream gets. */
+      customAudioEl.volume = Math.min(1, Math.max(0.05, (S.musicVol / 100) * 1.75));
       customAudioEl.loop = false;
       customAudioEl.onended = function () {
         if (previewingAudio) stopAudioPreview();
       };
-      var p = customAudioEl.play();
-      if (p && p.catch) {
-        p.catch(function () {
-          stopAudioPreview();
-          toast('Unable to play audio file — check browser audio permission', true);
-        });
-      }
+      safePlay(customAudioEl, function (err) {
+        stopAudioPreview();
+        toast('Could not start the audio track (' + ((err && err.name) || 'blocked') +
+          ') \u2014 click anywhere on the page once, then press Preview again.', true);
+      });
       syncAudioPreviewUI();
       return;
     }
@@ -1387,7 +1624,7 @@
       if (!f) return;
       loadCustomAudioBlob(f, f.name);
       idbPutStore('vault', { id: 'custom_audio_track', name: f.name, type: f.type, size: f.size, blob: f }).catch(function () {});
-      toast('MP3 / track ready: ' + f.name + ' (tap Preview MP3 to listen)');
+      toast('MP3 ready: ' + f.name + ' \u2014 press Preview MP3 to hear it, or Start to run it under the show.');
       if (live.running && !live.paused && !isAudioSuppressedPhase()) startMusic();
     });
   });
@@ -2450,6 +2687,10 @@
   var speechGen = 0;
   var speechDeadline = 0;
   var activeUtterances = [];
+  /* Cancellers for the prosody gap timers. Sequential speaking schedules a
+     short pause between chunks; stopSpeech() must clear them or a stale
+     timer would restart the old queue after a cancel. */
+  var speechGapTimers = [];
 
   /* Uploaded narrator speech tracks for Storytelling Engine */
   var storySpeechTracks = []; /* [{ id, name, size, type, duration, blob, url }] */
@@ -2883,7 +3124,7 @@
         el.musicBtn.textContent = 'Audio: clip priority';
         el.musicBtn.classList.remove('is-on');
       } else {
-        var playing = !!musicNodes || !!(customAudioEl && !customAudioEl.paused);
+        var playing = !!musicNodes || !!upliftTimer || !!(customAudioEl && !customAudioEl.paused);
         el.musicBtn.textContent = customAudioEl
           ? ('MP3: ' + (playing ? 'on' : 'ready'))
           : ('Music: ' + (S.music === 'off' ? 'off' : (playing ? 'on' : 'ready')));
@@ -2900,35 +3141,76 @@
     return voiceList[0];
   }
 
-  /* Split long paragraphs cleanly (< 145 chars) so mobile/Chromium Web Speech
-     never hits the ~15-second utterance truncation bug mid-sentence. */
+  /* ------------------------------------------------------------------
+     PUNCTUATION-AWARE CHUNKING
+
+     Chromium truncates a single utterance at roughly 15 seconds, so a long
+     paragraph has to be broken into several utterances. The old version
+     broke it at a raw character count, which is exactly why the reader
+     stopped in the middle of a clause and appeared to ignore the commas:
+     the cut landed wherever character 145 happened to fall, not where a
+     human would breathe.
+
+     Every boundary below is now chosen at punctuation, strongest first:
+
+       1. sentence end   .  !  ?
+       2. clause break   ;  :
+       3. comma          ,
+       4. dash           —  –
+       5. word gap       (only when the sentence has no punctuation at all)
+
+     A chunk therefore always ends where the voice is *supposed* to pause,
+     so the small gap the engine inserts between utterances lands on a
+     comma or a full stop instead of mid-sentence.
+     ------------------------------------------------------------------ */
+  var CLAUSE_MARKS = [';', ':', ',', '\u2014', '\u2013'];
+
   function splitSpeechText(text, maxLen) {
     var clean = String(text || '').replace(/\s+/g, ' ').trim();
     if (!clean) return [];
-    if (clean.length <= maxLen) return [clean];
-    var chunks = [];
-    var sentences = clean.split(/(?<=[.!?;:])\s+/);
-    sentences.forEach(function (sent) {
-      var s = sent.trim();
-      if (!s) return;
-      if (s.length <= maxLen) {
-        chunks.push(s);
-        return;
-      }
-      var words = s.split(/\s+/);
-      var buf = '';
-      words.forEach(function (w) {
-        if (!buf) { buf = w; return; }
-        if (buf.length + 1 + w.length > maxLen) {
-          chunks.push(buf);
-          buf = w;
-        } else {
-          buf += ' ' + w;
+    var limit = Math.max(60, Number(maxLen) || 150);
+    if (clean.length <= limit) return [clean];
+
+    var out = [];
+    function pushChunk(s) {
+      var t = String(s || '').trim();
+      if (t) out.push(t);
+    }
+
+    /* A sentence that still does not fit: cut at the punctuation nearest the
+       middle of the window, never at a bare character count. */
+    function splitLong(sentence) {
+      var rest = String(sentence || '').trim();
+      var guard = 0;
+      while (rest.length > limit && guard++ < 40) {
+        var win = rest.slice(0, limit);
+        var cut = -1;
+        for (var m = 0; m < CLAUSE_MARKS.length && cut < 0; m++) {
+          var idx = win.lastIndexOf(CLAUSE_MARKS[m]);
+          /* keep at least a third of the window, so we never emit a stub */
+          if (idx >= Math.floor(limit * 0.34)) cut = idx + 1;
         }
-      });
-      if (buf) chunks.push(buf);
+        if (cut < 0) {
+          var sp = win.lastIndexOf(' ');
+          cut = sp > 0 ? sp : limit;
+        }
+        pushChunk(rest.slice(0, cut));
+        rest = rest.slice(cut).trim();
+      }
+      pushChunk(rest);
+    }
+
+    /* 1. Sentence pass — the terminator stays with its own sentence so the
+          engine still performs the full stop. */
+    var sentences = clean.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) || [clean];
+    sentences.forEach(function (s) {
+      var t = String(s || '').trim();
+      if (!t) return;
+      if (t.length <= limit) pushChunk(t);
+      else splitLong(t);
     });
-    return chunks.length ? chunks : [clean];
+
+    return out.length ? out : [clean];
   }
 
   function speakParts(parts, isReveal, voiceOpts) {
@@ -2961,14 +3243,67 @@
       syncUtterances[syncUtterances.length - 1].isLastSync = true;
     }
 
-    var queued = 0;
-    var chars = 0;
     var baseRate = Math.max(0.5, Number(S.voiceRate) || 0.96);
     var rateMult = (voiceOpts && Number(voiceOpts.rateMult)) || 1;
     var rate = Math.max(0.58, Math.min(1.5, baseRate * rateMult));
     var pitch = Math.max(0.5, Math.min(1.6, (voiceOpts && Number(voiceOpts.pitch)) || 1));
 
-    expanded.forEach(function (entry) {
+    /* ------------------------------------------------------------------
+       PROSODY: a deliberate pause after every chunk.
+
+       The Web Speech API gives no control over the gap it inserts between
+       two utterances — on Chrome it is a flat ~0ms, on Safari it can be
+       several hundred. That is why a comma and a full stop used to sound
+       identical, and why the reading felt rushed and robotic.
+
+       So we no longer hand the whole queue to the engine at once. We speak
+       ONE chunk, wait a pause chosen from the punctuation that chunk ends
+       on, then speak the next. The result is real, audible phrasing:
+
+         full stop / question / exclamation  ->  long pause
+         semicolon / colon                   ->  medium pause
+         comma / dash                        ->  short pause
+         no punctuation (forced word cut)    ->  a breath
+
+       Pauses are divided by the speaking rate, so a faster voice keeps the
+       same *relative* rhythm instead of swallowing the commas.
+       ------------------------------------------------------------------ */
+    function pauseAfter(text) {
+      var t = String(text || '').replace(/["')\]\u201d\u2019]+$/, '').trim();
+      var last = t.slice(-1);
+      var ms;
+      if (last === '.' || last === '!' || last === '?') ms = 430;
+      else if (last === ';' || last === ':') ms = 300;
+      else if (last === ',') ms = 205;
+      else if (last === '\u2014' || last === '\u2013') ms = 250;
+      else ms = 95;
+      return Math.round(ms / Math.max(0.6, rate));
+    }
+
+    var total = expanded.length;
+    var chars = 0;
+    expanded.forEach(function (e) { chars += e.text.length; });
+
+    /* The scene gate counts utterances still to be spoken. With sequential
+       speaking that is simply "chunks not yet finished". */
+    speechPending = total;
+    if (isReveal) revealPending = total;
+
+    var estMs = (chars / 9.5) * 1000 / rate + total * 700;
+    speechDeadline = now() + estMs + 6000;
+    if (isReveal) revealDeadline = speechDeadline;
+
+    speaking = true;
+    pausedSpeech = false;
+    updateVoiceBtn();
+
+    var idx = 0;
+    var gapTimer = 0;
+
+    function speakNext() {
+      if (gen !== speechGen) return;          /* a newer queue took over */
+      if (idx >= total) return;
+      var entry = expanded[idx];
       var p = entry.text;
       var u = new SpeechSynthesisUtterance(p);
       if (v) u.voice = v;
@@ -2976,6 +3311,7 @@
       u.pitch = pitch;
       if (entry.isLastSync) u._isLastSyncChunk = true;
       activeUtterances.push(u);
+
       u.onstart = function () {
         if (gen !== speechGen) return;
         var remMs = (p.length / 8.5) * 1000 / rate + 4200 + Math.max(0, speechPending - 1) * 1800;
@@ -2992,26 +3328,39 @@
           }
         };
       }
-      /* both handlers: a failed utterance must not leave the queue stuck */
-      u.onend = function () { speechUtteranceEnded(gen, isReveal, u); };
-      u.onerror = function () { speechUtteranceEnded(gen, isReveal, u); };
-      synth.speak(u);
-      queued++;
-      chars += p.length;
+
+      /* Both handlers advance the queue: a failed utterance must not leave
+         the broadcast waiting on speech that is never coming. */
+      var advanced = false;
+      function advance() {
+        if (advanced) return;
+        advanced = true;
+        speechUtteranceEnded(gen, isReveal, u);
+        if (gen !== speechGen) return;
+        idx++;
+        if (idx >= total) return;
+        var wait = pauseAfter(p);
+        gapTimer = window.setTimeout(function () {
+          gapTimer = 0;
+          speakNext();
+        }, wait);
+      }
+      u.onend = advance;
+      u.onerror = advance;
+
+      try {
+        synth.speak(u);
+      } catch (e) {
+        advance();
+      }
+    }
+
+    /* Remember the gap timer so stopSpeech() can clear it. */
+    speechGapTimers.push(function () {
+      if (gapTimer) { window.clearTimeout(gapTimer); gapTimer = 0; }
     });
 
-    if (!queued) return;
-    speechPending = queued;
-    /* ~9.5 chars/sec at 1x + inter-utterance latency buffer; dynamically extended in onstart */
-    var estMs = (chars / 9.5) * 1000 / rate + queued * 650;
-    speechDeadline = now() + estMs + 5000;
-    if (isReveal) {
-      revealPending = queued;
-      revealDeadline = speechDeadline;
-    }
-    speaking = true;
-    pausedSpeech = false;
-    updateVoiceBtn();
+    speakNext();
   }
 
   function stopUploadedStorySpeech() {
@@ -3033,6 +3382,10 @@
     revealPending = 0;
     revealDeadline = 0;
     activeUtterances = [];
+    /* Clear any pending prosody gap so a stale timer cannot restart the
+       queue we are about to cancel. */
+    speechGapTimers.forEach(function (fn) { try { fn(); } catch (e) {} });
+    speechGapTimers = [];
     if (synth) {
       try { synth.cancel(); } catch (e) {}
     }
@@ -6861,6 +7214,9 @@
   function boot() {
     rebuildQuizBanks();
     initRouting();
+    /* Arm the gesture unlock before anything tries to make sound: the first
+       click/keypress anywhere releases a blocked background track. */
+    installGestureUnlock();
     setEngine(S.engine);
     setSegment(S.segment);
     setPlayerMode(S.playerMode);
@@ -7022,6 +7378,21 @@
       };
     },
     storeClip: function (file, kind) { storeMedia(file, kind); },
+    audio: function () {
+      return {
+        ctxState: audioCtx ? audioCtx.state : 'none',
+        bedRunning: !!upliftTimer,
+        bedStep: upliftStep,
+        padNodes: musicNodes ? musicNodes.length : 0,
+        customTrack: customAudioName || null,
+        customPlaying: !!(customAudioEl && !customAudioEl.paused),
+        customVolume: customAudioEl ? Math.round(customAudioEl.volume * 100) / 100 : null,
+        ducked: musicDucked,
+        suppressed: isAudioSuppressedPhase(),
+        musicSetting: S.music,
+        musicVol: S.musicVol
+      };
+    },
     layout: function () {
       var f = el.frame.getBoundingClientRect();
       var t = document.querySelector('.transport');
