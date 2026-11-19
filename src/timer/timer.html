@@ -395,42 +395,80 @@
         <!-- 2 · STORYTELLING ENGINE -->
         <section class="panel-block" id="storySetup" hidden>
           <div class="block-head">
-            <h2><span class="step-num">2</span> Documentary episodes &amp; pacing <span class="meta-inline" id="storyCatalogNotice">8 Built-in Episodes + Custom JSON</span></h2>
-            <p>Each documentary unfolds in deliberate acts &mdash; Opening Hook, Escalation, Turning Point, and Legacy &mdash; pairing animated map, archive, profile, timeline, comparison, and artifact compositions with continuous voice narration.</p>
+            <h2><span class="step-num">2</span> Interactive Hook-Loop Storytelling <span class="meta-inline" id="storyCatalogNotice">14 Built-in Cases + Custom JSON</span></h2>
+            <p>Each story follows a 4-stage interactive micro-loop built for live chat: 8-second Cold-Open Anomaly &rarr; 3 Escalating Evidence Beats (including Sar &amp; Diq banter over real history) &rarr; Live Chat Deduction Gate &rarr; Authored Twist Commentary, interleaved with rapid trivia.</p>
           </div>
 
           <div class="sub-block">
-            <h3 class="sub-title">Documentary track filter <em>plays seamlessly in rotation</em></h3>
+            <h3 class="sub-title">Case archive filter <em>rotates archetypes &amp; pacing profiles automatically</em></h3>
             <div class="seg-inline" role="radiogroup" aria-label="Story documentary category">
-              <button class="seg-pill is-selected" type="button" data-storycat="all" id="storyCatAll">All episodes &middot; <b id="storyCatAllCount">0</b></button>
+              <button class="seg-pill is-selected" type="button" data-storycat="all" id="storyCatAll">All stories &middot; <b id="storyCatAllCount">0</b></button>
               <button class="seg-pill" type="button" data-storycat="world-history" id="storyCatHistory">World History &middot; <b id="storyCatHistoryCount">0</b></button>
               <button class="seg-pill" type="button" data-storycat="biblical" id="storyCatBiblical">Biblical Chronicles &middot; <b id="storyCatBiblicalCount">0</b></button>
             </div>
           </div>
 
           <div class="sub-block">
-            <h3 class="sub-title">Documentary pacing</h3>
+            <h3 class="sub-title">Hook-Loop pacing &amp; rotation safeguards</h3>
             <div class="dial-row">
               <label class="dial">
                 <span class="dial-label">Story block</span>
                 <span class="dial-input"><input type="number" id="setupStoryMin" min="10" max="240" step="5" value="60" inputmode="numeric" /><em>min</em></span>
-                <span class="dial-hint">Auto-advances through episodes until break check</span>
+                <span class="dial-hint">Auto-rotates cases until scheduled partner break</span>
               </label>
               <label class="dial">
-                <span class="dial-label">Scene breathe hold</span>
+                <span class="dial-label">Beat hold</span>
                 <span class="dial-input"><input type="number" id="setupStorySceneSec" min="4" max="30" step="1" value="8" inputmode="numeric" /><em>sec</em></span>
-                <span class="dial-hint">Brief pause after narrator finishes each scene (or full duration when Voice is off)</span>
+                <span class="dial-hint">Hold after narrator finishes each evidence beat (or full beat when Voice is off)</span>
               </label>
             </div>
+            <div class="chat-safe-options" style="margin-top:12px">
+              <label class="switch-row">
+                <input type="checkbox" id="setupStoryInterleave" checked />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Interleave 2 rapid trivia questions after each story <em>gives new viewers an interactive entry point every ~90 seconds</em></span>
+              </label>
+              <label class="switch-row">
+                <input type="checkbox" id="setupStoryVaryCadence" checked />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Vary archetype, visual palette &amp; audio cadence between stories <em>prevents templated repetition across consecutive loops</em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="sub-block" id="storySpeechBox">
+            <div class="pl-lib-head" style="margin-bottom:10px">
+              <div>
+                <h3 class="sub-title" style="margin-bottom:4px">Narrator Voice &amp; Speech Upload</h3>
+                <p class="block-note" style="margin-top:0">Uses one skilled storyteller voice by default, or upload your own recorded narration audio (MP3/WAV/M4A/OGG).</p>
+              </div>
+              <span class="dsec-tag" id="storySpeechStatus">Built-in Narrator</span>
+            </div>
+            <div class="file-row" style="margin-top:0">
+              <label class="file-pick">
+                <input type="file" id="setupStorySpeechInput" accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac" multiple />
+                <span>Upload speech audio</span>
+              </label>
+              <label class="field" style="max-width:230px; flex:0 1 230px">
+                <span>Playback</span>
+                <select id="setupStorySpeechMode">
+                  <option value="episode">1 track per chapter</option>
+                  <option value="step">1 track per step</option>
+                </select>
+              </label>
+              <button class="btn btn-quiet btn-sm" type="button" id="storySpeechPreviewBtn" hidden>Preview</button>
+              <button class="btn btn-ghost btn-sm" type="button" id="storySpeechClearBtn" hidden>Clear speech</button>
+            </div>
+            <ul class="clip-list" id="storySpeechList" style="margin-top:10px"></ul>
           </div>
 
           <div class="sub-block player-lib-box" id="storyCatalogBox">
             <div class="pl-lib-head">
               <div>
-                <h3 class="sub-title" style="margin-bottom:4px">Curated &amp; Custom Story Episodes</h3>
-                <p class="block-note" style="margin-top:0">Select a starting episode or let the studio rotate cleanly through every act without repeating.</p>
+                <h3 class="sub-title" style="margin-bottom:4px">Curated &amp; Custom Investigation Cases</h3>
+                <p class="block-note" style="margin-top:0">Select a starting case or let the studio alternate archetypes, pacing profiles, and palettes automatically.</p>
               </div>
-              <span class="dsec-tag" id="storySceneTag">0 scenes ready</span>
+              <span class="dsec-tag" id="storySceneTag">0 beats ready</span>
             </div>
 
             <div class="story-episode-list" id="storyEpisodeList"></div>
@@ -438,11 +476,11 @@
             <div class="pl-actions" style="margin-top:14px">
               <label class="btn btn-primary btn-sm pl-file-btn">
                 <input type="file" id="setupStoryImportInput" accept="application/json,.json" />
-                <span>Import Story JSON</span>
+                <span>Import Hook-Loop JSON</span>
               </label>
-              <button class="btn btn-quiet btn-sm" type="button" id="dlStoryTemplateBtn">Download Story Template (.json)</button>
-              <button class="btn btn-quiet btn-sm" type="button" id="copyStoryPromptBtn">Copy Documentary AI Prompt</button>
-              <button class="btn btn-ghost btn-sm" type="button" id="storyClearBtn">Reset Custom Episodes</button>
+              <button class="btn btn-quiet btn-sm" type="button" id="dlStoryTemplateBtn">Download Hook-Loop Template (.json)</button>
+              <button class="btn btn-quiet btn-sm" type="button" id="copyStoryPromptBtn">Copy Hook-Loop AI Prompt</button>
+              <button class="btn btn-ghost btn-sm" type="button" id="storyClearBtn">Reset Custom Cases</button>
             </div>
             <div class="import-result" id="storyImportResult" hidden></div>
           </div>
@@ -523,10 +561,10 @@
             <span class="dsec-tag">Active Protection</span>
           </div>
           <ul class="yt-safety-list">
-            <li><strong>Non-repetitious broadcasts:</strong> 1,800+ unique built-in questions &amp; cards with 1,500-item session memory and active TTS narration so frames change dynamically.</li>
-            <li><strong>Copyright-safe audio:</strong> Procedural ambient pads (Sacred, Drift, Focus) generate royalty-free audio on-device &mdash; only upload tracks you hold broadcast rights to.</li>
-            <li><strong>Honest disclosures:</strong> Fake ad badges are removed. If airing paid sponsor clips, check <em>&ldquo;My video contains paid promotion&rdquo;</em> in YouTube Studio before going live.</li>
-            <li><strong>12-hour VOD limit:</strong> YouTube stops archiving streams longer than 12 hours; restart your broadcast before 11h&ndash;12h to keep full VOD replays.</li>
+            <li><strong>Non-templated broadcasts:</strong> Storytelling rotates 5 investigative archetypes, shifting visual modes, palettes, and pacing profiles with live deduction gates + authored host commentary so streams avoid &ldquo;inauthentic/repetitious&rdquo; flags.</li>
+            <li><strong>Quiz + Story velocity:</strong> Optional 2-question rapid trivia bursts between cases pair with 1,800+ non-repeating quiz items and 1,500-item session memory.</li>
+            <li><strong>Copyright-safe audio:</strong> Procedural ambient pads adapt across episodes on-device; only upload custom MP3 tracks you hold broadcast rights to.</li>
+            <li><strong>Honest disclosures &amp; 12h VOD:</strong> If airing paid sponsor breaks, check <em>&ldquo;My video contains paid promotion&rdquo;</em> in YouTube Studio, and restart streams under 12 hours to preserve full VOD archives.</li>
           </ul>
         </section>
 
@@ -796,21 +834,22 @@
           <div class="story-stage" id="storyStage" hidden>
             <div class="story-head">
               <div class="story-head-meta">
-                <span class="story-act-pill" id="storyActPill">ACT 1</span>
-                <span class="story-ep-title" id="storyEpTitle">Episode Title</span>
-                <span class="story-era-tag" id="storyEraTag">Era</span>
+                <span class="story-act-pill" id="storyActPill">Chapter 1</span>
+                <span class="story-ep-title" id="storyEpTitle">Case Title</span>
               </div>
-              <div class="story-act-rail" id="storyActRail" aria-hidden="true"></div>
+              <div class="story-head-right">
+                <span class="story-disclaimer-tag" id="storyDisclaimerTag" hidden>Fictional Characters &middot; Real History</span>
+                <span class="story-phase-countdown" id="storyPhaseCountdown" hidden>15s</span>
+                <div class="story-act-rail" id="storyActRail" aria-hidden="true"></div>
+              </div>
             </div>
             <div class="story-canvas" id="storyCanvas">
               <div class="story-visual-host" id="storyVisualHost"></div>
             </div>
             <div class="story-lower">
-              <div class="story-narration-box">
-                <span class="story-scene-type-tag" id="storySceneTypeTag">DOCUMENT</span>
+              <div class="story-narration-box" id="storyNarrationBox">
                 <p class="story-narration-text" id="storyNarrationText"></p>
               </div>
-              <p class="story-engagement-line" id="storyEngagementLine" hidden></p>
             </div>
           </div>
 
@@ -978,10 +1017,20 @@
     </section>
 
     <section class="dsec">
-      <div class="dsec-head"><h3>Storytelling pacing</h3><span class="dsec-tag" id="drawerStoryTag">0 episodes</span></div>
+      <div class="dsec-head"><h3>Storytelling Hook-Loop</h3><span class="dsec-tag" id="drawerStoryTag">0 stories</span></div>
       <div class="field-row">
         <label class="field"><span>Story block</span><input type="number" id="storyMin" min="10" max="240" step="5" value="60" inputmode="numeric" /><em>min</em></label>
-        <label class="field"><span>Scene hold</span><input type="number" id="storySceneSec" min="4" max="30" step="1" value="8" inputmode="numeric" /><em>sec</em></label>
+        <label class="field"><span>Beat hold</span><input type="number" id="storySceneSec" min="4" max="30" step="1" value="8" inputmode="numeric" /><em>sec</em></label>
+      </div>
+      <label class="switch"><input type="checkbox" id="drawerStoryInterleave" checked /><span>Interleave 2 rapid trivia Qs per story</span></label>
+      <label class="switch"><input type="checkbox" id="drawerStoryVaryCadence" checked /><span>Vary cadence, palette &amp; audio per case</span></label>
+      <div class="file-row">
+        <label class="file-pick">
+          <input type="file" id="drawerStorySpeechInput" accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac" multiple />
+          <span>Upload speech audio</span>
+        </label>
+        <span class="file-name" id="drawerStorySpeechName">Built-in narrator</span>
+        <button class="btn btn-ghost btn-sm" type="button" id="drawerStorySpeechClearBtn" hidden>Clear</button>
       </div>
     </section>
 

@@ -62,7 +62,7 @@
 
   /* A year reads as a year, not a count:
      1066 -> "ten sixty-six", 1900 -> "nineteen hundred",
-     2008 -> "twenty oh eight", 2000 -> "two thousand". */
+     2008 -> "two thousand and eight", 2000 -> "two thousand". */
   function yearToWords(n) {
     n = Math.floor(n);
     if (n < 1000 || n > 9999) return intToWords(n);
@@ -73,7 +73,10 @@
       if (hi % 10 === 0) return intToWords(n);
       return under1000(hi) + ' hundred';
     }
-    if (lo < 10) return under1000(hi) + ' oh ' + ONES[lo];
+    if (lo < 10) {
+      if (hi % 10 === 0) return intToWords(hi * 100) + ' and ' + ONES[lo];
+      return under1000(hi) + ' oh ' + ONES[lo];
+    }
     return under1000(hi) + ' ' + under1000(lo);
   }
 
@@ -133,7 +136,7 @@
     'UN', 'EU', 'NASA', 'DNA', 'HIV', 'AIDS', 'HTML', 'CSS', 'API', 'GPU',
     'CPU', 'RAM', 'WWI', 'WWII', 'OK', 'TV', 'PC', 'CD', 'DVD', 'GPS',
     'ATM', 'FBI', 'CIA', 'IMF', 'OPEC', 'WHO', 'US',
-    'FC', 'UCL', 'PSG', 'MLS', 'EPL', 'AC', 'CP', 'AFCON', 'MVP'];
+    'FC', 'UCL', 'PSG', 'MLS', 'EPL', 'AC', 'CP', 'MVP'];
 
   /* ---------- abbreviations ---------- */
 
@@ -271,7 +274,11 @@
     text = text.replace(/\b(\d{3,4})s\b/g, function (_, n) {
       var num = parseInt(n, 10);
       var hi = Math.floor(num / 100), lo = num % 100;
-      if (lo === 0) return under1000(hi) + ' hundreds';
+      if (lo === 0) {
+        if (hi % 10 === 0) return intToWords(num) + 's';
+        return under1000(hi) + ' hundreds';
+      }
+      if (lo < 10 && hi % 10 === 0) return intToWords(hi * 100) + ' and ' + ONES[lo] + 's';
       return under1000(hi) + ' ' + TENS_PLURAL[Math.floor(lo / 10)] +
         (lo % 10 ? '-' + ONES[lo % 10] : '');
     });
@@ -348,6 +355,25 @@
     });
   }
 
+  /* Football / sports terminology: "U-17" / "U17" -> "Under seventeen",
+     "XI" -> "eleven", "AFCON"/"FIFA"/"UEFA" natural words, "'08" -> "oh eight". */
+  function expandSportsTerms(text) {
+    text = text.replace(/\b(?:U[-\s]?|Under-)(\d{1,2})(s)?\b/gi, function (_, n, plural) {
+      var word = 'Under ' + intToWords(parseInt(n, 10));
+      return plural ? (word + 's') : word;
+    });
+    text = text.replace(/\bFIFA\b/g, 'Fifa');
+    text = text.replace(/\bUEFA\b/g, 'Uefa');
+    text = text.replace(/\bAFCON\b/g, 'Afcon');
+    text = text.replace(/\bVAR\b/g, 'V A R');
+    text = text.replace(/\bXI\b/g, 'eleven');
+    text = text.replace(/(^|\s)['’](0\d|[1-9]\d)\b/g, function (_, lead, yy) {
+      var val = parseInt(yy, 10);
+      return lead + (val < 10 ? ('oh ' + ONES[val]) : under1000(val));
+    });
+    return text;
+  }
+
   /* ---------- main ---------- */
 
   function normalizeSpeech(input, opts) {
@@ -355,8 +381,9 @@
     var text = String(input);
     if (!text.trim()) return '';
 
-    /* order matters: refs, ranges and eras consume the digits they
-       need before the generic number passes run. */
+    /* order matters: sports tiers, refs, ranges and eras consume the digits
+       they need before the generic number passes run. */
+    text = expandSportsTerms(text);
     text = expandAcronymSlash(text);
     text = expandAcronyms(text);
     text = expandHashNumbers(text, opts);
@@ -485,6 +512,49 @@
     return parts.filter(function (p) { return p.replace(/\s+/g, ''); });
   }
 
+  function storyHookParts(episode, chapterNum) {
+    if (!episode || !episode.hook) return [];
+    var chap = Math.max(1, Number(chapterNum) || 1);
+    var parts = ['Chapter ' + intToWords(chap) + '. ' + normalizeSpeech(episode.title || episode.hook.headline || '') + '.'];
+    if (episode.hook.narration) parts.push(normalizeSpeech(episode.hook.narration));
+    return parts.filter(function (p) { return p.replace(/\s+/g, ''); });
+  }
+
+  function storyBeatParts(beat) {
+    if (!beat) return [];
+    var parts = [];
+    if (beat.text) parts.push(normalizeSpeech(beat.text));
+    if (beat.openLoop) parts.push(normalizeSpeech(beat.openLoop));
+    return parts.filter(function (p) { return p.replace(/\s+/g, ''); });
+  }
+
+  function storyCheckpointParts(checkpoint) {
+    if (!checkpoint) return [];
+    var parts = [
+      'Live deduction checkpoint.',
+      normalizeSpeech(checkpoint.prompt || 'What explains the evidence?')
+    ];
+    (checkpoint.options || []).forEach(function (opt) {
+      parts.push(normalizeSpeech(opt));
+    });
+    parts.push('Vote A, B, or C in live chat right now before the countdown hits zero.');
+    return parts.filter(function (p) { return p.replace(/\s+/g, ''); });
+  }
+
+  function storyResolutionParts(episode, checkpoint) {
+    if (!episode || !episode.resolution) return [];
+    var res = episode.resolution;
+    var parts = [];
+    if (res.reveal) parts.push(normalizeSpeech(res.reveal));
+    else if (checkpoint && checkpoint.options && checkpoint.options[checkpoint.correctIndex]) {
+      parts.push('The verified explanation is ' + normalizeSpeech(checkpoint.options[checkpoint.correctIndex]));
+    }
+    if (res.flawEveryoneMisses) parts.push('Here is the detail most people miss. ' + normalizeSpeech(res.flawEveryoneMisses));
+    if (res.whyItMatters) parts.push(normalizeSpeech(res.whyItMatters));
+    if (res.nextStoryBridge) parts.push(normalizeSpeech(res.nextStoryBridge));
+    return parts.filter(function (p) { return p.replace(/\s+/g, ''); });
+  }
+
   window.LNR_SPEECH = {
     normalizeSpeech: normalizeSpeech,
     questionParts: questionParts,
@@ -497,6 +567,10 @@
     storyIntroParts: storyIntroParts,
     storySceneParts: storySceneParts,
     storyOutroParts: storyOutroParts,
+    storyHookParts: storyHookParts,
+    storyBeatParts: storyBeatParts,
+    storyCheckpointParts: storyCheckpointParts,
+    storyResolutionParts: storyResolutionParts,
     intToWords: intToWords,
     yearToWords: yearToWords,
     yearish: yearish,

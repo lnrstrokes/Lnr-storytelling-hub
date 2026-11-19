@@ -75,9 +75,12 @@
     milestoneSec: 30,    /* every-10-questions self-score board */
     playerMode: 'all',   /* 'all' | 'clues' | 'visual' */
     storyBlockMin: 60,   /* documentary storytelling block length */
-    storySceneSec: 8,    /* hold seconds after narrator completes a story scene */
+    storySceneSec: 8,    /* hold seconds after narrator completes a story beat */
     storyCat: 'all',     /* 'all' | 'world-history' | 'biblical' */
     storyStartId: '',    /* optional selected starter episode id */
+    storySpeechMode: 'episode', /* 'episode' | 'step' for uploaded narrator audio */
+    storyInterleave: true,   /* run 2 rapid trivia questions after each Hook-Loop case */
+    storyVaryCadence: true,  /* rotate palette, archetype cadence & ambient bed per case */
     chatSafe: true,      /* keep player content in upper ~68% above live chat/typing */
     chatGuide: false,    /* show preview dashed boundary line */
     brand: DEFAULT_BRAND, /* brand strap across the break */
@@ -127,6 +130,7 @@
   if (S.engine !== 'quiz' && S.engine !== 'players' && S.engine !== 'video' && S.engine !== 'story') S.engine = defaults.engine;
   if (S.segment !== 'bible' && S.segment !== 'history') S.segment = defaults.segment;
   if (S.storyCat !== 'all' && S.storyCat !== 'world-history' && S.storyCat !== 'biblical') S.storyCat = 'all';
+  if (S.storySpeechMode !== 'episode' && S.storySpeechMode !== 'step') S.storySpeechMode = 'episode';
   if (S.promoDisplayMode !== 'full' && S.promoDisplayMode !== 'pip' && S.promoDisplayMode !== 'split') S.promoDisplayMode = 'full';
   if (S.promoOrder !== 'sequential' && S.promoOrder !== 'shuffle') S.promoOrder = 'sequential';
   if (S.promoOverlayStyle !== 'disclosure' && S.promoOverlayStyle !== 'clean-brand' && S.promoOverlayStyle !== 'raw') S.promoOverlayStyle = 'disclosure';
@@ -347,7 +351,10 @@
     promoCursor: 0,
     activeAdLog: null,
     waitingForSpeech: false,
-    lastTickCueSec: -1
+    lastTickCueSec: -1,
+    storyBurstRemaining: 0,
+    storyBurstTotal: 0,
+    storyBurstReturn: false
   };
 
   var bagHistory = [];
@@ -378,7 +385,9 @@
     /* storytelling setup */
     'storyCatalogNotice', 'storyCatAll', 'storyCatHistory', 'storyCatBiblical',
     'storyCatAllCount', 'storyCatHistoryCount', 'storyCatBiblicalCount',
-    'setupStoryMin', 'setupStorySceneSec', 'storySceneTag', 'storyEpisodeList',
+    'setupStoryMin', 'setupStorySceneSec', 'setupStoryInterleave', 'setupStoryVaryCadence',
+    'storySceneTag', 'storyEpisodeList',
+    'setupStorySpeechInput', 'setupStorySpeechMode', 'storySpeechStatus', 'storySpeechPreviewBtn', 'storySpeechClearBtn', 'storySpeechList',
     'setupStoryImportInput', 'dlStoryTemplateBtn', 'copyStoryPromptBtn', 'storyClearBtn', 'storyImportResult',
     /* quiz guide & segment */
     'quizPrivateNotice', 'quizTierLimitNote', 'segBible', 'segHistory', 'countBible', 'countHistory', 'runBible', 'runHistory',
@@ -414,8 +423,8 @@
     'chatSafeGuide',
     'milestoneStage', 'msRoundBadge', 'msTitle', 'msTimer', 'msGrid',
     'msGrades', 'msGrade0', 'msGrade1', 'msGrade2', 'msGrade3', 'msCta',
-    'storyStage', 'storyActPill', 'storyEpTitle', 'storyEraTag', 'storyActRail',
-    'storyCanvas', 'storyVisualHost', 'storySceneTypeTag', 'storyNarrationText', 'storyEngagementLine',
+    'storyStage', 'storyActPill', 'storyEpTitle', 'storyDisclaimerTag', 'storyPhaseCountdown', 'storyActRail',
+    'storyCanvas', 'storyVisualHost', 'storyNarrationBox', 'storyNarrationText',
     'videoStage', 'stageVideo', 'stageVideoB', 'demoVideoCanvas', 'videoEmpty', 'videoEmptyTitle', 'videoEmptyNote',
     'promoAdOverlay', 'promoAdBadge', 'promoAdTitle', 'promoAdClock', 'promoAdReturn', 'promoUnmuteBtn',
     'adNotice', 'adNoticeBadge', 'adNoticeTitle', 'adNoticeSub', 'adNoticeTimer', 'adNoticeFill',
@@ -431,7 +440,8 @@
     'quizMin', 'promoIntervalMin', 'promoSec', 'qSec', 'autoRotate',
     'musicGrid', 'musicVol', 'musicVolLabel', 'sfxOn',
     'audioInput', 'audioName', 'audioPreviewBtn', 'audioClearBtn',
-    'storyMin', 'storySceneSec', 'drawerStoryTag',
+    'storyMin', 'storySceneSec', 'drawerStoryTag', 'drawerStoryInterleave', 'drawerStoryVaryCadence',
+    'drawerStorySpeechInput', 'drawerStorySpeechName', 'drawerStorySpeechClearBtn',
     'loopHoursDrawer', 'brandOverlayInput',
     'bankTag', 'pillBible', 'pillHistory', 'pillBibleCount', 'pillHistoryCount',
     'importInput', 'importResult', 'voiceOn', 'voiceReveal', 'voiceSelect', 'voiceRate',
@@ -503,11 +513,11 @@
     var pIsDemo = pLib && pLib.isDemoOnly ? pLib.isDemoOnly() : false;
 
     var sApi = window.LNR_STORIES;
-    var sStats = sApi && sApi.getStats ? sApi.getStats() : { total: 0, builtIn: 0, custom: 0, worldHistory: 0, biblical: 0, totalActs: 0, totalScenes: 0 };
+    var sStats = sApi && sApi.getStats ? sApi.getStats() : { total: 0, builtIn: 0, custom: 0, worldHistory: 0, biblical: 0, totalBeats: 0, archetypes: 0 };
     var sFiltered = sApi ? sApi.getAllEpisodes(S.storyCat) : [];
-    var sSceneCount = 0;
+    var sBeatCount = 0;
     sFiltered.forEach(function (ep) {
-      (ep.acts || []).forEach(function (a) { sSceneCount += (a.scenes || []).length; });
+      sBeatCount += (ep.beats || []).length;
     });
 
     if (el.countBible) el.countBible.textContent = b + (usingDemo.bible ? ' (demo)' : '');
@@ -545,14 +555,14 @@
     }
 
     if (el.engStoryCount) el.engStoryCount.textContent = sStats.total;
-    if (el.engStoryRun) el.engStoryRun.textContent = sStats.total ? (sStats.totalActs + ' acts \u00b7 ' + sStats.totalScenes + ' scenes') : 'documentary studio';
+    if (el.engStoryRun) el.engStoryRun.textContent = sStats.total ? ((sStats.archetypes || 5) + ' archetypes \u00b7 ' + (sStats.totalBeats || 0) + ' beats') : 'Hook-Loop studio';
     if (el.storyCatAllCount) el.storyCatAllCount.textContent = sStats.total;
     if (el.storyCatHistoryCount) el.storyCatHistoryCount.textContent = sStats.worldHistory;
     if (el.storyCatBiblicalCount) el.storyCatBiblicalCount.textContent = sStats.biblical;
-    if (el.storySceneTag) el.storySceneTag.textContent = sSceneCount + ' scenes ready';
-    if (el.drawerStoryTag) el.drawerStoryTag.textContent = sFiltered.length + ' episodes';
+    if (el.storySceneTag) el.storySceneTag.textContent = sBeatCount + ' beats ready';
+    if (el.drawerStoryTag) el.drawerStoryTag.textContent = sFiltered.length + ' cases';
     if (el.storyCatalogNotice) {
-      el.storyCatalogNotice.textContent = sStats.builtIn + ' Built-in' + (sStats.custom ? (' + ' + sStats.custom + ' Custom') : ' + Custom JSON');
+      el.storyCatalogNotice.textContent = sStats.builtIn + ' Built-in Cases' + (sStats.custom ? (' + ' + sStats.custom + ' Custom') : ' + Custom JSON');
     }
 
     if (el.pillBibleCount) el.pillBibleCount.textContent = b;
@@ -572,7 +582,7 @@
     if (S.engine === 'players') {
       plan = 'Your session runs 10-question Player Quiz rounds with milestone grading cards' + (promoActive ? (', then ' + adDesc + '.') : ' (uninterrupted).');
     } else if (S.engine === 'story') {
-      plan = 'Your session narrates multi-act documentary episodes with animated archival scenes' + (promoActive ? (', then ' + adDesc + ' between episodes.') : ' (continuous uninterrupted rotation).');
+      plan = 'Your session runs Hook-Loop cases (Anomaly Hook \u2192 3 Evidence Beats \u2192 Live Deduction Gate \u2192 Twist Commentary)' + (S.storyInterleave ? ' interleaved with 2 rapid trivia Qs' : '') + (promoActive ? (', plus breaks after ' + intervalMin + 'm+.') : ' (uninterrupted).');
     } else if (S.engine === 'video') {
       plan = promoActive
         ? ('Your session runs ' + effectiveLoopHours() + ' hr of video, then ' + (activePromos.length ? '1 break clip' : formatShortSec(adSecEff) + ' break slot') + ', on repeat.')
@@ -588,7 +598,7 @@
       } else if (S.engine === 'players') {
         el.startSummary.textContent = 'Player quiz \u00b7 ' + pQuizzes.length + (pIsDemo ? ' demo cards' : ' quizzes') + ' \u00b7 milestones every 10 Qs' + (promoActive ? ' \u2192 break every ' + intervalMin + 'm+.' : ' \u00b7 uninterrupted.');
       } else if (S.engine === 'story') {
-        el.startSummary.textContent = 'Storytelling engine \u00b7 ' + sFiltered.length + ' episodes (' + sSceneCount + ' scenes) \u00b7 continuous documentary narration.';
+        el.startSummary.textContent = 'Storytelling engine \u00b7 ' + sFiltered.length + ' Hook-Loop cases' + (S.storyInterleave ? ' + 2 trivia Qs between cases' : '') + ' \u00b7 varied cadence.';
       } else {
         el.startSummary.textContent = 'Quiz engine \u00b7 ' + segName + (usingDemo[S.segment] ? ' (Demo)' : '') + ' \u00b7 milestones every 10 Qs' + (promoActive ? ' \u2192 break every ' + intervalMin + 'm+.' : ' \u00b7 uninterrupted.');
       }
@@ -848,6 +858,11 @@
     [el.setupMilestoneSec, el.milestoneSec].forEach(function (i) { if (i) i.value = S.milestoneSec; });
     [el.setupStoryMin, el.storyMin].forEach(function (i) { if (i) { i.max = blockMax; i.value = S.storyBlockMin; } });
     [el.setupStorySceneSec, el.storySceneSec].forEach(function (i) { if (i) i.value = S.storySceneSec; });
+    if (el.setupStorySpeechMode) el.setupStorySpeechMode.value = S.storySpeechMode || 'episode';
+    if (el.setupStoryInterleave) el.setupStoryInterleave.checked = !!S.storyInterleave;
+    if (el.drawerStoryInterleave) el.drawerStoryInterleave.checked = !!S.storyInterleave;
+    if (el.setupStoryVaryCadence) el.setupStoryVaryCadence.checked = !!S.storyVaryCadence;
+    if (el.drawerStoryVaryCadence) el.drawerStoryVaryCadence.checked = !!S.storyVaryCadence;
     if (el.setupPromoEnabled) el.setupPromoEnabled.checked = promoChecked;
     if (el.promoEnabledDrawer) el.promoEnabledDrawer.checked = promoChecked;
     if (el.setupChatSafe) el.setupChatSafe.checked = !!S.chatSafe;
@@ -916,6 +931,22 @@
         refreshPromoText();
         syncInputs();
         toast(S.promoAdsEnabled ? 'Channel / partner breaks enabled' : 'Channel breaks turned off (uninterrupted)');
+      });
+    });
+    [el.setupStoryInterleave, el.drawerStoryInterleave].forEach(function (chk) {
+      on(chk, 'change', function () {
+        S.storyInterleave = !!chk.checked;
+        save();
+        syncInputs();
+        toast(S.storyInterleave ? '2 rapid trivia Qs will follow each story' : 'Continuous story-only rotation');
+      });
+    });
+    [el.setupStoryVaryCadence, el.drawerStoryVaryCadence].forEach(function (chk) {
+      on(chk, 'change', function () {
+        S.storyVaryCadence = !!chk.checked;
+        save();
+        syncInputs();
+        toast(S.storyVaryCadence ? 'Archetype, palette & audio variation active' : 'Fixed audio/visual bed');
       });
     });
   }
@@ -1066,17 +1097,25 @@
       if (el.stMusicVol) el.stMusicVol.value = S.musicVol;
       if (el.musicVolLabel) el.musicVolLabel.textContent = S.musicVol + '%';
       if (el.stMusicVolLabel) el.stMusicVolLabel.textContent = S.musicVol + '%';
-      if (musicGain) musicGain.gain.value = (S.musicVol / 100) * 0.14;
-      if (customAudioEl) customAudioEl.volume = S.musicVol / 100;
+      var duckMult = musicDucked ? 0.26 : 1;
+      if (musicGain) musicGain.gain.value = (S.musicVol / 100) * 0.14 * duckMult;
+      if (customAudioEl) customAudioEl.volume = (S.musicVol / 100) * duckMult;
       if (previewGain) previewGain.gain.value = (S.musicVol / 100) * 0.18;
       save();
     });
   });
 
   /* procedural music bed & SFX — excluded on video/promo phases */
-  var audioCtx = null, musicNodes = null, musicGain = null;
+  var audioCtx = null, musicNodes = null, musicGain = null, musicDucked = false;
   var customAudioEl = null, customAudioUrl = '', customAudioName = '';
   var previewingAudio = false, previewSynthNodes = null, previewGain = null, previewStopTimer = 0;
+
+  function setMusicDucking(duck) {
+    musicDucked = !!duck;
+    var duckMult = musicDucked ? 0.26 : 1;
+    if (musicGain) musicGain.gain.value = (S.musicVol / 100) * 0.14 * duckMult;
+    if (customAudioEl && !previewingAudio) customAudioEl.volume = (S.musicVol / 100) * duckMult;
+  }
 
   function musicProfile(name) {
     if (name === 'ambient') return { root: 174.6, chord: [1, 1.5, 2.0, 2.5], lfo: 0.045 };
@@ -1101,7 +1140,7 @@
     var ctx = ensureAudioCtx();
     if (!ctx) return null;
     var gMaster = ctx.createGain();
-    gMaster.gain.value = (S.musicVol / 100) * volScale;
+    gMaster.gain.value = (S.musicVol / 100) * volScale * (musicDucked ? 0.26 : 1);
     gMaster.connect(ctx.destination);
     var oscs = [];
     prof.chord.forEach(function (mult, i) {
@@ -1138,15 +1177,25 @@
     }
     stopAudioPreview();
     if (customAudioEl) {
-      customAudioEl.volume = S.musicVol / 100;
+      customAudioEl.volume = (S.musicVol / 100) * (musicDucked ? 0.26 : 1);
       customAudioEl.loop = true;
       var p = customAudioEl.play();
       if (p && p.catch) p.catch(function () {});
       updateVoiceBtn();
       return;
     }
-    var prof = musicProfile(S.music);
+    var bedKey = S.music;
+    var pitchScale = 1;
+    if (live.phase === 'story' && S.storyVaryCadence && storyLive.episode) {
+      bedKey = storyLive.episode.audioBedPreference || S.music;
+      var shiftCycle = [0.9438, 1.0, 1.0594, 1.1224];
+      pitchScale = shiftCycle[storyLive.episodesCompleted % shiftCycle.length];
+    }
+    var prof = musicProfile(bedKey);
     if (!prof) { updateVoiceBtn(); return; }
+    if (pitchScale !== 1) {
+      prof = { root: prof.root * pitchScale, chord: prof.chord, lfo: prof.lfo };
+    }
     try {
       var padRes = buildPadNodes(prof, 0.14);
       if (padRes) {
@@ -2328,7 +2377,7 @@
 
     on(v, 'ended', function () {
       if (deckIdx !== activeDeckIdx) return;
-      if (live.phase === 'quiz' || live.phase === 'players') return;
+      if (live.phase === 'quiz' || live.phase === 'players' || live.phase === 'story') return;
       if (live.phase === 'promo') {
         if (S.autoRotate) {
           enterPhase(live.promoReturnPhase || homePhase(), false);
@@ -2402,6 +2451,209 @@
   var speechDeadline = 0;
   var activeUtterances = [];
 
+  /* Uploaded narrator speech tracks for Storytelling Engine */
+  var storySpeechTracks = []; /* [{ id, name, size, type, duration, blob, url }] */
+  var storySpeechEl = new Audio();
+  storySpeechEl.preload = 'auto';
+  var storySpeechPlaying = false;
+  var storySpeechPaused = false;
+  var storySpeechPreviewing = false;
+  var storySpeechPreviewIdx = -1;
+  var storySpeechTrackIdx = -1;
+  var storySpeechWaitMode = false;
+  var storySpeechDeadline = 0;
+
+  /* Live Voice-Synced Caption Animator (follows real speech or uploaded audio) */
+  var captionSync = {
+    el: null,
+    spans: [],
+    ranges: [],
+    totalChars: 0,
+    activeWord: -1,
+    rafId: 0,
+    active: false,
+    paused: false,
+    mode: 'tts', /* 'tts' | 'audio' */
+    anchorPerf: 0,
+    anchorChar: 0,
+    chunkStartChar: 0,
+    chunkEndChar: 0,
+    charsPerSec: 12.5,
+    sliceStartSec: 0,
+    sliceEndSec: 10
+  };
+
+  function setCaptionWordCursor(idx) {
+    if (!captionSync.spans.length) return;
+    if (idx === captionSync.activeWord) return;
+    var maxIdx = captionSync.spans.length - 1;
+    var clamped = Math.max(-1, Math.min(maxIdx, idx));
+    for (var i = 0; i < captionSync.spans.length; i++) {
+      var sp = captionSync.spans[i];
+      if (i < clamped) {
+        sp.className = 'vword is-spoken';
+      } else if (i === clamped) {
+        sp.className = 'vword is-active';
+      } else {
+        sp.className = 'vword is-upcoming';
+      }
+    }
+    captionSync.activeWord = clamped;
+  }
+
+  function stopCaptionSyncLoop() {
+    if (captionSync.rafId) {
+      window.cancelAnimationFrame(captionSync.rafId);
+      captionSync.rafId = 0;
+    }
+  }
+
+  function finishCaptionSync() {
+    stopCaptionSyncLoop();
+    captionSync.active = false;
+    captionSync.paused = false;
+    if (captionSync.spans.length) {
+      for (var i = 0; i < captionSync.spans.length; i++) {
+        captionSync.spans[i].className = 'vword is-spoken';
+      }
+      captionSync.activeWord = captionSync.spans.length - 1;
+    }
+  }
+
+  function pauseCaptionSync() {
+    if (!captionSync.active || captionSync.paused) return;
+    captionSync.paused = true;
+    stopCaptionSyncLoop();
+    if (captionSync.mode === 'tts') {
+      var elapsedSec = Math.max(0, (performance.now() - captionSync.anchorPerf) / 1000);
+      captionSync.anchorChar = Math.min(captionSync.chunkEndChar, captionSync.anchorChar + elapsedSec * captionSync.charsPerSec);
+    }
+  }
+
+  function tickCaptionSync() {
+    if (!captionSync.active || captionSync.paused) return;
+    var progressRatio = 0;
+    if (captionSync.mode === 'audio') {
+      var dur = Math.max(0.5, captionSync.sliceEndSec - captionSync.sliceStartSec);
+      var cur = Math.max(0, (storySpeechEl.currentTime || 0) - captionSync.sliceStartSec);
+      progressRatio = Math.max(0, Math.min(1, cur / dur));
+      var targetWord = Math.min(captionSync.spans.length - 1, Math.floor(progressRatio * captionSync.spans.length));
+      setCaptionWordCursor(targetWord);
+      if (progressRatio >= 0.995 && storySpeechEl.ended) {
+        finishCaptionSync();
+        return;
+      }
+    } else {
+      var elapsedSec = Math.max(0, (performance.now() - captionSync.anchorPerf) / 1000);
+      var estChar = Math.min(captionSync.chunkEndChar, captionSync.anchorChar + elapsedSec * captionSync.charsPerSec);
+      var wIdx = 0;
+      for (var i = 0; i < captionSync.ranges.length; i++) {
+        if (estChar >= captionSync.ranges[i].start) wIdx = i;
+        else break;
+      }
+      setCaptionWordCursor(wIdx);
+    }
+    captionSync.rafId = window.requestAnimationFrame(tickCaptionSync);
+  }
+
+  function resumeCaptionSync() {
+    if (!captionSync.active || !captionSync.paused) return;
+    captionSync.paused = false;
+    captionSync.anchorPerf = performance.now();
+    stopCaptionSyncLoop();
+    captionSync.rafId = window.requestAnimationFrame(tickCaptionSync);
+  }
+
+  function prepareVoiceCaption(targetEl, rawText, syncEnabled) {
+    stopCaptionSyncLoop();
+    captionSync.active = false;
+    captionSync.paused = false;
+    captionSync.el = null;
+    captionSync.spans = [];
+    captionSync.ranges = [];
+    captionSync.activeWord = -1;
+    if (!targetEl) return;
+    var text = String(rawText || '').trim();
+    if (!text) {
+      targetEl.textContent = '';
+      targetEl.classList.remove('is-voice-sync');
+      return;
+    }
+    var tokens = [];
+    var rx = /\S+/g;
+    var m;
+    while ((m = rx.exec(text)) !== null) {
+      tokens.push({ word: m[0], start: m.index, end: m.index + m[0].length });
+    }
+    var frag = document.createDocumentFragment();
+    var spans = [];
+    tokens.forEach(function (tk, idx) {
+      if (idx > 0) frag.appendChild(document.createTextNode(' '));
+      var sp = document.createElement('span');
+      sp.className = syncEnabled ? 'vword is-upcoming' : 'vword';
+      sp.textContent = tk.word;
+      frag.appendChild(sp);
+      spans.push(sp);
+    });
+    targetEl.innerHTML = '';
+    targetEl.appendChild(frag);
+    targetEl.classList.toggle('is-voice-sync', !!syncEnabled);
+    if (syncEnabled && spans.length) {
+      captionSync.el = targetEl;
+      captionSync.spans = spans;
+      captionSync.ranges = tokens;
+      captionSync.totalChars = text.length;
+    }
+  }
+
+  function beginTtsCaptionChunk(chunkOffset, chunkLen, rate) {
+    if (!captionSync.spans.length) return;
+    captionSync.mode = 'tts';
+    captionSync.active = true;
+    captionSync.paused = !!(live && live.paused);
+    captionSync.chunkStartChar = chunkOffset;
+    captionSync.chunkEndChar = Math.min(captionSync.totalChars, chunkOffset + chunkLen + 4);
+    captionSync.anchorChar = chunkOffset;
+    captionSync.anchorPerf = performance.now();
+    captionSync.charsPerSec = Math.max(7, Math.min(20, 12.2 * (rate || 0.96)));
+    var startWord = 0;
+    for (var i = 0; i < captionSync.ranges.length; i++) {
+      if (chunkOffset >= captionSync.ranges[i].start) startWord = i;
+      else break;
+    }
+    setCaptionWordCursor(startWord);
+    stopCaptionSyncLoop();
+    if (!captionSync.paused) {
+      captionSync.rafId = window.requestAnimationFrame(tickCaptionSync);
+    }
+  }
+
+  function onTtsCaptionBoundary(absChar) {
+    if (!captionSync.active || captionSync.mode !== 'tts' || !captionSync.ranges.length) return;
+    captionSync.anchorChar = absChar;
+    captionSync.anchorPerf = performance.now();
+    var wIdx = 0;
+    for (var i = 0; i < captionSync.ranges.length; i++) {
+      if (absChar >= captionSync.ranges[i].start) wIdx = i;
+      else break;
+    }
+    setCaptionWordCursor(wIdx);
+  }
+
+  function startAudioCaptionSync(sliceStartSec, sliceEndSec) {
+    if (!captionSync.spans.length) return;
+    captionSync.mode = 'audio';
+    captionSync.active = true;
+    captionSync.paused = !!(live && live.paused);
+    captionSync.sliceStartSec = Math.max(0, Number(sliceStartSec) || 0);
+    captionSync.sliceEndSec = Math.max(captionSync.sliceStartSec + 0.8, Number(sliceEndSec) || (captionSync.sliceStartSec + 8));
+    setCaptionWordCursor(0);
+    stopCaptionSyncLoop();
+    if (!captionSync.paused) {
+      captionSync.rafId = window.requestAnimationFrame(tickCaptionSync);
+    }
+  }
+
   /* The reveal queue is tracked separately from the question queue.
      The scene gate must wait for the ANSWER, REFERENCE and NOTE — not for a
      question that happens to still be reading. If the reveal announcement is
@@ -2412,6 +2664,9 @@
 
   function speechUtteranceEnded(gen, isReveal, utt) {
     if (gen !== speechGen) return;          /* a cancelled, older queue */
+    if (utt && utt._isLastSyncChunk) {
+      finishCaptionSync();
+    }
     if (utt) {
       var idx = activeUtterances.indexOf(utt);
       if (idx >= 0) activeUtterances.splice(idx, 1);
@@ -2437,12 +2692,24 @@
   }
 
   function speechBusy() {
+    if (storySpeechWaitMode) {
+      if (!S.voiceOn || storySpeechEl.ended || storySpeechEl.paused && !storySpeechPaused) {
+        storySpeechWaitMode = false;
+        return false;
+      }
+      if (storySpeechDeadline && now() > storySpeechDeadline) {
+        storySpeechWaitMode = false;
+        return false;
+      }
+      return true;
+    }
     if (!synth || !S.voiceOn) return false;
     if (speechPending <= 0) return false;
     if (now() > speechDeadline) {
       speechPending = 0;
       activeUtterances = [];
       speaking = false;
+      finishCaptionSync();
       return false;
     }
     return true;
@@ -2562,6 +2829,10 @@
         if (live.inSession && live.phase === 'quiz' && !live.revealed && !live.quizMilestone && live.waitingForSpeech) {
           armPostReadQuizCountdown();
           updatePhaseUI();
+        } else if (live.inSession && live.phase === 'story') {
+          if (storyLive.waitingForSpeech) armStoryHoldCountdown();
+          renderStoryStep();
+          updatePhaseUI();
         }
       } else if (live.inSession && live.phase === 'quiz') {
         if (live.quizMilestone) speakQuizMilestone();
@@ -2577,6 +2848,7 @@
       } else if (live.inSession && live.phase === 'players') {
         speakPlayerSubPhase(false);
       } else if (live.inSession && live.phase === 'story') {
+        renderStoryStep();
         speakStoryStep();
       }
       toast(S.voiceOn ? 'Voice reader on' : 'Voice reader off');
@@ -2594,11 +2866,16 @@
 
   function updateVoiceBtn() {
     if (!el.voiceBtn) return;
-    if (!synth) {
+    if (!synth && !storySpeechTracks.length) {
       el.voiceBtn.textContent = 'Voice: unsupported';
       el.voiceBtn.disabled = true;
     } else {
-      el.voiceBtn.textContent = S.voiceOn ? (synth.paused ? 'Voice: paused' : 'Voice: on') : 'Voice: off';
+      el.voiceBtn.disabled = false;
+      var hasSpeechFile = live.phase === 'story' && storySpeechTracks.length > 0;
+      var isPaused = (synth && synth.paused) || storySpeechPaused;
+      el.voiceBtn.textContent = S.voiceOn
+        ? (hasSpeechFile ? ('Speech: ' + (isPaused ? 'paused' : 'audio')) : (isPaused ? 'Voice: paused' : 'Voice: on'))
+        : 'Voice: off';
       el.voiceBtn.classList.toggle('is-on', !!S.voiceOn);
     }
     if (el.musicBtn) {
@@ -2654,28 +2931,50 @@
     return chunks.length ? chunks : [clean];
   }
 
-  function speakParts(parts, isReveal) {
+  function speakParts(parts, isReveal, voiceOpts) {
     if (!synth || !S.voiceOn) return;
     stopSpeech();
     try { if (synth.paused) synth.resume(); } catch (e) {}
     var v = pickVoice();
     var gen = speechGen;
     var expanded = [];
-    (parts || []).forEach(function (p) {
-      if (!p || !String(p).replace(/\s+/g, '')) return;
-      splitSpeechText(p, 145).forEach(function (c) { expanded.push(c); });
+    var syncCharOffset = 0;
+    var syncUtterances = [];
+
+    (parts || []).forEach(function (item) {
+      var raw = (item && typeof item === 'object') ? item.text : item;
+      var isSync = Boolean(item && typeof item === 'object' && item.syncCaption);
+      var txt = String(raw || '').replace(/\s+/g, ' ').trim();
+      if (!txt) return;
+      var chunks = splitSpeechText(txt, 145);
+      chunks.forEach(function (c) {
+        var entry = { text: c, sync: isSync, offset: isSync ? syncCharOffset : 0 };
+        expanded.push(entry);
+        if (isSync) {
+          syncUtterances.push(entry);
+          syncCharOffset += c.length + 1;
+        }
+      });
     });
     if (!expanded.length) return;
+    if (syncUtterances.length) {
+      syncUtterances[syncUtterances.length - 1].isLastSync = true;
+    }
 
     var queued = 0;
     var chars = 0;
-    var rate = Math.max(0.5, Number(S.voiceRate) || 0.96);
+    var baseRate = Math.max(0.5, Number(S.voiceRate) || 0.96);
+    var rateMult = (voiceOpts && Number(voiceOpts.rateMult)) || 1;
+    var rate = Math.max(0.58, Math.min(1.5, baseRate * rateMult));
+    var pitch = Math.max(0.5, Math.min(1.6, (voiceOpts && Number(voiceOpts.pitch)) || 1));
 
-    expanded.forEach(function (p) {
+    expanded.forEach(function (entry) {
+      var p = entry.text;
       var u = new SpeechSynthesisUtterance(p);
       if (v) u.voice = v;
       u.rate = rate;
-      u.pitch = 1;
+      u.pitch = pitch;
+      if (entry.isLastSync) u._isLastSyncChunk = true;
       activeUtterances.push(u);
       u.onstart = function () {
         if (gen !== speechGen) return;
@@ -2683,7 +2982,16 @@
         var nextDeadline = now() + remMs;
         if (nextDeadline > speechDeadline) speechDeadline = nextDeadline;
         if (isReveal && nextDeadline > revealDeadline) revealDeadline = nextDeadline;
+        if (entry.sync) beginTtsCaptionChunk(entry.offset, p.length, rate);
       };
+      if (entry.sync) {
+        u.onboundary = function (ev) {
+          if (gen !== speechGen || !ev) return;
+          if (typeof ev.charIndex === 'number') {
+            onTtsCaptionBoundary(entry.offset + ev.charIndex);
+          }
+        };
+      }
       /* both handlers: a failed utterance must not leave the queue stuck */
       u.onend = function () { speechUtteranceEnded(gen, isReveal, u); };
       u.onerror = function () { speechUtteranceEnded(gen, isReveal, u); };
@@ -2706,24 +3014,67 @@
     updateVoiceBtn();
   }
 
+  function stopUploadedStorySpeech() {
+    storySpeechWaitMode = false;
+    storySpeechDeadline = 0;
+    storySpeechPaused = false;
+    storySpeechTrackIdx = -1;
+    if (storySpeechPlaying && !storySpeechPreviewing) {
+      try { storySpeechEl.pause(); } catch (e) {}
+    }
+    storySpeechPlaying = false;
+    setMusicDucking(false);
+  }
+
   function stopSpeech() {
-    if (!synth) return;
     speechGen++;              /* invalidate every handler from the old queue */
     speechPending = 0;
     speechDeadline = 0;
     revealPending = 0;
     revealDeadline = 0;
     activeUtterances = [];
-    try { synth.cancel(); } catch (e) {}
+    if (synth) {
+      try { synth.cancel(); } catch (e) {}
+    }
     speaking = false;
     pausedSpeech = false;
+    stopUploadedStorySpeech();
+    stopCaptionSyncLoop();
+    captionSync.active = false;
     updateVoiceBtn();
   }
 
   function toggleSpeechPause() {
+    if (storySpeechPlaying) {
+      if (storySpeechEl.paused) {
+        var p = storySpeechEl.play();
+        if (p && p.catch) p.catch(function () {});
+        storySpeechPaused = false;
+        setMusicDucking(true);
+        resumeCaptionSync();
+        toast('Narrator audio resumed');
+      } else {
+        try { storySpeechEl.pause(); } catch (e) {}
+        storySpeechPaused = true;
+        setMusicDucking(false);
+        pauseCaptionSync();
+        toast('Narrator audio paused');
+      }
+      updateVoiceBtn();
+      return;
+    }
     if (!synth || !speaking) return;
-    if (synth.paused) { synth.resume(); pausedSpeech = false; toast('Voice resumed'); }
-    else { synth.pause(); pausedSpeech = true; toast('Voice paused'); }
+    if (synth.paused) {
+      synth.resume();
+      pausedSpeech = false;
+      resumeCaptionSync();
+      toast('Voice resumed');
+    } else {
+      synth.pause();
+      pausedSpeech = true;
+      pauseCaptionSync();
+      toast('Voice paused');
+    }
     updateVoiceBtn();
   }
 
@@ -2741,7 +3092,11 @@
     if (!synth || !S.voiceOn || !S.voiceReveal) return;
     var q = currentQ();
     if (!q) return;
-    speakParts(speech.revealParts(q), true);
+    var parts = speech.revealParts(q) || [];
+    if (q.insight && parts.length) {
+      parts[parts.length - 1] = { text: parts[parts.length - 1], syncCaption: true };
+    }
+    speakParts(parts, true);
   }
 
   function speakQuizMilestone() {
@@ -2772,7 +3127,7 @@
         }
       }
       else if (live.inSession && live.phase === 'players') speakPlayerSubPhase(false);
-      else if (live.inSession && live.phase === 'story') speakStoryStep();
+      else if (live.inSession && live.phase === 'story') { renderStoryStep(); speakStoryStep(); }
       toast('Voice reader on');
       return;
     }
@@ -3078,6 +3433,26 @@
     node.classList.add(cls);
   }
 
+  /* Soft visual cross-dissolve between scenes without delaying timers */
+  function crossfadeStage(hostEl, contentEl) {
+    if (!hostEl || !contentEl || !contentEl.children || !contentEl.children.length) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    try {
+      var prevGhosts = hostEl.querySelectorAll('.stage-crossfade-ghost');
+      for (var i = 0; i < prevGhosts.length; i++) prevGhosts[i].remove();
+      var ghost = contentEl.cloneNode(true);
+      ghost.classList.add('stage-crossfade-ghost');
+      ghost.setAttribute('aria-hidden', 'true');
+      if (ghost.removeAttribute) ghost.removeAttribute('id');
+      var withIds = ghost.querySelectorAll ? ghost.querySelectorAll('[id]') : [];
+      for (var j = 0; j < withIds.length; j++) withIds[j].removeAttribute('id');
+      hostEl.appendChild(ghost);
+      window.setTimeout(function () {
+        if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+      }, 420);
+    } catch (e) {}
+  }
+
   /* ---------- question rendering ---------- */
   function currentQ() {
     if (live.qIndex < 0) return null;
@@ -3126,8 +3501,14 @@
     var total = bank[seg].length;
     var served = Math.min(live.served, total);
     var inRound = Math.min(10, live.quizRoundAnswers.length + 1);
-    el.counter.textContent = 'Round ' + live.quizRoundNum + ' \u00b7 Q' + inRound + ' of 10 (' + served + '/' + total + (live.served > total ? ' \u00b7 bag refilled' : '') + ')';
-    if (el.segLabel) el.segLabel.textContent = SEGMENTS[seg];
+    if (live.storyBurstRemaining > 0 && live.storyBurstTotal > 0) {
+      var bNum = (live.storyBurstTotal - live.storyBurstRemaining) + 1;
+      el.counter.textContent = 'Rapid Trivia ' + bNum + ' of ' + live.storyBurstTotal + ' \u00b7 Returns to Story';
+      if (el.segLabel) el.segLabel.textContent = 'Story Loop \u00b7 ' + SEGMENTS[seg];
+    } else {
+      el.counter.textContent = 'Round ' + live.quizRoundNum + ' \u00b7 Q' + inRound + ' of 10 (' + served + '/' + total + (live.served > total ? ' \u00b7 bag refilled' : '') + ')';
+      if (el.segLabel) el.segLabel.textContent = SEGMENTS[seg];
+    }
     playSceneChime();
   }
 
@@ -3142,7 +3523,7 @@
     });
     el.revealAnswer.textContent = 'Answer: ' + 'ABCD'[q.correct] + ' \u00b7 ' + q.opts[q.correct];
     el.revealRef.textContent = q.ref || '';
-    el.revealNote.textContent = q.insight || '';
+    prepareVoiceCaption(el.revealNote, q.insight || '', !!(S.voiceOn && S.voiceReveal && synth));
     el.reveal.hidden = false;
     if (el.quizStage) el.quizStage.classList.add('is-revealed');
     if (el.revealToggleBtn) el.revealToggleBtn.textContent = 'Hide';
@@ -3536,6 +3917,9 @@
       var pLib = window.LNR_PLAYERS;
       var player = (plLive.visualHandle && plLive.visualHandle.player) || (pLib && pLib.getPlayerById(q.answer_player_id)) || null;
       var rp = speech.playerRevealParts ? speech.playerRevealParts(q, player) : ['The answer is ' + q.reveal_text];
+      if (q.insight && rp.length) {
+        rp[rp.length - 1] = { text: rp[rp.length - 1], syncCaption: true };
+      }
       speakParts(rp, true);
     } else if (plLive.subPhase === 'milestone' && S.voiceReveal) {
       var mp = speech.milestoneParts ? speech.milestoneParts(plLive.roundNum, plLive.roundAnswers, 'players') : ['Round complete! Tally your score!'];
@@ -3683,7 +4067,9 @@
         if (el.plRevealSub) {
           el.plRevealSub.textContent = player ? (player.club + ' \u00b7 ' + player.nationality + (player.number ? ' \u00b7 #' + player.number : '')) : q.category;
         }
-        if (el.plRevealInsight) el.plRevealInsight.textContent = q.insight || '';
+        if (el.plRevealInsight) {
+          prepareVoiceCaption(el.plRevealInsight, q.insight || '', !!(S.voiceOn && S.voiceReveal && synth));
+        }
       }
     }
 
@@ -3695,7 +4081,8 @@
     applyChatSafe();
     applyPlayerFit();
     window.requestAnimationFrame(applyPlayerFit);
-    if (plLive.subPhase === 'intro') retriggerAnimation(el.playerStage, 'is-animating');
+    window.setTimeout(applyPlayerFit, 90);
+    if (plLive.subPhase === 'intro' || isReveal) retriggerAnimation(el.playerStage, 'is-animating');
   }
 
   function enterPlayerSubPhase(sub, clueIdx) {
@@ -3887,8 +4274,12 @@
   }
 
   /* ============================================================
-     ENGINE 04: DOCUMENTARY STORYTELLING ENGINE
-     Multi-act episodes, 6 animated visual scene compositions & TTS
+     ENGINE 04: HOOK-LOOP STORYTELLING ENGINE
+     4-Stage Interactive Micro-Loop:
+       1. 8-10s Cold-Open Anomaly Hook
+       2. 3 Escalating Evidence Beats (8 shifting visual compositions)
+       3. Live Chat Deduction Gate (3 options + countdown)
+       4. Twist Reveal, Authored Commentary & Rapid Trivia Interleave
      ============================================================ */
   var storyLive = {
     episode: null,
@@ -3899,8 +4290,26 @@
     waitingForSpeech: false,
     bag: [],
     lastEpId: '',
-    episodesCompleted: 0
+    lastArchetype: '',
+    lastPacing: '',
+    episodesCompleted: 0,
+    lastTickCueSec: -1
   };
+
+  function formatArchetypeLabel(a) {
+    if (a === 'historical_banter') return 'Sar & Diq \u00b7 Banter';
+    if (a === 'historical_heist') return 'Historical Heist';
+    if (a === 'biblical_mystery') return 'Biblical Mystery';
+    if (a === 'ethical_dilemma') return 'Ethical Dilemma';
+    if (a === 'survival_scenario') return 'Survival Scenario';
+    return 'Historical Anomaly';
+  }
+
+  function formatPacingLabel(p) {
+    if (p === 'slow_psychological') return 'Psychological';
+    if (p === 'rapid_dilemma') return 'Rapid Dilemma';
+    return 'Fast Investigative';
+  }
 
   function refillStoryBag() {
     var sApi = window.LNR_STORIES;
@@ -3908,15 +4317,19 @@
     var list = sApi.getAllEpisodes(S.storyCat);
     if (!list.length) list = sApi.getAllEpisodes('all');
     var ids = list.map(function (ep) { return ep.id; });
+    var starterId = '';
+    if (storyLive.episodesCompleted === 0) {
+      starterId = S.storyStartId && ids.indexOf(S.storyStartId) >= 0 ? S.storyStartId : (ids[0] || '');
+    }
     shuffle(ids);
     if (ids.length > 1 && ids[ids.length - 1] === storyLive.lastEpId) {
       var t = ids[ids.length - 1]; ids[ids.length - 1] = ids[0]; ids[0] = t;
     }
-    if (S.storyStartId && storyLive.episodesCompleted === 0) {
-      var foundIdx = ids.indexOf(S.storyStartId);
+    if (starterId) {
+      var foundIdx = ids.indexOf(starterId);
       if (foundIdx >= 0) {
         ids.splice(foundIdx, 1);
-        ids.push(S.storyStartId);
+        ids.push(starterId);
       }
     }
     storyLive.bag = ids;
@@ -3931,10 +4344,37 @@
     if (!storyLive.bag.length) refillStoryBag();
     var map = {};
     list.forEach(function (ep) { map[ep.id] = ep; });
+
+    /* Prefer an episode with BOTH a different archetype and pacing profile than the last case */
+    if (S.storyVaryCadence && storyLive.episodesCompleted > 0 && storyLive.bag.length > 1) {
+      for (var i = storyLive.bag.length - 1; i >= 0; i--) {
+        var cand = map[storyLive.bag[i]];
+        if (cand && cand.archetype !== storyLive.lastArchetype && cand.pacingProfile !== storyLive.lastPacing) {
+          storyLive.bag.splice(i, 1);
+          storyLive.lastEpId = cand.id;
+          storyLive.lastArchetype = cand.archetype;
+          storyLive.lastPacing = cand.pacingProfile;
+          return cand;
+        }
+      }
+      for (var j = storyLive.bag.length - 1; j >= 0; j--) {
+        var cand2 = map[storyLive.bag[j]];
+        if (cand2 && cand2.archetype !== storyLive.lastArchetype) {
+          storyLive.bag.splice(j, 1);
+          storyLive.lastEpId = cand2.id;
+          storyLive.lastArchetype = cand2.archetype;
+          storyLive.lastPacing = cand2.pacingProfile;
+          return cand2;
+        }
+      }
+    }
+
     while (storyLive.bag.length) {
       var id = storyLive.bag.pop();
       if (map[id]) {
         storyLive.lastEpId = id;
+        storyLive.lastArchetype = map[id].archetype || '';
+        storyLive.lastPacing = map[id].pacingProfile || '';
         return map[id];
       }
     }
@@ -3942,19 +4382,16 @@
   }
 
   function buildFlatStorySteps(ep) {
-    var steps = [{ kind: 'intro', actIdx: 0, act: null, scene: null, isNewAct: false }];
-    (ep.acts || []).forEach(function (act, aIdx) {
-      (act.scenes || []).forEach(function (scene, sIdx) {
-        steps.push({
-          kind: 'scene',
-          actIdx: aIdx,
-          act: act,
-          scene: scene,
-          isNewAct: sIdx === 0
-        });
-      });
+    var steps = [{ kind: 'hook', beatIdx: -1, beat: null }];
+    (ep.beats || []).forEach(function (beat, idx) {
+      steps.push({ kind: 'beat', beatIdx: idx, beat: beat });
     });
-    steps.push({ kind: 'outro', actIdx: Math.max(0, (ep.acts || []).length - 1), act: null, scene: null, isNewAct: false });
+    if (ep.chatCheckpoint && ep.chatCheckpoint.options && ep.chatCheckpoint.options.length) {
+      steps.push({ kind: 'checkpoint', beatIdx: (ep.beats || []).length, beat: null, checkpoint: ep.chatCheckpoint });
+    }
+    if (ep.resolution) {
+      steps.push({ kind: 'resolution', beatIdx: (ep.beats || []).length + 1, beat: null, resolution: ep.resolution, checkpoint: ep.chatCheckpoint });
+    }
     return steps;
   }
 
@@ -3966,8 +4403,13 @@
       .replace(/"/g, '&quot;');
   }
 
+  function formatChapterTitle(chapterNum) {
+    var words = speech.intToWords ? speech.intToWords(Math.max(1, Number(chapterNum) || 1)) : String(chapterNum);
+    return 'Chapter ' + words.replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
   function buildAnimatedMapSvg(route) {
-    var pts = Array.isArray(route) && route.length ? route : ['Origin', 'Passage', 'Destination'];
+    var pts = Array.isArray(route) && route.length ? route : ['Origin', 'Corridor', 'Resolution'];
     var W = 540, H = 190;
     var count = pts.length;
     var coords = pts.map(function (name, i) {
@@ -3979,81 +4421,171 @@
     var d = coords.map(function (c, i) { return (i === 0 ? 'M ' : ' L ') + c.x + ' ' + c.y; }).join('');
     var nodes = coords.map(function (c, i) {
       var labelY = c.y > 95 ? c.y + 24 : c.y - 16;
-      return '<circle cx="' + c.x + '" cy="' + c.y + '" r="' + (i === count - 1 ? 7 : 5.5) + '" fill="#cfa35a" stroke="#0c1210" stroke-width="2"/>' +
+      return '<circle cx="' + c.x + '" cy="' + c.y + '" r="' + (i === count - 1 ? 7 : 5.5) + '" fill="var(--story-accent, #cfa35a)" stroke="#0c1210" stroke-width="2"/>' +
         '<text x="' + c.x + '" y="' + labelY + '" text-anchor="middle" fill="#ede7da" font-family="ui-monospace,monospace" font-size="12" font-weight="600">' + escHtml(c.name) + '</text>';
     }).join('');
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Historical route map">' +
       '<defs><pattern id="stMapGrid" width="36" height="36" patternUnits="userSpaceOnUse"><path d="M 36 0 L 0 0 0 36" fill="none" stroke="rgba(237,231,218,0.06)" stroke-width="1"/></pattern></defs>' +
       '<rect width="' + W + '" height="' + H + '" rx="10" fill="url(#stMapGrid)"/>' +
-      '<path class="story-map-route-path" d="' + d + '" fill="none" stroke="#cfa35a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path class="story-map-route-path" d="' + d + '" fill="none" stroke="var(--story-accent, #cfa35a)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>' +
       nodes +
       '</svg>';
   }
 
   function renderStorySceneVisual(step, ep) {
     if (!el.storyVisualHost) return;
-    if (step.kind === 'intro') {
-      el.storyVisualHost.innerHTML =
-        '<div class="story-intro-hero">' +
-          '<span class="story-scene-kicker">' + escHtml(ep.category === 'biblical' ? 'Biblical Chronicles' : 'World History Documentary') + ' \u00b7 ' + escHtml(ep.era) + '</span>' +
-          '<h2>' + escHtml(ep.title) + '</h2>' +
-          '<p class="story-intro-sub">' + escHtml(ep.subtitle) + '</p>' +
-          '<div class="story-central-q">\u201c' + escHtml(ep.centralQuestion) + '\u201d</div>' +
-        '</div>';
-      return;
+    var activeAccent = (step.beat && step.beat.accentColor) || ep.accentColor || '#cfa35a';
+    if (el.storyStage && S.storyVaryCadence) {
+      el.storyStage.style.setProperty('--story-accent', activeAccent);
+    } else if (el.storyStage) {
+      el.storyStage.style.setProperty('--story-accent', '#cfa35a');
     }
-    if (step.kind === 'outro') {
+
+    if (step.kind === 'hook') {
+      var chapLabel = formatChapterTitle(storyLive.episodesCompleted + 1);
+      var hk = ep.hook || {};
       el.storyVisualHost.innerHTML =
         '<div class="story-intro-hero">' +
-          '<span class="story-scene-kicker">Episode Conclusion \u00b7 Legacy</span>' +
-          '<h2>Why It Still Matters</h2>' +
-          '<div class="story-central-q">\u201c' + escHtml(ep.takeaway) + '\u201d</div>' +
-          '<p class="story-intro-sub">Next documentary chapter loading automatically\u2026</p>' +
+          '<div class="story-chapter-kicker">' + escHtml(chapLabel) + '</div>' +
+          '<h2>' + escHtml(ep.title || hk.headline) + '</h2>' +
+          (ep.subtitle ? '<p class="story-intro-sub">' + escHtml(ep.subtitle) + '</p>' : '') +
         '</div>';
       return;
     }
 
-    var sc = step.scene;
-    var vis = sc.visual || {};
-    var kicker = '<div class="story-scene-kicker">' + escHtml(vis.dateLabel || ('Act ' + (step.act ? step.act.actNum : 1))) +
-      (vis.location ? (' \u00b7 ' + escHtml(vis.location)) : '') + '</div>';
-    var headline = '<h3 class="story-scene-headline">' + escHtml(sc.headline) + '</h3>';
+    if (step.kind === 'checkpoint') {
+      var cp = step.checkpoint || ep.chatCheckpoint || {};
+      var optsHtml = (cp.options || []).map(function (opt) {
+        return '<div class="story-cp-opt"><span>' + escHtml(opt) + '</span></div>';
+      }).join('');
+      el.storyVisualHost.innerHTML =
+        '<div class="story-checkpoint-wrap">' +
+          '<div class="story-scene-kicker">VOTE A, B, OR C IN CHAT</div>' +
+          '<h3 class="story-scene-headline">' + escHtml(cp.prompt || 'WHAT DOES THE EVIDENCE SHOW?') + '</h3>' +
+          '<div class="story-checkpoint-opts">' + optsHtml + '</div>' +
+        '</div>';
+      return;
+    }
 
-    if (sc.sceneType === 'map') {
+    if (step.kind === 'resolution') {
+      var res = step.resolution || ep.resolution || {};
+      var cpR = step.checkpoint || ep.chatCheckpoint || {};
+      var winnerTxt = (cpR.options && cpR.options[cpR.correctIndex]) ? cpR.options[cpR.correctIndex] : '';
+      el.storyVisualHost.innerHTML =
+        '<div class="story-scene-kicker">THE REVEAL</div>' +
+        '<h3 class="story-scene-headline">' + escHtml(winnerTxt || 'Resolution &amp; Analysis') + '</h3>' +
+        '<div class="story-resolution-grid">' +
+          '<div class="story-analysis-card is-accent">' +
+            '<h4>The Flaw Everyone Misses</h4>' +
+            '<p>' + escHtml(res.flawEveryoneMisses) + '</p>' +
+          '</div>' +
+          '<div class="story-analysis-card">' +
+            '<h4>Why This Matters</h4>' +
+            '<p>' + escHtml(res.whyItMatters) + '</p>' +
+          '</div>' +
+        '</div>';
+      return;
+    }
+
+    var beat = step.beat;
+    var vis = beat.visual || {};
+    var dateCtx = beat.dateLabel || vis.dateLabel || ep.era || '';
+    var locCtx = beat.location || vis.location || '';
+    var kickerParts = [];
+    if (dateCtx) kickerParts.push(escHtml(dateCtx));
+    if (locCtx) kickerParts.push(escHtml(locCtx));
+    var kicker = kickerParts.length ? ('<div class="story-scene-kicker">' + kickerParts.join(' &middot; ') + '</div>') : '';
+    var headline = '<h3 class="story-scene-headline">' + escHtml(beat.headline) + '</h3>';
+    var mode = beat.visualMode || 'evidence_card';
+    var distinctQuote = (vis.quote && String(vis.quote).trim() !== String(beat.text || '').trim()) ? String(vis.quote).trim() : '';
+
+    if (mode === 'wildfire_surge' || mode === 'ember_glow') {
+      var isSar = mode === 'wildfire_surge' || beat.speaker === 'SAR';
+      var speakerTitle = isSar ? 'SAR' : 'DIQ';
+      el.storyVisualHost.innerHTML = kicker + headline +
+        '<div class="story-fire-grid">' +
+          '<div class="story-fire-card ' + (isSar ? 'is-sar' : 'is-diq') + '">' +
+            '<div class="story-speaker-row"><span class="story-speaker-dot" aria-hidden="true"></span><span>' + escHtml(speakerTitle) + '</span></div>' +
+            (distinctQuote ? '<p class="story-doc-quote">\u201c' + escHtml(distinctQuote) + '\u201d</p>' : '') +
+            (vis.attribution ? '<div class="story-doc-attr">\u2014 ' + escHtml(vis.attribution) + '</div>' : '') +
+          '</div>' +
+          '<div class="story-stat-box">' +
+            '<div class="story-stat-val">' + escHtml(vis.accentStat || (isSar ? 'Surge' : 'Restraint')) + '</div>' +
+            '<div class="story-stat-lbl">' + escHtml(vis.statLabel || (beat.location || ep.era)) + '</div>' +
+          '</div>' +
+        '</div>';
+    } else if (mode === 'signal_waveform') {
+      var bars = Array.isArray(vis.waveformBars) && vis.waveformBars.length ? vis.waveformBars : [28, 64, 42, 88, 52, 94, 38, 76, 48, 82, 34, 60];
+      var barsHtml = bars.map(function (v) {
+        var hPct = Math.max(12, Math.min(100, Number(v) || 40));
+        return '<span class="story-waveform-bar" style="height:' + hPct + '%"></span>';
+      }).join('');
+      el.storyVisualHost.innerHTML = kicker + headline +
+        '<div class="story-waveform-wrap">' +
+          '<div class="story-waveform-box">' +
+            '<div class="story-waveform-bars">' + barsHtml + '</div>' +
+            '<div class="story-waveform-lbl">' + escHtml(vis.waveformLabel || 'Signal Trace') + '</div>' +
+          '</div>' +
+          '<div class="story-stat-box">' +
+            '<div class="story-stat-val">' + escHtml(vis.accentStat || 'Trace Lock') + '</div>' +
+            '<div class="story-stat-lbl">' + escHtml(vis.statLabel || 'Anomalous signature') + '</div>' +
+          '</div>' +
+        '</div>';
+    } else if (mode === 'evidence_card') {
+      if (distinctQuote) {
+        el.storyVisualHost.innerHTML = kicker + headline +
+          '<div class="story-evidence-grid">' +
+            '<div class="story-doc-card">' +
+              '<p class="story-doc-quote">\u201c' + escHtml(distinctQuote) + '\u201d</p>' +
+              (vis.attribution ? '<div class="story-doc-attr">\u2014 ' + escHtml(vis.attribution) + '</div>' : '') +
+            '</div>' +
+            '<div class="story-stat-box">' +
+              '<div class="story-stat-val">' + escHtml(vis.accentStat || 'Key Detail') + '</div>' +
+              '<div class="story-stat-lbl">' + escHtml(vis.statLabel || 'Verified record') + '</div>' +
+            '</div>' +
+          '</div>';
+      } else {
+        el.storyVisualHost.innerHTML = kicker + headline +
+          '<div class="story-stat-box">' +
+            '<div class="story-stat-val">' + escHtml(vis.accentStat || 'Key Detail') + '</div>' +
+            '<div class="story-stat-lbl">' + escHtml(vis.statLabel || 'Verified record') + '</div>' +
+          '</div>';
+      }
+    } else if (mode === 'map') {
       el.storyVisualHost.innerHTML = kicker + headline +
         '<div class="story-map-layout">' +
           '<div class="story-map-svg-box">' + buildAnimatedMapSvg(vis.route) + '</div>' +
           '<div class="story-stat-box">' +
-            '<div class="story-stat-val">' + escHtml(vis.accentStat || 'Archive Route') + '</div>' +
-            '<div class="story-stat-lbl">' + escHtml(vis.statLabel || (vis.location || 'Historical corridor')) + '</div>' +
+            '<div class="story-stat-val">' + escHtml(vis.accentStat || 'Corridor') + '</div>' +
+            '<div class="story-stat-lbl">' + escHtml(vis.statLabel || (beat.location || vis.location || 'Route vector')) + '</div>' +
           '</div>' +
         '</div>';
-    } else if (sc.sceneType === 'timeline') {
+    } else if (mode === 'timeline') {
       var itemsHtml = (vis.points || []).map(function (pt) {
         return '<li class="story-timeline-item">' + escHtml(pt) + '</li>';
       }).join('');
       el.storyVisualHost.innerHTML = kicker + headline + '<ul class="story-timeline-list">' + itemsHtml + '</ul>';
-    } else if (sc.sceneType === 'profile') {
-      var subj = vis.subjectName || sc.headline;
+    } else if (mode === 'profile') {
+      var subj = vis.subjectName || beat.headline;
       var initials = subj.trim().split(/\s+/).slice(0, 2).map(function (w) { return w[0] || ''; }).join('').toUpperCase();
       el.storyVisualHost.innerHTML = kicker +
         '<div class="story-profile-grid">' +
           '<div class="story-monogram" aria-hidden="true">' + escHtml(initials || 'H') + '</div>' +
           '<div>' +
-            '<div class="story-profile-role">' + escHtml(vis.role || 'Historical Profile') + (vis.eraSpan ? (' \u00b7 ' + escHtml(vis.eraSpan)) : '') + '</div>' +
+            '<div class="story-profile-role">' + escHtml(vis.role || 'Key Figure') + (vis.eraSpan ? (' \u00b7 ' + escHtml(vis.eraSpan)) : '') + '</div>' +
             headline +
-            (vis.quote ? '<div class="story-doc-card"><p class="story-doc-quote">\u201c' + escHtml(vis.quote) + '\u201d</p></div>' : '') +
+            (distinctQuote ? '<div class="story-doc-card"><p class="story-doc-quote">\u201c' + escHtml(distinctQuote) + '\u201d</p></div>' : '') +
           '</div>' +
         '</div>';
-    } else if (sc.sceneType === 'comparison') {
+    } else if (mode === 'comparison') {
       var lList = (vis.leftItems || []).map(function (it) { return '<li>' + escHtml(it) + '</li>'; }).join('');
       var rList = (vis.rightItems || []).map(function (it) { return '<li>' + escHtml(it) + '</li>'; }).join('');
       el.storyVisualHost.innerHTML = kicker + headline +
         '<div class="story-compare-grid">' +
-          '<div class="story-compare-col"><h4>' + escHtml(vis.leftTitle || 'Perspective A') + '</h4><ul>' + lList + '</ul></div>' +
-          '<div class="story-compare-col is-right"><h4>' + escHtml(vis.rightTitle || 'Perspective B') + '</h4><ul>' + rList + '</ul></div>' +
+          '<div class="story-compare-col"><h4>' + escHtml(vis.leftTitle || 'Claim') + '</h4><ul>' + lList + '</ul></div>' +
+          '<div class="story-compare-col is-right"><h4>' + escHtml(vis.rightTitle || 'Evidence') + '</h4><ul>' + rList + '</ul></div>' +
         '</div>';
-    } else if (sc.sceneType === 'artifact') {
+    } else if (mode === 'artifact') {
       el.storyVisualHost.innerHTML = kicker + headline +
         '<div class="story-artifact-grid">' +
           '<div class="story-artifact-meta">' +
@@ -4062,91 +4594,219 @@
             (vis.provenance ? '<div><b>Provenance</b>' + escHtml(vis.provenance) + '</div>' : '') +
           '</div>' +
           '<div class="story-stat-box">' +
-            '<div class="story-stat-val">' + escHtml(vis.accentStat || 'Preserved') + '</div>' +
-            '<div class="story-stat-lbl">' + escHtml(vis.statLabel || 'Archival record') + '</div>' +
+            '<div class="story-stat-val">' + escHtml(vis.accentStat || 'Artifact') + '</div>' +
+            '<div class="story-stat-lbl">' + escHtml(vis.statLabel || 'Material exhibit') + '</div>' +
           '</div>' +
         '</div>';
     } else {
       el.storyVisualHost.innerHTML = kicker + headline +
-        '<div class="story-doc-card">' +
-          '<p class="story-doc-quote">\u201c' + escHtml(vis.quote || sc.narration) + '\u201d</p>' +
-          (vis.attribution ? '<div class="story-doc-attr">\u2014 ' + escHtml(vis.attribution) + '</div>' : '') +
-        '</div>';
+        (distinctQuote ? ('<div class="story-doc-card"><p class="story-doc-quote">\u201c' + escHtml(distinctQuote) + '\u201d</p>' +
+          (vis.attribution ? '<div class="story-doc-attr">\u2014 ' + escHtml(vis.attribution) + '</div>' : '') + '</div>') : '');
     }
+  }
+
+  function storyStepHoldMs(step, ep) {
+    var baseSec = Math.max(4, Number(S.storySceneSec) || 8);
+    if (step.kind === 'hook') return Math.max(6, Number(ep.hook && ep.hook.durationSec) || 9) * 1000;
+    if (step.kind === 'checkpoint') return Math.max(10, Number(step.checkpoint && step.checkpoint.countdownSec) || 15) * 1000;
+    if (step.kind === 'resolution') return Math.max(8, baseSec + 4) * 1000;
+    var paceMult = ep.pacingProfile === 'rapid_dilemma' ? 0.85 : (ep.pacingProfile === 'slow_psychological' ? 1.15 : 1);
+    return Math.round(Math.max(4000, baseSec * paceMult * 1000));
   }
 
   function armStoryHoldCountdown() {
     storyLive.waitingForSpeech = false;
-    var holdMs = Math.max(4, Number(S.storySceneSec) || 8) * 1000;
+    storyLive.lastTickCueSec = -1;
+    var ep = storyLive.episode;
+    var step = storyLive.flatSteps[storyLive.stepIndex];
+    var holdMs = (ep && step) ? storyStepHoldMs(step, ep) : (Math.max(4, Number(S.storySceneSec) || 8) * 1000);
     storyLive.stepStartedAt = now();
     storyLive.stepEndsAt = storyLive.stepStartedAt + holdMs;
   }
 
+  function playUploadedStoryAudioForStep(stepIdx, totalSteps) {
+    if (!storySpeechTracks.length || !S.voiceOn || live.phase !== 'story') return false;
+    stopSpeech();
+    var mode = S.storySpeechMode || 'episode';
+    var trackIndex = mode === 'step'
+      ? ((storyLive.episodesCompleted * Math.max(1, totalSteps) + stepIdx) % storySpeechTracks.length)
+      : (storyLive.episodesCompleted % storySpeechTracks.length);
+    var track = storySpeechTracks[trackIndex];
+    if (!track || !track.url) return false;
+
+    storySpeechPreviewing = false;
+    storySpeechPaused = false;
+    storySpeechPlaying = true;
+    storySpeechTrackIdx = trackIndex;
+    setMusicDucking(true);
+
+    var fallbackDur = Math.max(10, track.duration || (totalSteps * (Number(S.storySceneSec) || 8)));
+    if (mode === 'episode') {
+      var segDur = fallbackDur / Math.max(1, totalSteps);
+      var targetTime = stepIdx * segDur;
+      if (storySpeechEl.getAttribute('data-track-id') !== track.id || storySpeechEl.ended || stepIdx === 0) {
+        storySpeechEl.setAttribute('data-track-id', track.id);
+        storySpeechEl.src = track.url;
+        storySpeechEl.loop = false;
+        storySpeechEl.currentTime = stepIdx > 0 ? targetTime : 0;
+      } else if (Math.abs((storySpeechEl.currentTime || 0) - targetTime) > segDur * 0.85) {
+        try { storySpeechEl.currentTime = targetTime; } catch (e) {}
+      }
+      storySpeechWaitMode = false;
+      storyLive.waitingForSpeech = false;
+      storyLive.stepEndsAt = storyLive.stepStartedAt + Math.max(storyStepHoldMs(storyLive.flatSteps[stepIdx], storyLive.episode), Math.round(segDur * 1000));
+      startAudioCaptionSync(targetTime, targetTime + segDur);
+      storySpeechEl.onended = function () {
+        if (!storySpeechPreviewing && storySpeechPlaying) {
+          finishCaptionSync();
+          setMusicDucking(false);
+        }
+      };
+    } else {
+      storySpeechEl.setAttribute('data-track-id', track.id);
+      storySpeechEl.src = track.url;
+      storySpeechEl.loop = false;
+      storySpeechEl.currentTime = 0;
+      storySpeechWaitMode = true;
+      storySpeechDeadline = now() + Math.max(15000, fallbackDur * 1000 + 5000);
+      storyLive.waitingForSpeech = true;
+      storyLive.stepEndsAt = storyLive.stepStartedAt + Math.round(fallbackDur * 1000) + 12000;
+      startAudioCaptionSync(0, fallbackDur);
+      storySpeechEl.onended = function () {
+        if (storySpeechPreviewing) return;
+        storySpeechWaitMode = false;
+        finishCaptionSync();
+        setMusicDucking(false);
+        if (live.inSession && live.phase === 'story' && storyLive.waitingForSpeech) {
+          armStoryHoldCountdown();
+          updatePhaseUI();
+        }
+      };
+    }
+
+    if (!live.paused) {
+      var p = storySpeechEl.play();
+      if (p && p.catch) p.catch(function () {});
+    } else {
+      storySpeechPaused = true;
+      pauseCaptionSync();
+      setMusicDucking(false);
+    }
+    updateVoiceBtn();
+    return true;
+  }
+
+  /* Single skilled documentary narrator voice — consistent across every chapter & beat */
   function speakStoryStep() {
-    if (!synth || !S.voiceOn || live.phase !== 'story') return;
+    if (!S.voiceOn || live.phase !== 'story') return;
     var ep = storyLive.episode;
     var step = storyLive.flatSteps[storyLive.stepIndex];
     if (!ep || !step) return;
-    var parts = [];
-    if (step.kind === 'intro') {
-      parts = speech.storyIntroParts ? speech.storyIntroParts(ep) : [ep.title, ep.subtitle, ep.centralQuestion];
-    } else if (step.kind === 'outro') {
-      parts = speech.storyOutroParts ? speech.storyOutroParts(ep) : [ep.takeaway];
-    } else if (step.scene) {
-      parts = speech.storySceneParts ? speech.storySceneParts(step.scene, step.act, step.isNewAct) : [step.scene.narration];
+
+    if (storySpeechTracks.length) {
+      if (playUploadedStoryAudioForStep(storyLive.stepIndex, storyLive.flatSteps.length)) {
+        return;
+      }
     }
-    if (parts.length) speakParts(parts, false);
+
+    if (!synth) return;
+    var chapNum = storyLive.episodesCompleted + 1;
+    var parts = [];
+    if (step.kind === 'hook') {
+      var hkParts = speech.storyHookParts ? speech.storyHookParts(ep, chapNum) : [formatChapterTitle(chapNum) + '. ' + (ep.title || ''), ep.hook && ep.hook.narration];
+      parts = hkParts.map(function (txt, idx) {
+        return idx === hkParts.length - 1 ? { text: txt, syncCaption: true } : txt;
+      });
+    } else if (step.kind === 'checkpoint') {
+      var cpParts = speech.storyCheckpointParts ? speech.storyCheckpointParts(step.checkpoint) : ['Live deduction checkpoint.', step.checkpoint && step.checkpoint.prompt];
+      parts = cpParts.map(function (txt, idx) {
+        return idx === 1 ? { text: txt, syncCaption: true } : txt;
+      });
+    } else if (step.kind === 'resolution') {
+      var resParts = speech.storyResolutionParts ? speech.storyResolutionParts(ep, step.checkpoint) : [ep.resolution && ep.resolution.reveal];
+      parts = resParts.map(function (txt, idx) {
+        return idx === 0 ? { text: txt, syncCaption: true } : txt;
+      });
+    } else if (step.beat) {
+      var bParts = speech.storyBeatParts ? speech.storyBeatParts(step.beat) : [step.beat.text, step.beat.openLoop];
+      parts = bParts.map(function (txt, idx) {
+        return idx === 0 ? { text: txt, syncCaption: true } : txt;
+      });
+    }
+    if (parts.length) speakParts(parts, false, null);
   }
 
   function renderStoryStep() {
     var ep = storyLive.episode;
     var step = storyLive.flatSteps[storyLive.stepIndex];
     if (!ep || !step) return;
+    var chapNum = storyLive.episodesCompleted + 1;
 
-    if (el.segLabel) el.segLabel.textContent = ep.category === 'biblical' ? 'Story \u00b7 Biblical Chronicle' : 'Story \u00b7 World History';
-    if (el.counter) el.counter.textContent = 'Scene ' + (storyLive.stepIndex + 1) + ' of ' + storyLive.flatSteps.length;
+    if (el.segLabel) el.segLabel.textContent = (ep.category === 'biblical' ? 'Biblical Mystery' : formatArchetypeLabel(ep.archetype));
+    if (el.counter) el.counter.textContent = 'Chapter ' + chapNum + ' \u00b7 Step ' + (storyLive.stepIndex + 1) + ' of ' + storyLive.flatSteps.length;
     if (el.storyEpTitle) el.storyEpTitle.textContent = ep.title;
-    if (el.storyEraTag) el.storyEraTag.textContent = ep.era;
+
+    if (el.storyDisclaimerTag) {
+      var hasDisc = Boolean(ep.disclaimer && ep.disclaimer.isFictionalPersona);
+      el.storyDisclaimerTag.hidden = !hasDisc;
+      if (hasDisc) {
+        el.storyDisclaimerTag.textContent = ep.disclaimer.badgeText || 'Fictional Characters \u00b7 Real History';
+      }
+    }
 
     if (el.storyActPill) {
-      if (step.kind === 'intro') el.storyActPill.textContent = 'PROLOGUE';
-      else if (step.kind === 'outro') el.storyActPill.textContent = 'LEGACY';
-      else el.storyActPill.textContent = 'ACT ' + (step.act ? step.act.actNum : 1) + (step.act ? (' \u00b7 ' + step.act.title.toUpperCase()) : '');
+      if (step.kind === 'checkpoint') el.storyActPill.textContent = 'Deduction';
+      else if (step.kind === 'resolution') el.storyActPill.textContent = 'The Reveal';
+      else el.storyActPill.textContent = 'Chapter ' + chapNum;
     }
 
     if (el.storyActRail) {
-      var actCount = Math.max(1, (ep.acts || []).length);
+      var totalDots = Math.max(1, storyLive.flatSteps.length);
       el.storyActRail.innerHTML = '';
-      for (var i = 0; i < actCount; i++) {
+      for (var i = 0; i < totalDots; i++) {
         var dot = document.createElement('span');
-        dot.className = 'story-act-dot' + (i < step.actIdx ? ' is-done' : (i === step.actIdx ? ' is-active' : ''));
+        dot.className = 'story-act-dot' + (i < storyLive.stepIndex ? ' is-done' : (i === storyLive.stepIndex ? ' is-active' : ''));
         el.storyActRail.appendChild(dot);
       }
     }
 
+    crossfadeStage(el.storyCanvas, el.storyVisualHost);
     renderStorySceneVisual(step, ep);
     retriggerAnimation(el.storyCanvas, 'is-animating');
 
-    if (el.storySceneTypeTag && el.storyNarrationText) {
-      if (step.kind === 'intro') {
-        el.storySceneTypeTag.textContent = 'OPENING HOOK';
-        el.storyNarrationText.textContent = ep.centralQuestion;
-      } else if (step.kind === 'outro') {
-        el.storySceneTypeTag.textContent = 'EPISODE LEGACY';
-        el.storyNarrationText.textContent = ep.takeaway;
-      } else if (step.scene) {
-        el.storySceneTypeTag.textContent = String(step.scene.sceneType || 'DOCUMENT').toUpperCase();
-        el.storyNarrationText.textContent = step.scene.narration;
+    var activeSpeaker = '';
+    if (step.kind === 'beat' && step.beat && step.beat.speaker) activeSpeaker = step.beat.speaker;
+    else if (step.kind === 'resolution' && ep.resolution && ep.resolution.speaker) activeSpeaker = ep.resolution.speaker;
+
+    if (el.storyNarrationBox) {
+      if (activeSpeaker) el.storyNarrationBox.setAttribute('data-speaker', activeSpeaker);
+      else el.storyNarrationBox.removeAttribute('data-speaker');
+    }
+
+    if (el.storyNarrationText) {
+      var captionText = '';
+      if (step.kind === 'hook') {
+        captionText = (ep.hook && ep.hook.narration) || ep.subtitle || '';
+      } else if (step.kind === 'checkpoint') {
+        captionText = (step.checkpoint && step.checkpoint.prompt) || 'Vote A, B, or C in live chat right now!';
+      } else if (step.kind === 'resolution') {
+        captionText = (ep.resolution && ep.resolution.reveal) || '';
+      } else if (step.beat) {
+        captionText = step.beat.text;
       }
+      var syncVoice = !!(S.voiceOn && (synth || storySpeechTracks.length));
+      prepareVoiceCaption(el.storyNarrationText, captionText, syncVoice);
+      retriggerAnimation(el.storyNarrationBox, 'is-animating');
     }
 
-    if (el.storyEngagementLine) {
-      var engTxt = step.scene && step.scene.engagement ? step.scene.engagement : '';
-      el.storyEngagementLine.hidden = !engTxt;
-      el.storyEngagementLine.textContent = engTxt;
+    if (el.storyPhaseCountdown) {
+      el.storyPhaseCountdown.hidden = step.kind !== 'checkpoint';
+      el.storyPhaseCountdown.classList.remove('is-urgent');
     }
 
-    if (el.revealToggleBtn) el.revealToggleBtn.textContent = 'Next scene';
+    if (el.revealToggleBtn) {
+      el.revealToggleBtn.textContent = step.kind === 'checkpoint' ? 'Reveal twist' : 'Next beat';
+    }
   }
 
   function enterStoryStep(idx) {
@@ -4157,17 +4817,21 @@
       return;
     }
     storyLive.stepIndex = idx;
+    storyLive.lastTickCueSec = -1;
     var step = storyLive.flatSteps[idx];
-    if (step && step.kind === 'outro') playMilestoneFanfare();
+    if (step && step.kind === 'resolution') playRevealChime();
+    else if (step && step.kind === 'checkpoint') playMilestoneFanfare();
     else playSceneChime();
 
+    var ep = storyLive.episode;
+    var holdMs = storyStepHoldMs(step, ep);
     storyLive.stepStartedAt = now();
-    if (S.voiceOn && synth) {
+    if (S.voiceOn && (synth || storySpeechTracks.length)) {
       storyLive.waitingForSpeech = true;
-      storyLive.stepEndsAt = storyLive.stepStartedAt + 45000;
+      storyLive.stepEndsAt = storyLive.stepStartedAt + holdMs + 35000;
     } else {
       storyLive.waitingForSpeech = false;
-      storyLive.stepEndsAt = storyLive.stepStartedAt + Math.max(4, Number(S.storySceneSec) || 8) * 1000;
+      storyLive.stepEndsAt = storyLive.stepStartedAt + holdMs;
     }
 
     renderStoryStep();
@@ -4178,18 +4842,29 @@
   function startNextStoryEpisode() {
     var ep = drawStoryEpisode();
     if (!ep) {
-      toast('No story episodes loaded — import a Story JSON pack', true);
+      toast('No stories loaded — import a Hook-Loop JSON pack', true);
       return;
     }
     storyLive.episode = ep;
     storyLive.flatSteps = buildFlatStorySteps(ep);
+    if (S.storyVaryCadence && live.running && !live.paused && !isAudioSuppressedPhase()) {
+      startMusic();
+    }
     enterStoryStep(0);
   }
 
   function finishStoryEpisode() {
+    stopUploadedStorySpeech();
     storyLive.episodesCompleted++;
     if (canTriggerPromoAfterMilestone()) {
       startPreAdNotice('story');
+      return;
+    }
+    if (S.storyInterleave && bank[S.segment] && bank[S.segment].length) {
+      live.storyBurstRemaining = 2;
+      live.storyBurstTotal = 2;
+      live.storyBurstReturn = true;
+      enterPhase('quiz', false);
       return;
     }
     startNextStoryEpisode();
@@ -4198,6 +4873,9 @@
   function startStoryRun() {
     storyLive.bag = [];
     storyLive.episodesCompleted = 0;
+    storyLive.lastArchetype = '';
+    storyLive.lastPacing = '';
+    if (el.storyVisualHost) el.storyVisualHost.innerHTML = '';
     refillStoryBag();
     startNextStoryEpisode();
   }
@@ -4211,7 +4889,15 @@
   }
 
   function nextPhaseFrom(phase) {
-    if (phase === 'promo') return live.promoReturnPhase || homePhase();
+    if (phase === 'promo') {
+      if (live.promoReturnPhase === 'story' && S.storyInterleave && bank[S.segment] && bank[S.segment].length) {
+        live.storyBurstRemaining = 2;
+        live.storyBurstTotal = 2;
+        live.storyBurstReturn = true;
+        return 'quiz';
+      }
+      return live.promoReturnPhase || homePhase();
+    }
     return 'promo';
   }
 
@@ -4242,7 +4928,7 @@
       var sApi = window.LNR_STORIES;
       var sCount = sApi ? (sApi.getAllEpisodes(S.storyCat).length || sApi.getAllEpisodes('all').length) : 0;
       if (!sCount) {
-        toast('Import a Story JSON pack first to begin Storytelling mode', true);
+        toast('Import a Hook-Loop Story JSON pack first to begin', true);
         setPage('studio');
         setWizardStep(2);
         return;
@@ -4250,6 +4936,7 @@
     }
 
     stopAudioPreview();
+    stopStorySpeechPreview();
     live.inSession = true;
     live.running = true;
     live.paused = false;
@@ -4259,6 +4946,9 @@
     live.quizRoundNum = 1;
     live.quizRoundAnswers = [];
     live.quizActiveMs = 0;
+    live.storyBurstRemaining = 0;
+    live.storyBurstTotal = 0;
+    live.storyBurstReturn = false;
     live.lastTickAt = now();
     live.activeAdLog = null;
     clearPreAdNotice();
@@ -4547,10 +5237,18 @@
     updateVoiceBtn();
   }
 
+  var curtainHideTimer = 0;
   function flashCurtain() {
     if (!el.curtain) return;
+    if (curtainHideTimer) window.clearTimeout(curtainHideTimer);
     el.curtain.hidden = false;
-    window.setTimeout(function () { el.curtain.hidden = true; }, 620);
+    retriggerAnimation(el.curtain, 'is-active');
+    curtainHideTimer = window.setTimeout(function () {
+      if (el.curtain) {
+        el.curtain.classList.remove('is-active');
+        el.curtain.hidden = true;
+      }
+    }, 720);
   }
 
   function rotateNow() {
@@ -4624,16 +5322,26 @@
         el.msTimer.textContent = clock(pRem);
       }
     } else if (live.phase === 'story') {
+      var curStep = storyLive.flatSteps[storyLive.stepIndex];
       if (storyLive.waitingForSpeech && speechBusy()) {
-        var holdDef = Math.max(4, Number(S.storySceneSec) || 8) * 1000;
+        var holdDef = (storyLive.episode && curStep) ? storyStepHoldMs(curStep, storyLive.episode) : (Math.max(4, Number(S.storySceneSec) || 8) * 1000);
         el.frameTimer.textContent = clock(holdDef);
         el.progFill.style.width = '0.0%';
+        if (el.storyPhaseCountdown && curStep && curStep.kind === 'checkpoint') {
+          el.storyPhaseCountdown.textContent = Math.round(holdDef / 1000) + 's';
+          el.storyPhaseCountdown.classList.remove('is-urgent');
+        }
       } else {
         var sRem = storyLive.stepEndsAt - (live.paused ? live.pausedAt : now());
         if (sRem < 0) sRem = 0;
         el.frameTimer.textContent = clock(sRem);
         var sTotal = Math.max(1000, storyLive.stepEndsAt - storyLive.stepStartedAt);
         el.progFill.style.width = Math.min(100, Math.max(0, (1 - sRem / sTotal) * 100)).toFixed(1) + '%';
+        if (el.storyPhaseCountdown && curStep && curStep.kind === 'checkpoint') {
+          var sCeil = Math.max(0, Math.ceil(sRem / 1000));
+          el.storyPhaseCountdown.textContent = sCeil + 's';
+          el.storyPhaseCountdown.classList.toggle('is-urgent', sRem > 0 && sRem <= 5000);
+        }
       }
     } else {
       var v = activeVideo();
@@ -4716,7 +5424,15 @@
               recordQuizRoundAnswer();
               bagHistory.push(live.qIndex);
               if (bagHistory.length > MAX_BAG_HISTORY) bagHistory.shift();
-              if (live.quizRoundAnswers.length >= 10) {
+              if (live.storyBurstRemaining > 0) {
+                live.storyBurstRemaining--;
+                if (live.storyBurstRemaining <= 0 && live.storyBurstReturn) {
+                  live.storyBurstReturn = false;
+                  enterPhase('story', false);
+                } else {
+                  nextQuestion();
+                }
+              } else if (live.quizRoundAnswers.length >= 10) {
                 enterQuizMilestone();
               } else {
                 nextQuestion();
@@ -4764,12 +5480,26 @@
         }
       } else if (live.phase === 'story') {
         live.quizActiveMs += dt;
+        var stCur = storyLive.flatSteps[storyLive.stepIndex];
         if (storyLive.waitingForSpeech) {
           if (!speechBusy()) {
             armStoryHoldCountdown();
+            if (stCur && stCur.kind === 'checkpoint') {
+              playCountdownTick(10);
+              storyLive.lastTickCueSec = 10;
+            }
           }
-        } else if (t >= storyLive.stepEndsAt) {
-          enterStoryStep(storyLive.stepIndex + 1);
+        } else {
+          if (stCur && stCur.kind === 'checkpoint' && !speechBusy()) {
+            var stRemSec = Math.ceil((storyLive.stepEndsAt - t) / 1000);
+            if (stRemSec >= 1 && stRemSec <= 10 && stRemSec !== storyLive.lastTickCueSec) {
+              storyLive.lastTickCueSec = stRemSec;
+              playCountdownTick(stRemSec);
+            }
+          }
+          if (t >= storyLive.stepEndsAt) {
+            enterStoryStep(storyLive.stepIndex + 1);
+          }
         }
       } else if (live.phase === 'promo') {
         var av = activeVideo();
@@ -4809,6 +5539,13 @@
       el.onairPill.innerHTML = '<i aria-hidden="true"></i> Paused';
       videoDecks.forEach(function (v) { try { v.pause(); } catch (e) {} });
       if (synth && speaking && !synth.paused) { synth.pause(); pausedSpeech = true; updateVoiceBtn(); }
+      if (storySpeechPlaying && !storySpeechEl.paused) {
+        try { storySpeechEl.pause(); } catch (e) {}
+        storySpeechPaused = true;
+        setMusicDucking(false);
+        updateVoiceBtn();
+      }
+      pauseCaptionSync();
       stopMusic();
     } else {
       var delta = now() - live.pausedAt;
@@ -4820,6 +5557,7 @@
       live.preAdEndsAt += delta;
       storyLive.stepStartedAt += delta;
       storyLive.stepEndsAt += delta;
+      if (storySpeechDeadline) storySpeechDeadline += delta;
       if (live.promoStartedAt) live.promoStartedAt += delta;
       if (speechDeadline) speechDeadline += delta;
       if (revealDeadline) revealDeadline += delta;
@@ -4837,6 +5575,13 @@
         }
       }
       if (synth && pausedSpeech) { synth.resume(); pausedSpeech = false; updateVoiceBtn(); }
+      if (storySpeechPlaying && storySpeechPaused && S.voiceOn) {
+        var ps = storySpeechEl.play(); if (ps && ps.catch) ps.catch(function () {});
+        storySpeechPaused = false;
+        setMusicDucking(true);
+        updateVoiceBtn();
+      }
+      resumeCaptionSync();
       startMusic();
     }
     updatePhaseUI();
@@ -4873,6 +5618,16 @@
       if (currentQ()) recordQuizRoundAnswer();
       bagHistory.push(live.qIndex);
       if (bagHistory.length > MAX_BAG_HISTORY) bagHistory.shift();
+      if (live.storyBurstRemaining > 0) {
+        live.storyBurstRemaining--;
+        if (live.storyBurstRemaining <= 0 && live.storyBurstReturn) {
+          live.storyBurstReturn = false;
+          enterPhase('story', false);
+          return;
+        }
+        nextQuestion();
+        return;
+      }
       if (live.quizRoundAnswers.length >= 10) {
         enterQuizMilestone();
         return;
@@ -5060,6 +5815,7 @@
     releasePlayerVisual();
     stopSpeech();
     stopAudioPreview();
+    stopStorySpeechPreview();
     stopMusic();
     stopVideo();
     document.body.classList.remove('screen-stage', 'safe');
@@ -5724,17 +6480,16 @@
       btn.type = 'button';
       var isChosen = S.storyStartId === ep.id;
       btn.className = 'story-ep-item' + (isChosen ? ' is-selected' : '');
-      var sceneTotal = 0;
-      (ep.acts || []).forEach(function (a) { sceneTotal += (a.scenes || []).length; });
+      var beatTotal = (ep.beats || []).length;
       btn.innerHTML =
-        '<div class="story-ep-top"><span>' + escHtml(ep.category === 'biblical' ? 'Biblical' : 'History') + ' \u00b7 ' + escHtml(ep.era) + '</span><span>' + (ep.acts || []).length + ' acts \u00b7 ' + sceneTotal + ' scenes</span></div>' +
+        '<div class="story-ep-top"><span>' + escHtml(formatArchetypeLabel(ep.archetype)) + ' \u00b7 ' + escHtml(ep.era) + '</span><span>' + beatTotal + ' beats + gate</span></div>' +
         '<b>' + escHtml(ep.title) + '</b>' +
         '<span>' + escHtml(ep.subtitle) + '</span>';
       btn.addEventListener('click', function () {
         S.storyStartId = (S.storyStartId === ep.id) ? '' : ep.id;
         save();
         renderStoryCatalogUI();
-        toast(S.storyStartId ? ('Starts with: ' + ep.title) : 'Automatic documentary rotation');
+        toast(S.storyStartId ? ('Starts with: ' + ep.title) : 'Automatic Hook-Loop archetype rotation');
       });
       el.storyEpisodeList.appendChild(btn);
     });
@@ -5758,84 +6513,326 @@
     var r = new FileReader();
     r.onload = function () {
       var res = sApi.importEpisodesJson(String(r.result || ''));
-      setStoryStatus(res.added > 0, res.added ? ('Imported ' + res.added + ' documentary episode(s)') : 'No new episodes added', [
+      setStoryStatus(res.added > 0, res.added ? ('Imported ' + res.added + ' Hook-Loop story case(s)') : 'No new stories added', [
         'Added: ' + res.added + ' \u00b7 Skipped duplicates: ' + res.skipped,
-        res.errors && res.errors.length ? ('Notes: ' + res.errors.slice(0, 3).join('; ')) : 'Ready for continuous broadcast'
+        res.errors && res.errors.length ? ('Notes: ' + res.errors.slice(0, 3).join('; ')) : 'Ready for interactive broadcast'
       ]);
       renderStoryCatalogUI();
-      toast(res.added ? ('Imported ' + res.added + ' episode(s)') : 'Check Story JSON report', !res.added);
+      toast(res.added ? ('Imported ' + res.added + ' story case(s)') : 'Check Story JSON report', !res.added);
     };
     r.readAsText(f);
   });
 
   on(el.dlStoryTemplateBtn, 'click', function () {
     var tpl = {
-      episodes: [
+      stories: [
         {
-          id: 'custom-episode-1',
-          title: 'Sample Documentary: The Printing Revolution',
-          subtitle: 'How movable metal type multiplied books across continents',
+          story_id: 'myst_sample_01',
+          archetype: 'historical_anomaly',
+          pacing_profile: 'fast_investigative',
           category: 'world-history',
-          era: '1440 - 1500 CE',
-          centralQuestion: 'Why did one Mainz workshop spark a continental shift within fifty years?',
-          takeaway: 'Ideas spread fastest when shared tools lower the cost of writing and reading.',
-          acts: [
+          era: '1977',
+          accent_color: '#5b9bd5',
+          title: 'The 72-Second Deep Space Signal',
+          subtitle: 'Why Ohio astronomers circled one mysterious narrowband spike in red ink',
+          hook: {
+            duration_sec: 9,
+            on_screen_badge: 'CASE #077 \u00b7 OHIO RADIO ARRAY',
+            headline: 'THE 72-SECOND SIGNAL THAT WAS NEVER HEARD AGAIN',
+            narration: 'Late one August night in 1977, an unmanned radio telescope swept the sky and recorded a signal thirty times louder than deep-space background noise.'
+          },
+          beats: [
             {
-              actNum: 1,
-              title: 'Before the Press',
-              hook: 'Copying one volume took a team of scribes an entire winter.',
-              scenes: [
-                {
-                  sceneType: 'comparison',
-                  headline: 'Quill Copyists vs. Movable Alloy Type',
-                  narration: 'In 1440, European libraries rarely held more than a few dozen manuscripts. Johannes Gutenberg fused oil-based ink, adjustable metal molds, and screw presses into one rapid printing system.',
-                  engagement: 'Live chat: Which invention transformed human knowledge even faster?',
-                  visual: {
-                    dateLabel: 'c. 1450 CE',
-                    leftTitle: 'Hand Scriptorium',
-                    leftItems: ['Months per volume', 'High error drift'],
-                    rightTitle: 'Movable Press',
-                    rightItems: ['Thousands of pages daily', 'Identical editions']
-                  }
-                }
-              ]
+              beat_number: 1,
+              visual_mode: 'signal_waveform',
+              accent_color: '#5b9bd5',
+              headline: 'The Printout Margin Note',
+              dateLabel: 'August 15, 1977',
+              location: 'Big Ear Observatory, Ohio',
+              text: 'Three days later, astronomer Jerry Ehman scanned the paper printout, saw the sequence 6EQUJ5 spiking straight off the scale, and wrote a single astonished word in the margin: Wow.',
+              open_loop: 'Even stranger than the spike itself was the exact frequency the beam arrived on.',
+              visual: {
+                waveformLabel: '1420.4 MHz Hydrogen Line Spike',
+                waveformBars: [16, 18, 22, 48, 95, 98, 72, 30, 18, 15, 19, 14],
+                accentStat: '1420 MHz',
+                statLabel: 'protected hydrogen band forbidden to Earth transmitters'
+              }
+            },
+            {
+              beat_number: 2,
+              visual_mode: 'evidence_card',
+              accent_color: '#cfa35a',
+              headline: 'Two Feed Horns, Only One Horn Hit',
+              dateLabel: 'Dual-Beam Check',
+              location: 'Delaware, Ohio',
+              text: 'Because the telescope used two adjacent feed horns scanning the sky as Earth rotated, any fixed distant source had to appear twice three minutes apart—yet the second horn stayed dead silent.',
+              open_loop: 'So did something pass briefly through one beam, turn off in under three minutes, or bounce off orbital debris?',
+              visual: {
+                quote: '6EQUJ5 lasted seventy-two seconds in one horn and vanished completely before the second swept past.',
+                attribution: 'Ohio State Observatory Log',
+                accentStat: '72 sec',
+                statLabel: 'exact beam transit duration of a stationary sky point'
+              }
             }
-          ]
+          ],
+          chat_checkpoint: {
+            countdown_sec: 15,
+            prompt: 'WHY DID ONLY ONE OF TWO FEED HORNS DETECT THE SPIKE?',
+            options: [
+              'A) The signal switched off or drifted right inside the 3-minute gap',
+              'B) Paper ink ran dry before the second sweep printed',
+              'C) Both horns always record identical channels simultaneously'
+            ],
+            correct_index: 0
+          },
+          resolution: {
+            reveal: 'Answer A: Whether intermittent natural maser flare or transient reflection, the source dimmed or moved during the three-minute interval between beams—never repeating in 45 years of follow-up sweeps.',
+            flaw_everyone_misses: 'Most headlines overlook the missing second-horn echo, which proves the 72-second duration matched Earth rotating across a point source rather than an arbitrary broadcast length.',
+            why_it_matters: 'Understanding instrument geometry keeps genuine unsolved data separate from clickbait folklore.',
+            next_story_bridge: 'Speaking of signals hiding inside ordinary objects—let us test your rapid trivia instincts next.'
+          }
         }
       ]
     };
-    downloadTextFile('lnr-story-documentary-template.json', JSON.stringify(tpl, null, 2));
-    toast('Downloaded lnr-story-documentary-template.json');
+    downloadTextFile('lnr-hook-loop-story-template.json', JSON.stringify(tpl, null, 2));
+    toast('Downloaded lnr-hook-loop-story-template.json');
   });
 
   on(el.copyStoryPromptBtn, 'click', function () {
     var prompt = [
-      'Generate 3 multi-act Documentary Storytelling episodes in raw valid JSON matching this schema:',
+      'Generate 3 Interactive Hook-Loop Storytelling cases in raw valid JSON matching this anti-repetitious schema (supports investigative mysteries OR Sar vs. Diq fictionalized historical banter):',
       '{',
-      '  "episodes": [{',
-      '    "id": "ep-slug",',
-      '    "title": "Documentary Title",',
-      '    "subtitle": "One-sentence premise",',
+      '  "stories": [{',
+      '    "story_id": "myst_001",',
+      '    "archetype": "historical_anomaly | historical_heist | biblical_mystery | ethical_dilemma | survival_scenario | historical_banter",',
+      '    "pacing_profile": "fast_investigative | slow_psychological | rapid_dilemma",',
       '    "category": "world-history | biblical",',
-      '    "era": "Date Span",',
-      '    "centralQuestion": "Core question explored across the episode",',
-      '    "takeaway": "Final reflective takeaway",',
-      '    "acts": [{',
-      '      "actNum": 1,',
-      '      "title": "Act Title",',
-      '      "hook": "Short dramatic opener",',
-      '      "scenes": [{',
-      '        "sceneType": "document | map | timeline | profile | comparison | artifact",',
-      '        "headline": "Scene Title",',
-      '        "narration": "2-3 natural spoken documentary sentences transitioning smoothly.",',
-      '        "engagement": "Optional viewer chat question",',
-      '        "visual": { "dateLabel": "...", "location": "...", "quote": "...", "attribution": "...", "points": ["..."], "route": ["..."], "accentStat": "...", "statLabel": "..." }',
-      '      }]',
-      '    }]',
+      '    "era": "Year or Era",',
+      '    "accent_color": "#df8f6b",',
+      '    "title": "Compelling Case Title",',
+      '    "subtitle": "Short premise",',
+      '    "disclaimer": { "is_fictional_persona": false, "badge_text": "Fictional Characters · Real History", "note": "Include only for Sar & Diq banter cases" },',
+      '    "hook": {',
+      '      "duration_sec": 9,',
+      '      "on_screen_badge": "CASE #001 · UNSOLVED",',
+      '      "headline": "COLD-OPEN ANOMALY HEADLINE",',
+      '      "narration": "Drop straight into the contradiction or turning point in 1-2 crisp sentences."',
+      '    },',
+      '    "beats": [{',
+      '      "beat_number": 1,',
+      '      "speaker": "SAR | DIQ | NARRATOR",',
+      '      "tone": "boastful_ordeal | sneering_warning | investigative",',
+      '      "visual_mode": "evidence_card | signal_waveform | wildfire_surge | ember_glow | map | timeline | profile | comparison | artifact | document",',
+      '      "accent_color": "#cfa35a",',
+      '      "headline": "Beat Title",',
+      '      "dateLabel": "...",',
+      '      "location": "...",',
+      '      "text": "2 crisp spoken sentences advancing the story.",',
+      '      "open_loop": "Curiosity hook pulling viewers into the next beat.",',
+      '      "visual": { "quote": "...", "attribution": "...", "route": ["..."], "points": ["..."], "waveformBars": [20,50,90,40], "accentStat": "...", "statLabel": "..." }',
+      '    }],',
+      '    "chat_checkpoint": {',
+      '      "countdown_sec": 15,',
+      '      "prompt": "SHARP DEDUCTION QUESTION FOR LIVE CHAT?",',
+      '      "options": ["A) Option one", "B) Option two", "C) Option three"],',
+      '      "correct_index": 1',
+      '    },',
+      '    "resolution": {',
+      '      "speaker": "DIQ | NARRATOR",',
+      '      "reveal": "Explain the true historical outcome clearly.",',
+      '      "flaw_everyone_misses": "Authored commentary explaining why most people guess wrong.",',
+      '      "why_it_matters": "Short reflective takeaway.",',
+      '      "next_story_bridge": "Cliffhanger tease into the next segment."',
+      '    }',
       '  }]',
       '}'
     ].join('\n');
-    copyText(prompt, 'Documentary AI prompt copied');
+    copyText(prompt, 'Hook-Loop + Sar/Diq AI prompt copied');
+  });
+
+  /* ---------- Custom Speech Audio Upload (Storytelling Narrator) ---------- */
+  function stopStorySpeechPreview() {
+    if (storySpeechPreviewIdx < 0) return;
+    storySpeechPreviewIdx = -1;
+    storySpeechPreviewing = false;
+    try { storySpeechEl.pause(); storySpeechEl.currentTime = 0; } catch (e) {}
+    setMusicDucking(false);
+    renderStorySpeechUI();
+  }
+
+  function startStorySpeechPreview(idx) {
+    var target = typeof idx === 'number' ? idx : 0;
+    if (!storySpeechTracks[target]) return;
+    if (storySpeechPreviewIdx === target && storySpeechPreviewing) {
+      stopStorySpeechPreview();
+      return;
+    }
+    stopAudioPreview();
+    stopStorySpeechPreview();
+    storySpeechPreviewing = true;
+    storySpeechPreviewIdx = target;
+    storySpeechEl.src = storySpeechTracks[target].url;
+    storySpeechEl.loop = false;
+    storySpeechEl.currentTime = 0;
+    storySpeechEl.onended = function () {
+      if (storySpeechPreviewing) stopStorySpeechPreview();
+    };
+    var p = storySpeechEl.play();
+    if (p && p.catch) {
+      p.catch(function () {
+        stopStorySpeechPreview();
+        toast('Unable to preview speech audio on this device', true);
+      });
+    }
+    renderStorySpeechUI();
+  }
+
+  function persistStorySpeechTracks() {
+    var payload = storySpeechTracks.map(function (t) {
+      return { id: t.id, name: t.name, size: t.size, type: t.type, duration: t.duration || 0, blob: t.blob };
+    });
+    idbPutStore('vault', { id: 'custom_story_speech_tracks', tracks: payload }).catch(function () {});
+  }
+
+  function renderStorySpeechUI() {
+    var count = storySpeechTracks.length;
+    if (el.storySpeechStatus) {
+      el.storySpeechStatus.textContent = count
+        ? (count + ' uploaded audio ' + (count === 1 ? 'track' : 'tracks'))
+        : 'Built-in Narrator';
+    }
+    if (el.drawerStorySpeechName) {
+      el.drawerStorySpeechName.textContent = count
+        ? (count === 1 ? storySpeechTracks[0].name : (count + ' speech tracks'))
+        : 'Built-in narrator';
+    }
+    [el.storySpeechClearBtn, el.drawerStorySpeechClearBtn].forEach(function (b) {
+      if (b) b.hidden = !count;
+    });
+    if (el.storySpeechPreviewBtn) {
+      el.storySpeechPreviewBtn.hidden = !count;
+      el.storySpeechPreviewBtn.textContent = storySpeechPreviewing ? 'Stop preview' : 'Preview';
+      el.storySpeechPreviewBtn.classList.toggle('is-playing', storySpeechPreviewing);
+    }
+    if (el.storySpeechList) {
+      el.storySpeechList.innerHTML = '';
+      storySpeechTracks.forEach(function (tr, idx) {
+        var li = document.createElement('li');
+        var meta = document.createElement('span');
+        meta.className = 'clip-name';
+        meta.textContent = (idx + 1) + '. ' + tr.name + (tr.duration > 0 ? (' \u00b7 ' + clock(tr.duration * 1000)) : '');
+
+        var acts = document.createElement('div');
+        acts.className = 'clip-acts';
+
+        var prevBtn = document.createElement('button');
+        prevBtn.type = 'button';
+        prevBtn.className = 'btn btn-quiet btn-sm';
+        var isThisPlaying = storySpeechPreviewing && storySpeechPreviewIdx === idx;
+        prevBtn.textContent = isThisPlaying ? 'Stop' : 'Play';
+        prevBtn.addEventListener('click', function () { startStorySpeechPreview(idx); });
+
+        var rmBtn = document.createElement('button');
+        rmBtn.type = 'button';
+        rmBtn.className = 'btn btn-ghost btn-sm';
+        rmBtn.textContent = 'Remove';
+        rmBtn.addEventListener('click', function () {
+          stopStorySpeechPreview();
+          if (storySpeechTrackIdx === idx) stopUploadedStorySpeech();
+          try { if (tr.url) URL.revokeObjectURL(tr.url); } catch (e) {}
+          storySpeechTracks.splice(idx, 1);
+          persistStorySpeechTracks();
+          renderStorySpeechUI();
+          toast('Speech audio removed');
+        });
+
+        acts.appendChild(prevBtn);
+        acts.appendChild(rmBtn);
+        li.appendChild(meta);
+        li.appendChild(acts);
+        el.storySpeechList.appendChild(li);
+      });
+    }
+    updateVoiceBtn();
+  }
+
+  function hydrateStorySpeechTrack(rec) {
+    if (!rec || !rec.blob) return;
+    var url = URL.createObjectURL(rec.blob);
+    var track = {
+      id: rec.id || ('sp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)),
+      name: rec.name || 'Speech.mp3',
+      size: rec.size || rec.blob.size || 0,
+      type: rec.type || rec.blob.type || 'audio/mpeg',
+      duration: Number(rec.duration) || 0,
+      blob: rec.blob,
+      url: url
+    };
+    storySpeechTracks.push(track);
+    if (!track.duration) {
+      var probe = new Audio(url);
+      probe.preload = 'metadata';
+      probe.onloadedmetadata = function () {
+        if (isFinite(probe.duration) && probe.duration > 0) {
+          track.duration = probe.duration;
+          persistStorySpeechTracks();
+          renderStorySpeechUI();
+        }
+      };
+    }
+  }
+
+  function handleStorySpeechFiles(fileList) {
+    if (!fileList || !fileList.length) return;
+    var added = 0;
+    Array.prototype.forEach.call(fileList, function (f) {
+      if (!f) return;
+      hydrateStorySpeechTrack({
+        id: 'sp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        duration: 0,
+        blob: f
+      });
+      added++;
+    });
+    if (added) {
+      persistStorySpeechTracks();
+      renderStorySpeechUI();
+      toast('Uploaded ' + added + ' speech audio file' + (added === 1 ? '' : 's'));
+    }
+  }
+
+  function clearStorySpeechTracks() {
+    stopStorySpeechPreview();
+    stopUploadedStorySpeech();
+    storySpeechTracks.forEach(function (t) {
+      try { if (t.url) URL.revokeObjectURL(t.url); } catch (e) {}
+    });
+    storySpeechTracks = [];
+    idbDeleteStore('vault', 'custom_story_speech_tracks').catch(function () {});
+    renderStorySpeechUI();
+    toast('Speech uploads cleared \u2014 using built-in narrator');
+  }
+
+  [el.setupStorySpeechInput, el.drawerStorySpeechInput].forEach(function (inp) {
+    on(inp, 'change', function () {
+      handleStorySpeechFiles(inp.files);
+      inp.value = '';
+    });
+  });
+  on(el.setupStorySpeechMode, 'change', function () {
+    S.storySpeechMode = el.setupStorySpeechMode.value === 'step' ? 'step' : 'episode';
+    save();
+    toast(S.storySpeechMode === 'step' ? '1 speech file per step' : '1 speech file per chapter');
+  });
+  on(el.storySpeechPreviewBtn, 'click', function () {
+    if (storySpeechPreviewing) stopStorySpeechPreview();
+    else startStorySpeechPreview(0);
+  });
+  [el.storySpeechClearBtn, el.drawerStorySpeechClearBtn].forEach(function (btn) {
+    on(btn, 'click', clearStorySpeechTracks);
   });
 
   on(el.storyClearBtn, 'click', function () {
@@ -5870,6 +6867,7 @@
     syncInputs();
     syncMusicCardsUI();
     syncAudioPreviewUI();
+    renderStorySpeechUI();
     renderStoryCatalogUI();
     renderClips();
     updateVoiceBtn();
@@ -5889,6 +6887,13 @@
     idbGetStore('vault', 'custom_audio_track').then(function (rec) {
       if (rec && rec.blob) {
         loadCustomAudioBlob(rec.blob, rec.name || 'Custom track.mp3');
+      }
+    });
+
+    idbGetStore('vault', 'custom_story_speech_tracks').then(function (rec) {
+      if (rec && Array.isArray(rec.tracks) && rec.tracks.length) {
+        rec.tracks.forEach(hydrateStorySpeechTrack);
+        renderStorySpeechUI();
       }
     });
 
