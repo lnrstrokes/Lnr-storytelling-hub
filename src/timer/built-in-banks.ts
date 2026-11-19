@@ -57,22 +57,49 @@ export async function loadBuiltInBanks(): Promise<BuiltInBanksPayload> {
       bible.push(raw);
     };
 
+    function isBibleQuestion(q: { category?: string; reference?: string; scripture?: string; question?: string }): boolean {
+      const cat = String(q.category || '').toLowerCase();
+      const ref = String(q.reference || q.scripture || '').toLowerCase();
+      const text = String(q.question || '').toLowerCase();
+
+      const bibleKeywords = [
+        'testament', 'gospel', 'wisdom', 'biblical', 'bible', 'faith', 'psalm',
+        'genesis', 'exodus', 'leviticus', 'numbers', 'deuteronomy', 'joshua', 'judges',
+        'ruth', 'samuel', 'kings', 'chronicles', 'ezra', 'nehemiah', 'esther', 'job',
+        'proverbs', 'ecclesiastes', 'song of songs', 'isaiah', 'jeremiah', 'lamentations',
+        'ezekiel', 'daniel', 'hosea', 'joel', 'amos', 'obadiah', 'jonah', 'micah',
+        'nahum', 'habakkuk', 'zephaniah', 'haggai', 'zechariah', 'malachi', 'matthew',
+        'mark', 'luke', 'john', 'acts', 'romans', 'corinthians', 'galatians', 'ephesians',
+        'philippians', 'colossians', 'thessalonians', 'timothy', 'titus', 'philemon',
+        'hebrews', 'james', 'peter', 'jude', 'revelation', 'canon', 'prophet', 'apostle',
+        'scripture', 'lord', 'christ', 'jesus', 'moses', 'abraham', 'david', 'solomon',
+        'noah', 'adam', 'eve', 'canaan', 'israel', 'temple', 'synagogue', 'commandment'
+      ];
+
+      const nonBibleKeywords = [
+        'elden ring', 'battle through the heavens', 'perfect world', 'soul land',
+        'renegade immortal', 'donghua', 'xiaoyan', 'shi hao', 'mars', 'apollo',
+        'vostok', 'sally ride', 'space', 'astronaut', 'game show', 'traitors',
+        'silk road', 'mongol empire', 'second world war'
+      ];
+
+      for (const nb of nonBibleKeywords) {
+        if (cat.includes(nb) || text.includes(nb) || ref.includes(nb)) {
+          return false;
+        }
+      }
+
+      for (const bk of bibleKeywords) {
+        if (cat.includes(bk) || ref.includes(bk) || (bk.length > 3 && text.includes(bk))) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
     const rawBible = (PRIVATE_BANKS.bible || []) as unknown as QuizTuple[];
     rawBible.forEach(pushBibleTuple);
-
-    for (const q of chunkedBible) {
-      const opts = (q.options || []).map((o) => o.text);
-      if (opts.length < 4) continue;
-      const correctIdx = Math.max(0, ['A', 'B', 'C', 'D'].indexOf(q.correctLetter));
-      pushBibleTuple([
-        q.question,
-        [opts[0], opts[1], opts[2], opts[3]],
-        correctIdx,
-        q.reference || q.scripture || q.category || '',
-        q.insight || '',
-        q.difficulty || 'Medium',
-      ]);
-    }
 
     const history: QuizTuple[] = [];
     const seenHistory = new Set<string>();
@@ -88,6 +115,25 @@ export async function loadBuiltInBanks(): Promise<BuiltInBanksPayload> {
     const rawHistory = (PRIVATE_BANKS.history || []) as unknown as QuizTuple[];
     rawHistory.forEach(pushHistoryTuple);
     HISTORY_EXPANSION.forEach(pushHistoryTuple);
+
+    for (const q of chunkedBible) {
+      const opts = (q.options || []).map((o) => o.text);
+      if (opts.length < 4) continue;
+      const correctIdx = Math.max(0, ['A', 'B', 'C', 'D'].indexOf(q.correctLetter));
+      const tuple: QuizTuple = [
+        q.question,
+        [opts[0], opts[1], opts[2], opts[3]],
+        correctIdx,
+        q.reference || q.scripture || q.category || '',
+        q.insight || '',
+        q.difficulty || 'Medium',
+      ];
+      if (isBibleQuestion(q)) {
+        pushBibleTuple(tuple);
+      } else {
+        pushHistoryTuple(tuple);
+      }
+    }
 
     const players = (PRIVATE_BANKS.players || []) as unknown as StarterPlayer[];
     const playerQuizzes = (PRIVATE_BANKS.playerQuizzes || []) as unknown as StarterPlayerQuiz[];
