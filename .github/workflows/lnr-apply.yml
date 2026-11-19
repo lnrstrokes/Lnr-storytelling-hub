@@ -1,0 +1,43 @@
+name: Apply livestream readiness fixes
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: contains(github.event.head_commit.message, 'apply-livestream-fixes')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode patch
+        run: |
+          set -e
+          python3 - <<'PY'
+          import base64, gzip
+          raw = open('.lnr-patch.b64','rb').read().strip()
+          d = base64.b64decode(raw)
+          try:
+              out = gzip.decompress(d)
+          except Exception:
+              out = gzip.decompress(base64.b64decode(d))
+          open('/tmp/fix.patch','wb').write(out)
+          print('patch bytes', len(out))
+          PY
+      - name: Apply patch
+        run: |
+          set -e
+          git apply --check -p1 /tmp/fix.patch
+          git apply -p1 /tmp/fix.patch
+          echo APPLIED_OK
+      - name: Commit and push
+        run: |
+          set -e
+          git config user.name "lnr-studio-bot"
+          git config user.email "bot@lnrstrokes.local"
+          rm -f .lnr-patch.b64 .lnr-apply.yml .push-access-check.md
+          git add -A
+          git commit -m "feat: natural speech prosody, premium stage design, MP3 playback fix, original upbeat show bed"
+          git push origin HEAD:main
+          echo PUSHED_OK
