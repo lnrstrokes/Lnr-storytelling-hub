@@ -88,7 +88,7 @@
     promoOrder: 'sequential',      /* 'sequential' | 'shuffle' */
     promoOverlayStyle: 'disclosure', /* 'disclosure' | 'clean-brand' | 'raw' */
     autoRotate: true,
-    music: 'uplift',
+    music: 'all_eyes_on_us',
     musicVol: 35,
     sfxOn: true,
     voiceOn: true,
@@ -134,6 +134,7 @@
   if (S.promoDisplayMode !== 'full' && S.promoDisplayMode !== 'pip' && S.promoDisplayMode !== 'split') S.promoDisplayMode = 'full';
   if (S.promoOrder !== 'sequential' && S.promoOrder !== 'shuffle') S.promoOrder = 'sequential';
   if (S.promoOverlayStyle !== 'disclosure' && S.promoOverlayStyle !== 'clean-brand' && S.promoOverlayStyle !== 'raw') S.promoOverlayStyle = 'disclosure';
+  if (S.music !== 'all_eyes_on_us' && S.music !== 'moment_of_truth' && S.music !== 'off') S.music = defaults.music;
 
   function save() {
     try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {}
@@ -1097,37 +1098,28 @@
       if (el.stMusicVol) el.stMusicVol.value = S.musicVol;
       if (el.musicVolLabel) el.musicVolLabel.textContent = S.musicVol + '%';
       if (el.stMusicVolLabel) el.stMusicVolLabel.textContent = S.musicVol + '%';
-      var duckMult = musicDucked ? 0.55 : 1;
-      if (musicGain) musicGain.gain.value = (S.musicVol / 100) * 0.14 * duckMult;
+      if (defaultBgAudioEl) {
+        if (previewingAudio && !customAudioEl) defaultBgAudioEl.volume = Math.min(1, Math.max(0.05, (S.musicVol / 100) * 1.75));
+        else defaultBgAudioEl.volume = customBedGain(musicDucked);
+      }
       if (customAudioEl) {
         if (previewingAudio) customAudioEl.volume = Math.min(1, Math.max(0.05, (S.musicVol / 100) * 1.75));
         else applyCustomVolume(musicDucked);
       }
-      if (previewGain) previewGain.gain.value = (S.musicVol / 100) * 0.18;
       save();
     });
   });
 
-  /* procedural music bed & SFX - excluded on video/promo phases */
-  var audioCtx = null, musicNodes = null, musicGain = null, musicDucked = false;
+  /* embedded default background tracks & SFX - excluded on video/promo phases */
+  var DEFAULT_BG_TRACKS = {
+    all_eyes_on_us: { name: 'All Eyes On Us', url: '/assets/aistudio/all_eyes_on_us_5bb2d8a8.mp3' },
+    moment_of_truth: { name: 'Moment Of Truth', url: '/assets/aistudio/moment_of_truth_7e44ef53.mp3' }
+  };
+  var audioCtx = null, musicDucked = false;
+  var defaultBgAudioEl = null, defaultBgAudioKey = '';
   var customAudioEl = null, customAudioUrl = '', customAudioName = '';
-  var previewingAudio = false, previewSynthNodes = null, previewGain = null, previewStopTimer = 0;
+  var previewingAudio = false, previewStopTimer = 0;
 
-  /* ------------------------------------------------------------------
-     BACKGROUND LEVELS
-
-     The old code multiplied the user's bed volume by 0.26 whenever the
-     narrator was speaking. At the default 35% bed that works out to ~9%
-     of full scale - quieter than the room noise on most livestreams, which
-     is exactly why an uploaded MP3 was reported as "not playing": it was
-     playing perfectly, just inaudibly.
-
-     Two changes:
-      - the MP3 bed gets a real gain curve (a chosen track should sit at a
-        listenable level at the default slider position), and
-      - ducking is a gentle 0.55 dip instead of a near-mute 0.26, so the
-        music stays present under speech without fighting the voice.
-     ------------------------------------------------------------------ */
   function customBedGain(ducked) {
     /* 35% on the slider ~= 62% of the track's own level - present, not loud. */
     var base = Math.min(1, Math.max(0.02, (S.musicVol / 100) * 1.75));
@@ -1141,16 +1133,8 @@
 
   function setMusicDucking(duck) {
     musicDucked = !!duck;
-    var duckMult = musicDucked ? 0.55 : 1;
-    if (musicGain) musicGain.gain.value = (S.musicVol / 100) * 0.14 * duckMult;
+    if (defaultBgAudioEl && !previewingAudio) defaultBgAudioEl.volume = customBedGain(musicDucked);
     applyCustomVolume(musicDucked);
-  }
-
-  function musicProfile(name) {
-    if (name === 'ambient') return { root: 174.6, chord: [1, 1.5, 2.0, 2.5], lfo: 0.045 };
-    if (name === 'focus') return { root: 220, chord: [1, 1.25, 1.5, 2], lfo: 0.12 };
-    if (name === 'sacred') return { root: 196, chord: [1, 1.5, 1.875, 2.25], lfo: 0.06 };
-    return null;
   }
 
   function ensureAudioCtx() {
@@ -1165,32 +1149,19 @@
     return audioCtx;
   }
 
-  function buildPadNodes(prof, volScale) {
-    var ctx = ensureAudioCtx();
-    if (!ctx) return null;
-    var gMaster = ctx.createGain();
-    gMaster.gain.value = (S.musicVol / 100) * volScale * (musicDucked ? 0.26 : 1);
-    gMaster.connect(ctx.destination);
-    var oscs = [];
-    prof.chord.forEach(function (mult, i) {
-      var o = ctx.createOscillator();
-      var g = ctx.createGain();
-      o.type = i === 0 ? 'sine' : 'triangle';
-      o.frequency.value = prof.root * mult;
-      g.gain.value = i === 0 ? 0.5 : 0.18 / (i + 1);
-      o.connect(g); g.connect(gMaster);
-      o.start();
-      oscs.push(o);
-    });
-    var lfo = ctx.createOscillator();
-    var lfoGain = ctx.createGain();
-    lfo.frequency.value = prof.lfo;
-    lfoGain.gain.value = 60;
-    lfo.connect(lfoGain);
-    lfoGain.connect(oscs[0].frequency);
-    lfo.start();
-    oscs.push(lfo);
-    return { oscs: oscs, gain: gMaster };
+  function ensureDefaultBgAudio(key) {
+    var resolvedKey = DEFAULT_BG_TRACKS[key] ? key : 'all_eyes_on_us';
+    var track = DEFAULT_BG_TRACKS[resolvedKey];
+    if (!defaultBgAudioEl || defaultBgAudioKey !== resolvedKey) {
+      if (defaultBgAudioEl) {
+        try { defaultBgAudioEl.pause(); } catch (e) {}
+      }
+      defaultBgAudioEl = new Audio(track.url);
+      defaultBgAudioEl.preload = 'auto';
+      defaultBgAudioEl.loop = true;
+      defaultBgAudioKey = resolvedKey;
+    }
+    return defaultBgAudioEl;
   }
 
   /* ------------------------------------------------------------------
@@ -1231,142 +1202,7 @@
     });
   }
 
-  /* ------------------------------------------------------------------
-     SHIPPED SHOW BED
 
-     A real file, not a synth pad: it loops seamlessly, sounds identical on
-     every machine, and keeps playing at the right level for hours. Created
-     lazily so it never costs anything when another bed is selected.
-     ------------------------------------------------------------------ */
-  var builtinBedEl = null;   /* legacy: the bed is synthesised, no file needed */
-
-  /* ------------------------------------------------------------------
-     UPLIFT SHOW BED — an original upbeat bed, synthesised live in the
-     browser. Because every note is generated here there is no third-party
-     recording in the stream: nothing to license and nothing for Content ID
-     to match. A lookahead scheduler keeps the groove steady even when the
-     tab is throttled, which a plain setInterval-per-note would not.
-     ------------------------------------------------------------------ */
-  var upliftTimer = null;
-  var upliftNextTime = 0;
-  var upliftStep = 0;
-  var upliftGain = null;
-
-  var UPLIFT_BPM = 104;
-  var UPLIFT_STEP = 60 / UPLIFT_BPM / 2;      /* one eighth note */
-  /* I - V - vi - IV in C major, one bar each */
-  var UPLIFT_CHORDS = [
-    { root: 130.81, notes: [261.63, 329.63, 392.00] },   /* C  */
-    { root: 196.00, notes: [293.66, 392.00, 493.88] },   /* G  */
-    { root: 220.00, notes: [261.63, 329.63, 440.00] },   /* Am */
-    { root: 174.61, notes: [261.63, 349.23, 440.00] }    /* F  */
-  ];
-
-  function upliftVoice(ctx, freq, t, dur, type, peak) {
-    var o = ctx.createOscillator();
-    var g = ctx.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(freq, t);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(peak, t + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g);
-    g.connect(upliftGain);
-    o.start(t);
-    o.stop(t + dur + 0.02);
-  }
-
-  function upliftHat(ctx, t, peak) {
-    /* short filtered noise burst = a soft closed hi-hat */
-    var len = Math.floor(ctx.sampleRate * 0.045);
-    var buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    var data = buf.getChannelData(0);
-    for (var i = 0; i < len; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
-    }
-    var src = ctx.createBufferSource();
-    var hp = ctx.createBiquadFilter();
-    var g = ctx.createGain();
-    src.buffer = buf;
-    hp.type = 'highpass';
-    hp.frequency.value = 7000;
-    g.gain.value = peak;
-    src.connect(hp); hp.connect(g); g.connect(upliftGain);
-    src.start(t);
-  }
-
-  function upliftKick(ctx, t, peak) {
-    var o = ctx.createOscillator();
-    var g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.setValueAtTime(120, t);
-    o.frequency.exponentialRampToValueAtTime(46, t + 0.11);
-    g.gain.setValueAtTime(peak, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-    o.connect(g); g.connect(upliftGain);
-    o.start(t); o.stop(t + 0.18);
-  }
-
-  function upliftScheduleStep(ctx, step, t) {
-    var bar = Math.floor(step / 8) % UPLIFT_CHORDS.length;
-    var beat = step % 8;
-    var chord = UPLIFT_CHORDS[bar];
-    var vol = (S.musicVol / 100) * (musicDucked ? 0.5 : 1);
-
-    /* bass: root on 1 and 3, fifth on 5 */
-    if (beat === 0) upliftVoice(ctx, chord.root, t, 0.42, 'triangle', 0.20 * vol);
-    if (beat === 4) upliftVoice(ctx, chord.root * 1.5, t, 0.34, 'triangle', 0.16 * vol);
-    if (beat === 6) upliftVoice(ctx, chord.root, t, 0.22, 'triangle', 0.13 * vol);
-
-    /* arpeggio: a bright pluck on the off-beats keeps it moving */
-    if (beat === 1) upliftVoice(ctx, chord.notes[0] * 2, t, 0.20, 'sine', 0.075 * vol);
-    if (beat === 3) upliftVoice(ctx, chord.notes[1] * 2, t, 0.20, 'sine', 0.070 * vol);
-    if (beat === 5) upliftVoice(ctx, chord.notes[2] * 2, t, 0.20, 'sine', 0.070 * vol);
-    if (beat === 7) upliftVoice(ctx, chord.notes[1] * 2, t, 0.18, 'sine', 0.060 * vol);
-
-    /* pad: soft sustained chord at the top of each bar */
-    if (beat === 0) {
-      chord.notes.forEach(function (f, i) {
-        upliftVoice(ctx, f, t, UPLIFT_STEP * 8, 'sine', (0.030 - i * 0.006) * vol);
-      });
-    }
-
-    /* light percussion */
-    if (beat === 0 || beat === 4) upliftKick(ctx, t, 0.16 * vol);
-    if (beat === 2 || beat === 6) upliftHat(ctx, t, 0.045 * vol);
-    if (beat === 7) upliftHat(ctx, t, 0.030 * vol);
-  }
-
-  function startBuiltinBed() {
-    var ctx = ensureAudioCtx();
-    if (!ctx) return;
-    if (upliftTimer) return;                 /* already running */
-    upliftGain = ctx.createGain();
-    upliftGain.gain.value = 1;
-    upliftGain.connect(ctx.destination);
-    upliftNextTime = ctx.currentTime + 0.08;
-    upliftStep = 0;
-    /* 25 ms lookahead, 120 ms of notes queued ahead of the clock */
-    upliftTimer = setInterval(function () {
-      if (!audioCtx || audioCtx.state !== 'running') return;
-      while (upliftNextTime < audioCtx.currentTime + 0.12) {
-        upliftScheduleStep(audioCtx, upliftStep, upliftNextTime);
-        upliftNextTime += UPLIFT_STEP;
-        upliftStep++;
-      }
-    }, 25);
-  }
-
-  function stopBuiltinBed() {
-    if (upliftTimer) {
-      clearInterval(upliftTimer);
-      upliftTimer = null;
-    }
-    if (upliftGain) {
-      try { upliftGain.disconnect(); } catch (e) {}
-      upliftGain = null;
-    }
-  }
 
   function safePlay(el, onFail) {
     if (!el) return;
@@ -1412,33 +1248,13 @@
       updateVoiceBtn();
       return;
     }
-    /* The shipped upbeat show bed. It is a real audio file (so it survives
-       tab throttling and sounds the same on every device) rather than a
-       synthesised pad, which is what makes it usable for a long stream. */
-    if (S.music === 'uplift') {
-      startBuiltinBed();
-      updateVoiceBtn();
-      return;
+    var bedKey = DEFAULT_BG_TRACKS[S.music] ? S.music : 'all_eyes_on_us';
+    var bgAudio = ensureDefaultBgAudio(bedKey);
+    if (bgAudio) {
+      bgAudio.volume = customBedGain(musicDucked);
+      bgAudio.loop = true;
+      safePlay(bgAudio);
     }
-    var bedKey = S.music;
-    var pitchScale = 1;
-    if (live.phase === 'story' && S.storyVaryCadence && storyLive.episode) {
-      bedKey = storyLive.episode.audioBedPreference || S.music;
-      var shiftCycle = [0.9438, 1.0, 1.0594, 1.1224];
-      pitchScale = shiftCycle[storyLive.episodesCompleted % shiftCycle.length];
-    }
-    var prof = musicProfile(bedKey);
-    if (!prof) { updateVoiceBtn(); return; }
-    if (pitchScale !== 1) {
-      prof = { root: prof.root * pitchScale, chord: prof.chord, lfo: prof.lfo };
-    }
-    try {
-      var padRes = buildPadNodes(prof, 0.14);
-      if (padRes) {
-        musicNodes = padRes.oscs;
-        musicGain = padRes.gain;
-      }
-    } catch (e) { /* audio is best-effort */ }
     updateVoiceBtn();
   }
 
@@ -1446,11 +1262,8 @@
     if (customAudioEl && !previewingAudio) {
       try { customAudioEl.pause(); } catch (e) {}
     }
-    stopBuiltinBed();
-    if (musicNodes) {
-      musicNodes.forEach(function (n) { try { n.stop(); } catch (e) {} });
-      musicNodes = null;
-      musicGain = null;
+    if (defaultBgAudioEl && !previewingAudio) {
+      try { defaultBgAudioEl.pause(); } catch (e) {}
     }
     updateVoiceBtn();
   }
@@ -1534,13 +1347,11 @@
 
   function stopAudioPreview() {
     if (previewStopTimer) { window.clearTimeout(previewStopTimer); previewStopTimer = 0; }
-    if (previewSynthNodes) {
-      previewSynthNodes.forEach(function (n) { try { n.stop(); } catch (e) {} });
-      previewSynthNodes = null;
-      previewGain = null;
-    }
     if (customAudioEl && previewingAudio && (!live.running || live.paused || isAudioSuppressedPhase())) {
       try { customAudioEl.pause(); customAudioEl.currentTime = 0; } catch (e) {}
+    }
+    if (defaultBgAudioEl && previewingAudio && (!live.running || live.paused || isAudioSuppressedPhase() || customAudioEl || S.music === 'off')) {
+      try { defaultBgAudioEl.pause(); defaultBgAudioEl.currentTime = 0; } catch (e) {}
     }
     previewingAudio = false;
     syncAudioPreviewUI();
@@ -1548,7 +1359,6 @@
 
   function startAudioPreview() {
     stopAudioPreview();
-    ensureAudioCtx();
     if (customAudioEl) {
       previewingAudio = true;
       try { customAudioEl.currentTime = 0; } catch (e) {}
@@ -1567,20 +1377,22 @@
       syncAudioPreviewUI();
       return;
     }
-    var prof = musicProfile(S.music === 'off' ? 'sacred' : S.music);
-    if (!prof) return;
-    try {
-      var padRes = buildPadNodes(prof, 0.18);
-      if (padRes) {
-        previewSynthNodes = padRes.oscs;
-        previewGain = padRes.gain;
-        previewingAudio = true;
-        previewStopTimer = window.setTimeout(stopAudioPreview, 12000);
-        syncAudioPreviewUI();
-      }
-    } catch (e) {
-      toast('Audio preview unavailable on this device', true);
-    }
+    var bedKey = DEFAULT_BG_TRACKS[S.music] ? S.music : 'all_eyes_on_us';
+    var bgAudio = ensureDefaultBgAudio(bedKey);
+    if (!bgAudio) return;
+    previewingAudio = true;
+    try { bgAudio.currentTime = 0; } catch (e) {}
+    bgAudio.volume = Math.min(1, Math.max(0.05, (S.musicVol / 100) * 1.75));
+    bgAudio.loop = false;
+    bgAudio.onended = function () {
+      if (previewingAudio) stopAudioPreview();
+    };
+    safePlay(bgAudio, function (err) {
+      stopAudioPreview();
+      toast('Could not start the background sound (' + ((err && err.name) || 'blocked') +
+        ') \u2014 click anywhere on the page once, then press Preview again.', true);
+    });
+    syncAudioPreviewUI();
   }
 
   function loadCustomAudioBlob(blob, name) {
@@ -3124,7 +2936,7 @@
         el.musicBtn.textContent = 'Audio: clip priority';
         el.musicBtn.classList.remove('is-on');
       } else {
-        var playing = !!musicNodes || !!upliftTimer || !!(customAudioEl && !customAudioEl.paused);
+        var playing = !!(defaultBgAudioEl && !defaultBgAudioEl.paused) || !!(customAudioEl && !customAudioEl.paused);
         el.musicBtn.textContent = customAudioEl
           ? ('MP3: ' + (playing ? 'on' : 'ready'))
           : ('Music: ' + (S.music === 'off' ? 'off' : (playing ? 'on' : 'ready')));
@@ -7381,9 +7193,9 @@
     audio: function () {
       return {
         ctxState: audioCtx ? audioCtx.state : 'none',
-        bedRunning: !!upliftTimer,
-        bedStep: upliftStep,
-        padNodes: musicNodes ? musicNodes.length : 0,
+        bedRunning: !!(defaultBgAudioEl && !defaultBgAudioEl.paused),
+        bedTrack: defaultBgAudioKey || null,
+        bedVolume: defaultBgAudioEl ? Math.round(defaultBgAudioEl.volume * 100) / 100 : null,
         customTrack: customAudioName || null,
         customPlaying: !!(customAudioEl && !customAudioEl.paused),
         customVolume: customAudioEl ? Math.round(customAudioEl.volume * 100) / 100 : null,
