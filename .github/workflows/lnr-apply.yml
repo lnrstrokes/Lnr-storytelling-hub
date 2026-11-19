@@ -8,16 +8,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Decode patch
+      - name: Reassemble patch
         run: |
+          set -e
+          cat .lnr-chunks/c0 .lnr-chunks/c1 .lnr-chunks/c2 .lnr-chunks/c3 > /tmp/patch.b64
+          wc -c /tmp/patch.b64
           python3 - <<'PY'
           import base64, gzip
-          raw = open('.lnr-patch.b64','rb').read().strip()
-          d = base64.b64decode(raw)
-          try:
-              out = gzip.decompress(d)
-          except Exception:
-              out = gzip.decompress(base64.b64decode(d))
+          raw = open('/tmp/patch.b64','rb').read().strip()
+          out = gzip.decompress(base64.b64decode(raw))
           open('/tmp/fix.patch','wb').write(out)
           print('patch bytes', len(out))
           PY
@@ -27,10 +26,10 @@ jobs:
           git apply -p1 /tmp/fix.patch && echo APPLIED_OK
       - name: Commit and push
         run: |
+          set -e
           git config user.name "lnr-studio-bot"
           git config user.email "bot@lnrstrokes.local"
-          rm -f .lnr-patch.b64 .lnr-apply.yml .push-access-check.md
-          rm -rf .github/workflows/lnr-apply.yml
+          rm -rf .lnr-chunks .lnr-patch.b64 .lnr-apply.yml .push-access-check.md .github/workflows/lnr-apply.yml
           git add -A
           git commit -m "feat: natural speech prosody, premium stage design, MP3 playback fix, original upbeat show bed"
           git push origin HEAD:main
