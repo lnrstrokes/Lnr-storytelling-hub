@@ -1734,22 +1734,38 @@
       return;
     }
 
+    function persistableMediaBlob(file) {
+      if (!file) return Promise.resolve(null);
+      if (typeof file.arrayBuffer !== 'function' || (file.size && file.size > 150 * 1024 * 1024)) {
+        return Promise.resolve(file);
+      }
+      return file.arrayBuffer().then(function (buf) {
+        return new Blob([buf], { type: file.type || 'video/mp4' });
+      }).catch(function () {
+        return file;
+      });
+    }
+
     if (kind === 'promo') pendingPromoUploads++;
     if (kind === 'clip') pendingClipUploads++;
     var prefix = kind === 'admin_promo' ? 'apromo_' : (kind === 'promo' ? 'promo_' : 'clip_');
     var id = prefix + now() + '_' + Math.random().toString(36).slice(2, 7);
+    var storedBlobRef = f;
     probeDuration(f).then(function (d) {
       if ((kind === 'promo' || kind === 'admin_promo') && d > PROMO_MAX_SEC) {
         toast('Break clip rejected: ' + clock(d * 1000) + ' is over the 5:00 limit', true);
         return null;
       }
-      return idbPut({ id: id, name: f.name, size: f.size, blob: f, kind: kind, duration: d, enabled: true }).then(function () { return d; });
+      return persistableMediaBlob(f).then(function (ownedBlob) {
+        storedBlobRef = ownedBlob || f;
+        return idbPut({ id: id, name: f.name, size: f.size, blob: storedBlobRef, kind: kind, duration: d, enabled: true }).then(function () { return d; });
+      });
     }).then(function (d) {
       if (kind === 'promo' && pendingPromoUploads > 0) pendingPromoUploads--;
       if (kind === 'clip' && pendingClipUploads > 0) pendingClipUploads--;
       if (d === null) return;
       var rec = { id: id, name: f.name, size: f.size, duration: d || 0, enabled: true };
-      if (!clipURLs[id]) clipURLs[id] = URL.createObjectURL(f);
+      if (!clipURLs[id]) clipURLs[id] = URL.createObjectURL(storedBlobRef);
       if (kind === 'admin_promo') adminPromos.push(rec);
       else if (kind === 'promo') {
         promos.push(rec);
@@ -1996,6 +2012,22 @@
     }).catch(function () { return null; });
   }
 
+  var promoRefreshedIds = {};
+  var promoFailedIds = {};
+
+  function refreshClipUrl(id) {
+    var known = findMediaRecordById(id);
+    if (known && known.externalUrl) {
+      clipURLs[id] = known.externalUrl;
+      return Promise.resolve(known.externalUrl);
+    }
+    if (clipURLs[id]) {
+      try { URL.revokeObjectURL(clipURLs[id]); } catch (e) {}
+      delete clipURLs[id];
+    }
+    return clipFor(id);
+  }
+
   function withClipUrl(id, cb) {
     if (clipURLs[id]) { cb(clipURLs[id]); return; }
     clipFor(id).then(cb);
@@ -2080,12 +2112,14 @@
           d.hidden = true;
           try { d.pause(); } catch (e) {}
         });
-        var needLoad = (deck.getAttribute('data-clip-id') !== cc.id) || !deck.getAttribute('src') || deck.networkState === 0;
+        var needLoad = (deck.getAttribute('data-clip-id') !== cc.id) || !deck.getAttribute('src') || deck.networkState === 0 || deck.networkState === 3 || !!deck.error;
         if (needLoad) {
-          deck.src = url;
           deck.setAttribute('data-clip-id', cc.id);
+          deck.src = url;
           try { deck.load(); } catch (e) {}
         }
+        deck.playsInline = true;
+        deck.setAttribute('playsinline', '');
         deck.loop = (live.phase !== 'promo') && (listNow.length === 1);
         deck.muted = false;
         deck.volume = 1;
@@ -2276,7 +2310,7 @@
     }
     var nextRound = live.promoReturnPhase === 'players' ? plLive.roundNum : live.quizRoundNum;
     if (el.promoAdReturn) {
-      el.promoAdReturn.textContent = 'Returns to Round ' + nextRound + ' after break';
+      el.promoAdReturn.textContent = 'This round was sponsored by the promo ads \u00b7 Returns to Round ' + nextRound + ' after break';
     }
     var av = activeVideo();
     var remMs;
@@ -2322,13 +2356,21 @@
     if (!el.videoEmpty) return;
     el.videoEmpty.hidden = false;
     if (el.loopBadge) el.loopBadge.hidden = true;
+    var activePromos = live.phase === 'promo' ? effectivePromoList() : [];
+    var nextRound = live.promoReturnPhase === 'players' ? plLive.roundNum : live.quizRoundNum;
     if (el.videoEmptyTitle) {
-      el.videoEmptyTitle.textContent = live.phase === 'promo' ? 'Partner break \u00b7 slot' : 'Video break';
+      el.videoEmptyTitle.textContent = live.phase === 'promo'
+        ? (activePromos.length ? 'Sponsored partner break' : 'Partner break \u00b7 slot')
+        : 'Video break';
     }
     if (el.videoEmptyNote) {
-      el.videoEmptyNote.textContent = live.phase === 'promo'
-        ? 'No break clip loaded yet. This ' + formatShortSec(effectivePromoAdSec()) + ' break returns automatically to Round ' + (live.promoReturnPhase === 'players' ? plLive.roundNum : live.quizRoundNum) + '.'
-        : 'No clip loaded yet. Add a clip or enable the built-in 15s demo in Setup.';
+      if (live.phase === 'promo') {
+        el.videoEmptyNote.textContent = activePromos.length
+          ? ('This round was sponsored by the promo ads. Returning automatically to Round ' + nextRound + '.')
+          : ('This round was sponsored by the promo ads. This ' + formatShortSec(effectivePromoAdSec()) + ' break returns automatically to Round ' + nextRound + '.');
+      } else {
+        el.videoEmptyNote.textContent = 'No clip loaded yet. Add a clip or enable the built-in 15s demo in Setup.';
+      }
     }
     videoDecks.forEach(function (v) {
       v.hidden = true;
@@ -2351,8 +2393,8 @@
     activeDeckIdx = 0;
     videoDecks.forEach(function (v) {
       try { v.pause(); } catch (e) {}
-      v.removeAttribute('src');
       v.removeAttribute('data-clip-id');
+      v.removeAttribute('src');
       try { v.load(); } catch (e) {}
     });
     if (el.loopBadge) el.loopBadge.hidden = true;
@@ -2442,10 +2484,38 @@
     });
 
     on(v, 'error', function () {
+      if (!v.getAttribute('src') && !v.getAttribute('data-clip-id')) return;
       if (deckIdx !== activeDeckIdx || !live.inSession) return;
       if (live.phase === 'video' && clips.length > 1 && !videoTransitioning) {
         transitionToClip((live.clipIndex + 1) % clips.length);
       } else if (live.phase === 'promo') {
+        var list = effectivePromoList();
+        var failedId = v.getAttribute('data-clip-id') || '';
+        if (failedId && !promoRefreshedIds[failedId]) {
+          promoRefreshedIds[failedId] = true;
+          var genAtErr = videoGen;
+          refreshClipUrl(failedId).then(function (freshUrl) {
+            if (!freshUrl || genAtErr !== videoGen || !live.inSession || live.phase !== 'promo') {
+              showVideoEmpty();
+              return;
+            }
+            v.removeAttribute('src');
+            v.removeAttribute('data-clip-id');
+            playClip(live.clipIndex);
+          });
+          return;
+        }
+        if (failedId) promoFailedIds[failedId] = true;
+        if (list.length > 1) {
+          for (var step = 1; step < list.length; step++) {
+            var altIdx = (live.clipIndex + step) % list.length;
+            var alt = list[altIdx];
+            if (alt && !promoFailedIds[alt.id]) {
+              transitionToClip(altIdx);
+              return;
+            }
+          }
+        }
         showVideoEmpty();
       }
     });
@@ -3855,12 +3925,12 @@
     if (el.adNoticeSub) {
       if (returnPhase === 'story') {
         el.adNoticeSub.textContent = activePromos.length
-          ? 'Playing 1 break clip, then the next documentary episode begins'
-          : ('Brief partner break (' + formatShortSec(effectivePromoAdSec()) + '), then the next documentary episode begins');
+          ? 'This chapter was sponsored by the promo ads \u00b7 Playing 1 break clip before the next episode'
+          : ('This chapter was sponsored by the promo ads \u00b7 Brief break (' + formatShortSec(effectivePromoAdSec()) + ') before the next episode');
       } else {
         el.adNoticeSub.textContent = activePromos.length
-          ? ('Playing 1 break clip, then Round ' + nextRound + ' resumes')
-          : ('Brief partner break (' + formatShortSec(effectivePromoAdSec()) + '), then Round ' + nextRound + ' resumes');
+          ? ('This round was sponsored by the promo ads \u00b7 Playing 1 break clip before Round ' + nextRound)
+          : ('This round was sponsored by the promo ads \u00b7 Brief break (' + formatShortSec(effectivePromoAdSec()) + ') before Round ' + nextRound);
       }
     }
     if (activePromos.length) {
@@ -5263,6 +5333,8 @@
     var activePromos = effectivePromoList();
 
     if (phase === 'promo') {
+      promoRefreshedIds = {};
+      promoFailedIds = {};
       live.promoReturnPhase = opts.returnPhase || (prevPhase && prevPhase !== 'promo' ? prevPhase : homePhase());
       live.promoStartedAt = now();
       live.quizActiveMs = 0;
