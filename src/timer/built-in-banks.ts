@@ -99,7 +99,14 @@ export async function loadBuiltInBanks(): Promise<BuiltInBanksPayload> {
     }
 
     const rawBible = (PRIVATE_BANKS.bible || []) as unknown as QuizTuple[];
-    rawBible.forEach(pushBibleTuple);
+    rawBible.forEach((raw) => {
+      if (!raw || !raw[0]) return;
+      if (isBibleQuestion({ question: raw[0], reference: raw[3], category: raw[5] })) {
+        pushBibleTuple(raw);
+      } else {
+        pushHistoryTuple(raw);
+      }
+    });
 
     const history: QuizTuple[] = [];
     const seenHistory = new Set<string>();

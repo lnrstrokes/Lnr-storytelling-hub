@@ -366,6 +366,13 @@
             <span class="block-note" id="demoVideoStatus" style="margin:0">Try Engine 03 right now without uploading an MP4.</span>
           </div>
           <ul class="clip-list" id="clipList"></ul>
+          <div class="sub-block" style="margin-top:14px;">
+            <h3 class="sub-title">Video clip rotation process</h3>
+            <div class="seg-inline" role="radiogroup" aria-label="Video clip rotation">
+              <button class="seg-pill is-selected" type="button" data-videorot="sequential" id="vidRotSequential">Sequential (1, 2, 3&hellip;)</button>
+              <button class="seg-pill" type="button" data-videorot="shuffle" id="vidRotShuffle">Shuffle (Random order)</button>
+            </div>
+          </div>
 
           <div class="sub-block">
             <h3 class="sub-title">Playback length</h3>
@@ -386,9 +393,84 @@
                 <button class="preset" type="button" data-hours="12" data-preset="12h">12h</button>
               </div>
               <label class="field field-wide"><span>Or type exact hours</span><input type="number" id="loopHours" min="0.1" max="168" step="0.1" value="2" inputmode="decimal" /><em>hr</em></label>
-              <p class="loop-note" id="loopNote">Set a length and the studio repeats your video playlist smoothly &mdash; your stream never drops.</p>
+          <div class="sub-block" style="margin-top:20px; border-top:1px solid var(--line); padding-top:16px;">
+            <div class="dsec-head">
+              <h3>Sermon &amp; Message Quiz Loop <span class="dsec-tag" id="sermonLoopTag">Off</span></h3>
             </div>
-            <p class="block-note" id="loopClipInfo">no video yet</p>
+            <label class="switch-row" style="margin-top:0; margin-bottom:12px;">
+              <input type="checkbox" id="sermonLoopToggle" />
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-label">Quiz and anecdote sermon loop <em>pauses video at intervals for AI/caption-generated quizzes &amp; illustrations</em></span>
+            </label>
+
+            <div id="sermonProLockedNotice" hidden style="background:rgba(207,163,90,0.12); border:1px solid var(--brass-dim); padding:12px; border-radius:8px; margin-bottom:12px;">
+              <b style="color:var(--cream); display:block; margin-bottom:4px;">Pro License Required</b>
+              <span style="font-size:13px; color:var(--muted);">Sermon Loop mode is a Pro feature. <a href="#contact" id="sermonUpgradeLink" style="color:var(--brass); text-decoration:underline;">Upgrade to Pro &rarr;</a></span>
+            </div>
+
+            <div id="sermonLoopControlsWrap">
+              <div class="field-row" style="margin-bottom:12px;">
+                <label class="field">
+                  <span>Minutes between breaks</span>
+                  <select id="sermonIntervalSelect">
+                    <option value="5">Every 5 min</option>
+                    <option value="8" selected>Every 8 min</option>
+                    <option value="10">Every 10 min</option>
+                    <option value="15">Every 15 min</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Questions per break</span>
+                  <select id="sermonQPerBreakSelect">
+                    <option value="1">1 question</option>
+                    <option value="2" selected>2 questions</option>
+                    <option value="3">3 questions</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="chat-safe-options" style="margin-bottom:12px;">
+                <label class="switch-row">
+                  <input type="checkbox" id="sermonAnecdoteToggle" checked />
+                  <span class="switch-ui" aria-hidden="true"></span>
+                  <span class="switch-label">Include scene illustration anecdote <em>40&ndash;70 word sermon parallel or reflection</em></span>
+                </label>
+                <label class="switch-row">
+                  <input type="checkbox" id="sermonVaryTimingToggle" checked />
+                  <span class="switch-ui" aria-hidden="true"></span>
+                  <span class="switch-label">Vary break timing slightly (&plusmn;15%) <em>lands naturally at sentence ends</em></span>
+                </label>
+              </div>
+
+              <div class="file-row" style="margin-bottom:12px;">
+                <label class="file-pick">
+                  <input type="file" id="sermonCaptionInput" accept=".srt,.vtt" />
+                  <span>Upload sermon captions (.srt / .vtt)</span>
+                </label>
+                <span class="file-name" id="sermonCaptionStatus">No caption file</span>
+              </div>
+
+              <div style="margin-bottom:12px; padding:10px; background:rgba(217,171,99,0.06); border:1px solid var(--brass-dim); border-radius:8px;">
+                <div style="font-size:13px; color:var(--cream); margin-bottom:6px;">
+                  Need a free Gemini API key? <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="color:var(--brass); text-decoration:underline; font-weight:600;">Generate one in seconds on Google AI Studio &rarr;</a>
+                </div>
+                <label class="field field-wide" style="margin-top:6px;">
+                  <span>Gemini API Key (optional — uses server key if blank)</span>
+                  <input type="password" id="sermonApiKeyInput" placeholder="AIzaSy..." autocomplete="off" style="font-size:13px;" />
+                </label>
+              </div>
+
+              <div class="pl-actions" style="gap:8px; flex-wrap:wrap;">
+                <button class="btn btn-primary btn-sm" type="button" id="generateSermonPlanBtn">Generate AI Sermon Quiz Plan</button>
+                <button class="btn btn-quiet btn-sm" type="button" id="openSermonReviewBtn" hidden>Review &amp; Edit Breaks (0)</button>
+                <label class="btn btn-quiet btn-sm pl-file-btn">
+                  <input type="file" id="importSermonJsonInput" accept="application/json,.json" />
+                  <span>Import Plan JSON</span>
+                </label>
+                <button class="btn btn-quiet btn-sm" type="button" id="exportSermonJsonBtn" hidden>Export Plan JSON</button>
+              </div>
+              <div class="import-result" id="sermonPlanStatus" hidden style="margin-top:8px;"></div>
+            </div>
           </div>
         </section>
 
@@ -622,6 +704,11 @@
             <span>Speaking rate</span>
             <input type="range" id="stVoiceRate" min="70" max="130" value="96" />
             <b id="stVoiceRateLabel">0.96&times;</b>
+          </label>
+          <label class="slider-row">
+            <span>Voice volume</span>
+            <input type="range" id="stVoiceVol" min="0" max="100" value="100" />
+            <b id="stVoiceVolLabel">100%</b>
           </label>
           <p class="dsec-note">First question begins directly with the question stem; <em>&ldquo;Next question.&rdquo;</em> plays automatically starting from question 2.</p>
           <details class="schema">
@@ -1082,6 +1169,7 @@
       </label>
       <label class="field field-wide"><span>Voice</span><select id="voiceSelect"></select></label>
       <label class="slider-row"><span>Speaking rate</span><input type="range" id="voiceRate" min="70" max="130" value="96" /><b id="voiceRateLabel">0.96&times;</b></label>
+      <label class="slider-row"><span>Voice volume</span><input type="range" id="voiceVol" min="0" max="100" value="100" /><b id="voiceVolLabel">100%</b></label>
       <p class="dsec-note">Numbers, verse references and dates read naturally (&ldquo;1 John 3:16&rdquo; reads as &ldquo;First John, chapter three, verse sixteen&rdquo;).</p>
       <details class="schema" id="voiceGuide">
         <summary>Free natural voices setup (Android &amp; Desktop)</summary>
@@ -1141,6 +1229,30 @@
 
   </div>
 </aside>
+
+<!-- ============ SERMON PLAN REVIEW & EDIT MODAL ============ -->
+<div class="modal-backdrop" id="sermonReviewModal" hidden role="dialog" aria-modal="true" aria-labelledby="sermonModalTitle">
+  <div class="modal-card" style="max-width: 680px; max-height: 85vh; display: flex; flex-direction: column;">
+    <div class="modal-head">
+      <div>
+        <h2 id="sermonModalTitle">Review &amp; Edit Sermon Quiz Plan</h2>
+        <p>Review AI-generated questions, scene illustrations, and timing before airing.</p>
+      </div>
+      <button class="btn btn-icon" id="sermonModalClose" type="button" aria-label="Close review dialog">&#10005;</button>
+    </div>
+    <div class="modal-sec" style="overflow-y: auto; flex: 1; padding: 16px;">
+      <div class="field-row" style="margin-bottom: 12px;">
+        <label class="field"><span>Sermon Title</span><input type="text" id="sermonTitleInput" value="Sunday Message" /></label>
+        <label class="field"><span>Church / Channel Name</span><input type="text" id="sermonChurchInput" value="LNR Studio" /></label>
+      </div>
+      <div id="sermonBreaksList" style="display: flex; flex-direction: column; gap: 16px;"></div>
+    </div>
+    <div style="padding: 16px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 10px;">
+      <button class="btn btn-quiet btn-sm" type="button" id="sermonCancelModalBtn">Cancel</button>
+      <button class="btn btn-primary btn-sm" type="button" id="sermonApprovePlanBtn">Approve &amp; Save Plan</button>
+    </div>
+  </div>
+</div>
 
 <!-- ============ STUDIO OPERATOR TOOLS MODAL (7-tap brand logo) ============ -->
 <div class="modal-backdrop" id="accessModal" hidden role="dialog" aria-modal="true" aria-labelledby="accessModalTitle">

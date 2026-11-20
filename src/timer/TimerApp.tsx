@@ -11,6 +11,7 @@ import './demo-content.ts';
 // read numbers, verse references and dates as words. Must load before the
 // engine, which captures the reference at boot.
 import './speech.js';
+import './sermon-loop.ts';
 
 declare global {
   interface Window {
