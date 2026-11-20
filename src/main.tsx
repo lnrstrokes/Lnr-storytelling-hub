@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import { Analytics } from '@vercel/analytics/react';
+const Analytics = () => null;
 import App from './App.tsx';
 import ReaderDock from './ReaderDock.tsx';
 import RotationDock from './RotationDock.tsx';

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Analytics } from '@vercel/analytics/react';
+const Analytics = () => null;
 import timerMarkup from './timer.html?raw';
 import './timer.css';
 import './offer.css';

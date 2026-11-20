@@ -98,16 +98,6 @@ export async function loadBuiltInBanks(): Promise<BuiltInBanksPayload> {
       return false;
     }
 
-    const rawBible = (PRIVATE_BANKS.bible || []) as unknown as QuizTuple[];
-    rawBible.forEach((raw) => {
-      if (!raw || !raw[0]) return;
-      if (isBibleQuestion({ question: raw[0], reference: raw[3], category: raw[5] })) {
-        pushBibleTuple(raw);
-      } else {
-        pushHistoryTuple(raw);
-      }
-    });
-
     const history: QuizTuple[] = [];
     const seenHistory = new Set<string>();
 
@@ -118,6 +108,16 @@ export async function loadBuiltInBanks(): Promise<BuiltInBanksPayload> {
       seenHistory.add(key);
       history.push(raw);
     };
+
+    const rawBible = (PRIVATE_BANKS.bible || []) as unknown as QuizTuple[];
+    rawBible.forEach((raw) => {
+      if (!raw || !raw[0]) return;
+      if (isBibleQuestion({ question: raw[0], reference: raw[3], category: raw[5] })) {
+        pushBibleTuple(raw);
+      } else {
+        pushHistoryTuple(raw);
+      }
+    });
 
     const rawHistory = (PRIVATE_BANKS.history || []) as unknown as QuizTuple[];
     rawHistory.forEach(pushHistoryTuple);
