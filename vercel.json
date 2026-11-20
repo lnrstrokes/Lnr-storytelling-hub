@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
+  "installCommand": "npm install --no-audit --no-fund",
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
@@ -11,7 +12,6 @@
   ],
   "headers": [
     {
-      "comment": "The service worker must never be cached by the CDN or the app cannot update.",
       "source": "/sw.js",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
