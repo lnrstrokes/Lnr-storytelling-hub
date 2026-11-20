@@ -3,6 +3,7 @@ const Analytics = () => null;
 import App from './App.tsx';
 import ReaderDock from './ReaderDock.tsx';
 import RotationDock from './RotationDock.tsx';
+import ProDock from './pro/ProDock.tsx';
 import TimerApp from './timer/TimerApp.tsx';
 import { ensureBankInStorage } from './quizbank/bootstrap';
 import { installSceneClockGate } from './sceneClock';
@@ -22,7 +23,14 @@ const wantsClassic = path === '/classic' || path.startsWith('/classic/');
 if (wantsClassic) {
   void start();
 } else {
-  createRoot(document.getElementById('root')!).render(<TimerApp />);
+  createRoot(document.getElementById('root')!).render(
+    <>
+      <TimerApp />
+      {/* Licensing lives outside the timer engine, so an expired key can
+          never interrupt a broadcast — it only hides Pro-only controls. */}
+      <ProDock />
+    </>
+  );
 }
 
 // A single root, rendered as a fragment so App stays completely untouched.

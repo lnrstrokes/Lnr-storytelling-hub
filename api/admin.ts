@@ -11,6 +11,41 @@ import {
 } from './_auth';
 import { PRIVATE_BANKS } from './_banks/index';
 
+/* Brute-force brake for the operator password.
+   A serverless instance is ephemeral, so this throttles rather than guarantees
+   — but it turns an unlimited guess-until-it-works against a public endpoint
+   into six tries per ten minutes per address. */
+const UNLOCK_WINDOW_MS = 10 * 60 * 1000;
+const MAX_FAILED_UNLOCKS = 6;
+const failedUnlocks = new Map<string, { count: number; resetAt: number }>();
+
+function clientKey(req: IncomingMessage): string {
+  const forwarded = String(req.headers['x-forwarded-for'] || '')
+    .split(',')[0]
+    .trim();
+  return forwarded || String(req.socket?.remoteAddress || 'unknown');
+}
+
+function isUnlockThrottled(key: string): boolean {
+  const record = failedUnlocks.get(key);
+  if (!record) return false;
+  if (Date.now() > record.resetAt) {
+    failedUnlocks.delete(key);
+    return false;
+  }
+  return record.count >= MAX_FAILED_UNLOCKS;
+}
+
+function noteUnlockFailure(key: string): void {
+  const now = Date.now();
+  const record = failedUnlocks.get(key);
+  if (!record || now > record.resetAt) {
+    failedUnlocks.set(key, { count: 1, resetAt: now + UNLOCK_WINDOW_MS });
+    return;
+  }
+  record.count += 1;
+}
+
 export default async function handler(
   req: IncomingMessage & { body?: unknown },
   res: ServerResponse
@@ -33,11 +68,21 @@ export default async function handler(
   const action = String(body.action || '');
 
   if (action === 'unlock') {
+    const attemptKey = clientKey(req);
+    if (isUnlockThrottled(attemptKey)) {
+      sendJson(res, 429, {
+        ok: false,
+        error: 'Too many incorrect attempts. Wait 10 minutes and try again.',
+      });
+      return;
+    }
     const check = verifyPasswordCandidate(String(body.password || ''));
     if (!check.ok) {
+      noteUnlockFailure(attemptKey);
       sendJson(res, 401, { ok: false, error: check.error || 'Unauthorized' });
       return;
     }
+    failedUnlocks.delete(attemptKey);
     const adminToken = createAdminToken(30);
     sendJson(res, 200, {
       ok: true,
