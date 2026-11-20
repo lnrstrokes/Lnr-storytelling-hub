@@ -4,16 +4,17 @@ import path from 'path';
 import {defineConfig, type Plugin} from 'vite';
 import adminHandler from './api/admin';
 import verifyLicenseHandler from './api/verify-license';
+import { forwardApi } from './local-api';
 
 function localApiPlugin(): Plugin {
   return {
     name: 'lnr-local-api',
     configureServer(server) {
       server.middlewares.use('/api/admin', (req, res, next) => {
-        void adminHandler(req, res).catch(next);
+        void forwardApi(adminHandler, req, res).catch(next);
       });
       server.middlewares.use('/api/verify-license', (req, res, next) => {
-        void verifyLicenseHandler(req, res).catch(next);
+        void forwardApi(verifyLicenseHandler, req, res).catch(next);
       });
     },
   };

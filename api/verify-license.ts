@@ -1,26 +1,18 @@
-import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readJsonBody, sendJson, verifyProLicenseKey } from './_auth';
+import { json, readJson, verifyProLicenseKey } from './_edge';
 
-export default async function handler(
-  req: IncomingMessage & { body?: unknown },
-  res: ServerResponse
-): Promise<void> {
+export const config = { runtime: 'edge' };
+
+export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
-    sendJson(res, 405, { ok: false, error: 'Method not allowed' });
-    return;
+    return json(405, { ok: false, error: 'Method not allowed' });
   }
 
-  const body = await readJsonBody(req);
-  const key = String(body.key || '');
-  const result = verifyProLicenseKey(key);
+  const body = await readJson(req);
+  const result = await verifyProLicenseKey(String(body.key || ''));
 
   if (!result.ok) {
-    sendJson(res, 400, { ok: false, error: result.error || 'Invalid license key' });
-    return;
+    return json(400, { ok: false, error: result.error || 'Invalid license key' });
   }
 
-  sendJson(res, 200, {
-    ok: true,
-    license: result.license,
-  });
+  return json(200, { ok: true, license: result.license });
 }

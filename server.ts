@@ -3,17 +3,18 @@ import path from 'node:path';
 import express from 'express';
 import adminHandler from './api/admin';
 import verifyLicenseHandler from './api/verify-license';
+import { forwardApi } from './local-api';
 
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: '15mb' }));
 
   app.all('/api/admin', (req, res, next) => {
-    void adminHandler(req, res).catch(next);
+    void forwardApi(adminHandler, req, res).catch(next);
   });
 
   app.all('/api/verify-license', (req, res, next) => {
-    void verifyLicenseHandler(req, res).catch(next);
+    void forwardApi(verifyLicenseHandler, req, res).catch(next);
   });
 
   if (process.env.NODE_ENV === 'production') {
