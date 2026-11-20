@@ -1,0 +1,184 @@
+/* Pro licence dock — isolated namespace, no global selectors. */
+
+.lnr-pro {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 80;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.lnr-pro-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(217, 171, 99, 0.35);
+  background: rgba(6, 10, 16, 0.86);
+  color: #e8e3d8;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.lnr-pro-pill.is-pro {
+  border-color: rgba(217, 171, 99, 0.8);
+  color: #d9ab63;
+}
+
+.lnr-pro-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6b7280;
+}
+
+.lnr-pro-pill.is-pro .lnr-pro-dot {
+  background: #3fbf7f;
+  box-shadow: 0 0 8px rgba(63, 191, 127, 0.7);
+}
+
+.lnr-pro-panel {
+  position: absolute;
+  left: 0;
+  bottom: 42px;
+  width: min(320px, calc(100vw - 24px));
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(217, 171, 99, 0.28);
+  background: #0b1219;
+  color: #e8e3d8;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+}
+
+.lnr-pro-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.lnr-pro-x {
+  border: 0;
+  background: transparent;
+  color: #9aa3ad;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.lnr-pro-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: #9aa3ad;
+}
+
+.lnr-pro-line b {
+  color: #e8e3d8;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+}
+
+.lnr-pro-list {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #cbd2d9;
+}
+
+.lnr-pro-field {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9aa3ad;
+}
+
+.lnr-pro-field span {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.lnr-pro-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #070c12;
+  color: #e8e3d8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.lnr-pro-btn {
+  width: 100%;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid #d9ab63;
+  background: #d9ab63;
+  color: #10151b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+
+.lnr-pro-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.lnr-pro-btn.is-quiet {
+  background: transparent;
+  color: #d9ab63;
+  border-color: rgba(217, 171, 99, 0.45);
+}
+
+.lnr-pro-note {
+  margin: 10px 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: #8d97a1;
+}
+
+.lnr-pro-error {
+  margin: 9px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #f08a8a;
+}
+
+.lnr-pro-message {
+  margin: 9px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #7fd0a4;
+}
+
+/* A locked brand field looks locked. */
+input.is-locked {
+  opacity: 0.75;
+  cursor: not-allowed;
+  background-image: linear-gradient(90deg, transparent, transparent);
+}
