@@ -46,9 +46,23 @@ function sha256(input: string | Buffer): Buffer {
   return crypto.createHash('sha256').update(input).digest();
 }
 
-function getSigningSecret(): Buffer {
+/**
+ * The key every signature in this app is made with.
+ *
+ * LICENSE_SECRET is required for Pro keys (`strict`). Falling back to the
+ * admin password would mean that rotating — or leaking — ADMIN_PASSWORD would
+ * silently invalidate every customer licence, or let anyone who knows it mint
+ * one. Admin session tokens keep the fallback so an existing deployment is not
+ * locked out of its own operator tools before the secret is added in Vercel.
+ */
+function getSigningSecret(strict = false): Buffer {
   const explicit = String(process.env.LICENSE_SECRET || '').trim();
   if (explicit) return sha256(`LNR_LICENSE_V1:${explicit}`);
+  if (strict) {
+    throw new Error(
+      'LICENSE_SECRET is not configured. Add it in Vercel → Settings → Environment Variables, then redeploy.'
+    );
+  }
   const adminPass = getAdminPassword();
   if (!adminPass) {
     throw new Error('ADMIN_PASSWORD is not configured in environment variables.');
@@ -86,14 +100,14 @@ function fromBase64Url(str: string): Buffer {
   return Buffer.from(padded, 'base64');
 }
 
-function signHmacSegment(segment: string): string {
-  const mac = crypto.createHmac('sha256', getSigningSecret()).update(segment).digest().subarray(0, 16);
+function signHmacSegment(segment: string, secret: Buffer): string {
+  const mac = crypto.createHmac('sha256', secret).update(segment).digest().subarray(0, 16);
   return toBase64Url(mac);
 }
 
-function verifyHmacSegment(segment: string, providedSig: string): boolean {
+function verifyHmacSegment(segment: string, providedSig: string, secret: Buffer): boolean {
   try {
-    const expected = signHmacSegment(segment);
+    const expected = signHmacSegment(segment, secret);
     const a = Buffer.from(expected, 'utf8');
     const b = Buffer.from(String(providedSig || ''), 'utf8');
     if (a.length !== b.length) return false;
@@ -111,7 +125,7 @@ export function createAdminToken(ttlDays = 30): string {
     exp: now + ttlDays * 86400 * 1000,
   };
   const body = toBase64Url(JSON.stringify(payload));
-  const sig = signHmacSegment(`ADM.${body}`);
+  const sig = signHmacSegment(`ADM.${body}`, getSigningSecret());
   return `LNRADM.${body}.${sig}`;
 }
 
@@ -127,7 +141,7 @@ export function verifyAdminToken(token: string): { ok: boolean; error?: string }
   }
   const body = parts[1];
   const sig = parts[2];
-  if (!verifyHmacSegment(`ADM.${body}`, sig)) {
+  if (!verifyHmacSegment(`ADM.${body}`, sig, getSigningSecret())) {
     return { ok: false, error: 'Admin session expired or invalid.' };
   }
   try {
@@ -147,12 +161,13 @@ export function sanitizeWatermark(raw: unknown): string {
 }
 
 export function sanitizeSite(raw: unknown): string {
-  const s = String(raw || '')
+  // An empty value means "not bound to a hostname" — the key works anywhere.
+  // Setting a hostname is what stops a key being shared with other channels.
+  return String(raw || '')
     .trim()
     .replace(/^https?:\/\//i, '')
-    .replace(/\/+$/, '')
+    .replace(/\/.*$/, '')
     .slice(0, 42);
-  return s || 'lnr-studio-247-livestream-engine.vercel.app';
 }
 
 export function sanitizeBrand(raw: unknown): string {
@@ -188,7 +203,7 @@ export function createProLicenseKey(input: {
   };
 
   const body = toBase64Url(JSON.stringify(payload));
-  const sig = signHmacSegment(`PRO.${body}`);
+  const sig = signHmacSegment(`PRO.${body}`, getSigningSecret(true));
   return {
     key: `LNRPRO.${body}.${sig}`,
     payload,
@@ -200,8 +215,9 @@ export function verifyProLicenseKey(rawKey: string): {
   license?: ProLicensePayload & { keyDigest: string };
   error?: string;
 } {
+  let secret: Buffer;
   try {
-    getSigningSecret();
+    secret = getSigningSecret(true);
   } catch {
     return { ok: false, error: 'Licensing service is not configured on the server.' };
   }
@@ -211,7 +227,7 @@ export function verifyProLicenseKey(rawKey: string): {
     return { ok: false, error: 'License key must start with LNRPRO.' };
   }
   const [, body, sig] = parts;
-  if (!verifyHmacSegment(`PRO.${body}`, sig)) {
+  if (!verifyHmacSegment(`PRO.${body}`, sig, secret)) {
     return { ok: false, error: 'Invalid license key signature. Check for typos or contact support.' };
   }
   try {

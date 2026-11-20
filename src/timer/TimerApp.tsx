@@ -11,7 +11,7 @@ import './demo-content.ts';
 // read numbers, verse references and dates as words. Must load before the
 // engine, which captures the reference at boot.
 import './speech.js';
-import './sermon-loop.ts';
+import { installProGate } from './pro-gate.ts';
 
 declare global {
   interface Window {
@@ -89,6 +89,10 @@ export default function TimerApp() {
 
     host.innerHTML = timerMarkup;
     document.title = 'lnr Studio — timer edition';
+
+    // Installed BEFORE the engine boots: the gate listens on `document` in the
+    // capture phase, so it always sees a gated control's event first.
+    installProGate(host);
 
     let cancelled = false;
     void Promise.all([
