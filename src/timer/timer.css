@@ -3481,10 +3481,13 @@ body.safe .chat-safe-guide { display: none !important; }
   min-height: 0;
   position: relative;
   border-radius: .85cqw;
-  border: 1px solid rgba(235, 226, 206, .075);
+  /* No border and no card fill: the canvas is the stage itself, not a card
+     sitting inside the frame. The old 1px border plus the narration box's own
+     border produced the "card inside a card" look. */
+  border: 0;
   background:
-    radial-gradient(80% 70% at 50% 42%, color-mix(in srgb, var(--story-accent) 6%, transparent) 0%, transparent 65%),
-    linear-gradient(170deg, #0d1512 0%, #070c0a 100%);
+    radial-gradient(80% 70% at 50% 42%, color-mix(in srgb, var(--story-accent) 7%, transparent) 0%, transparent 68%),
+    radial-gradient(120% 100% at 50% 120%, rgba(0, 0, 0, .55) 0%, transparent 60%);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -3955,28 +3958,31 @@ body.safe .chat-safe-guide { display: none !important; }
   position: relative;
   display: flex;
   flex-direction: column;
-  padding: .85cqw 1.2cqw;
-  border-radius: .75cqw;
-  background: rgba(11, 18, 15, .78);
-  border: 1px solid rgba(235, 226, 206, .09);
-  transition: border-color .38s ease, background .38s ease;
+  /* A single hairline above the narration instead of a full bordered card.
+     This is the caption track of a broadcast, not a second panel. */
+  padding: .8cqw .2cqw .1cqw;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid rgba(235, 226, 206, .1);
+  transition: border-color .38s ease;
 }
 .story-narration-box.is-animating {
   animation: storySceneIn .52s cubic-bezier(.22, .8, .28, 1) .06s both;
 }
 .story-narration-box[data-speaker="SAR"] {
-  border-color: rgba(223, 143, 107, .24);
-  background: rgba(24, 17, 15, .78);
+  border-top-color: rgba(223, 143, 107, .38);
 }
 .story-narration-box[data-speaker="DIQ"] {
-  border-color: rgba(131, 184, 162, .24);
-  background: rgba(12, 21, 18, .78);
+  border-top-color: rgba(131, 184, 162, .38);
 }
 .story-narration-text {
   margin: 0;
   font-size: clamp(13px, 1.52cqw, 1.52cqw);
-  line-height: 1.46;
+  line-height: 1.5;
+  letter-spacing: .002em;
   color: #ede6d7;
+  text-wrap: pretty;
 }
 
 @media (max-aspect-ratio: 1 / 1), (max-width: 760px) and (orientation: portrait) {
@@ -4080,11 +4086,11 @@ body.safe .chat-safe-guide { display: none !important; }
 
 .promo-funnel-media img {
   display: block;
-  width: 100%;
-  max-width: clamp(150px, 26cqw, 340px);
-  max-height: 62cqh;
-  object-fit: cover;
-  object-position: top center;
+  width: auto;
+  height: clamp(150px, 46cqh, 420px);
+  max-width: 100%;
+  object-fit: contain;
+  object-position: center;
   border-radius: clamp(10px, 1.4cqw, 20px);
   box-shadow:
     0 30px 70px -28px rgba(0, 0, 0, 0.95),
