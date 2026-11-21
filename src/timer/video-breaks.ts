@@ -1288,6 +1288,22 @@ function sleep(ms: number, alive: () => boolean, onSkip?: (skip: () => void) => 
 async function playBreak(item: BreakItem, clipBreaks: ClipBreaks, alive: () => boolean): Promise<void> {
   const total = item.questions.length;
 
+  /* A notice before the break, in the same visual language as the promo
+     notice (#adNotice): same pill, same copy rhythm, same 5s countdown bar.
+     Without it the clip simply stopped and a quiz appeared with no warning,
+     which read as a glitch rather than a planned segment. */
+  if (total > 0) {
+    const shown = await showBreakNotice(
+      'QUIZ',
+      'Quiz break starting soon',
+      total === 1
+        ? 'One question, then the clip resumes where it left off'
+        : `${total} questions, then the clip resumes where it left off`,
+      alive
+    );
+    if (!shown || !alive()) return;
+  }
+
   for (let index = 0; index < item.questions.length; index++) {
     if (!alive()) return;
     const question = item.questions[index];
@@ -1299,8 +1315,80 @@ async function playBreak(item: BreakItem, clipBreaks: ClipBreaks, alive: () => b
   }
 
   if (item.anecdote && alive()) {
+    const shown = await showBreakNotice(
+      'ANECDOTE',
+      'Anecdote break starting soon',
+      'A short story from this chapter, then the clip resumes',
+      alive
+    );
+    if (!shown || !alive()) return;
     await showAnecdote(item, clipBreaks, alive);
   }
+}
+
+/* --------------------------------------------------------------------------
+   Pre-break notice
+   --------------------------------------------------------------------------
+   Mirrors the promo notice exactly: a pill, a bold title, one line of
+   supporting copy, a live countdown and a progress bar. It is rendered inside
+   the same overlay the break card uses, so placement and readability are
+   identical across all three break types.
+   -------------------------------------------------------------------------- */
+const NOTICE_MS = 5000;
+
+function showBreakNotice(
+  pill: string,
+  title: string,
+  sub: string,
+  alive: () => boolean
+): Promise<boolean> {
+  const card = flashCard(0);
+  card.classList.add('vbreak-notice-card');
+
+  const notice = elm('div', 'studio-break-notice vbreak-notice');
+  notice.setAttribute('role', 'status');
+  notice.setAttribute('aria-live', 'polite');
+
+  const row = elm('div', 'studio-break-notice-row');
+  row.appendChild(elm('span', 'studio-break-pill', pill));
+
+  const copy = elm('div', 'studio-break-notice-copy');
+  copy.appendChild(elm('b', '', title));
+  copy.appendChild(elm('span', '', sub));
+  row.appendChild(copy);
+
+  const timer = elm('span', 'studio-break-notice-timer', '5s');
+  row.appendChild(timer);
+  notice.appendChild(row);
+
+  const bar = elm('div', 'studio-break-bar');
+  const fill = elm('span', '');
+  bar.appendChild(fill);
+  notice.appendChild(bar);
+
+  card.appendChild(notice);
+
+  const started = performance.now();
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearInterval(tick);
+      resolve(ok);
+    };
+    const tick = window.setInterval(() => {
+      if (!alive()) {
+        finish(false);
+        return;
+      }
+      const elapsed = performance.now() - started;
+      const left = Math.max(0, NOTICE_MS - elapsed);
+      timer.textContent = Math.max(1, Math.ceil(left / 1000)) + 's';
+      fill.style.width = Math.min(100, (elapsed / NOTICE_MS) * 100).toFixed(1) + '%';
+      if (left <= 0) finish(true);
+    }, 100);
+  });
 }
 
 function askQuestion(

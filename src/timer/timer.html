@@ -723,8 +723,11 @@
             <span class="dsec-tag" id="stMusicTag">All Eyes On Us</span>
           </div>
           <div class="music-grid" id="stMusicGrid">
-            <button class="music-card is-selected" type="button" data-music="all_eyes_on_us">
-              <b>All Eyes On Us</b><span>Default background track</span>
+            <button class="music-card is-selected" type="button" data-music="lnr_stream_bed">
+              <b>LNR Stream Bed</b><span>Upbeat default &middot; keeps viewers engaged</span>
+            </button>
+            <button class="music-card" type="button" data-music="all_eyes_on_us">
+              <b>All Eyes On Us</b><span>Calm alternate track</span>
             </button>
             <button class="music-card" type="button" data-music="moment_of_truth">
               <b>Moment Of Truth</b><span>Alternate background track</span>
@@ -787,7 +790,7 @@
           </div>
           <div class="field-row">
             <label class="field field-wide"><span>Watermark</span><input type="text" id="stWatermarkInput" maxlength="14" value="LNR" /></label>
-            <label class="field field-wide"><span>Site line</span><input type="text" id="stSiteInput" maxlength="42" value="lnr-studio-247-livestream-engine.vercel.app" /></label>
+            <label class="field field-wide"><span>Site line</span><input type="text" id="stSiteInput" maxlength="42" value="lnr-storytelling-hub.vercel.app" /></label>
             <label class="field field-wide"><span>Break brand strap</span><input type="text" id="stBrandOverlayInput" maxlength="28" value="LNR STUDIO" /></label>
           </div>
           <div class="analytics-actions" style="margin-top:14px">
@@ -811,7 +814,7 @@
           </p>
           <p class="contact-line">
             <span class="contact-label">Studio URL</span>
-            <a class="contact-mail" style="font-size:15px" href="https://lnr-studio-247-livestream-engine.vercel.app/" target="_blank" rel="noopener noreferrer">https://lnr-studio-247-livestream-engine.vercel.app/</a>
+            <a class="contact-mail" style="font-size:15px" href="https://lnr-storytelling-hub.vercel.app/" target="_blank" rel="noopener noreferrer">https://lnr-storytelling-hub.vercel.app/</a>
           </p>
         </div>
         <div class="contact-actions">
@@ -959,6 +962,26 @@
               </div>
             </div>
             <div class="promo-brand" id="promoBrand" hidden><span id="promoBrandText">LNR STUDIO</span></div>
+
+            <!-- Text-only promo funnel. This is the DEFAULT break surface when
+                 no sponsor clip is loaded: it turns the break into a funnel
+                 that sends viewers to the studio, instead of showing an empty
+                 video stage. -->
+            <div class="promo-funnel" id="promoFunnel" hidden>
+              <div class="promo-funnel-media" aria-hidden="true">
+                <img id="promoFunnelImg" src="/promos/lnr-promo-hero.png" alt="" />
+              </div>
+              <div class="promo-funnel-body">
+                <span class="promo-funnel-kicker" id="promoFunnelKicker">LIVESTREAM CONTROL ROOM</span>
+                <h2 class="promo-funnel-title" id="promoFunnelTitle">Run your own stream from this studio</h2>
+                <p class="promo-funnel-copy" id="promoFunnelCopy">1,800+ non-repeating questions, storytelling documentaries, player rounds and looped video &mdash; with narration and breaks you control.</p>
+                <div class="promo-funnel-cta">
+                  <span class="promo-funnel-url" id="promoFunnelUrl">lnr-storytelling-hub.vercel.app</span>
+                  <span class="promo-funnel-hint">Open it on any phone or laptop &mdash; free to start</span>
+                </div>
+                <div class="promo-funnel-clock" id="promoFunnelClock">0:30</div>
+              </div>
+            </div>
             <div class="loop-badge" id="loopBadge" hidden>
               <span id="loopBadgeText">Loop 1</span>
             </div>
@@ -968,7 +991,10 @@
             <div class="frame-progress"><span id="progFill"></span></div>
             <div class="frame-foot">
               <span class="watermark" id="watermark">LNR</span>
-              <span class="frame-site" id="frameSite">lnr-studio-247-livestream-engine.vercel.app</span>
+              <span class="frame-cta">
+                <span class="frame-cta-lead">Run your own stream &rarr;</span>
+                <span class="frame-site" id="frameSite">lnr-storytelling-hub.vercel.app</span>
+              </span>
             </div>
           </div>
 
@@ -1006,7 +1032,7 @@
   </main>
 
   <footer class="site-foot">
-    <span class="foot-brand">lnr Studio &mdash; lnr-studio-247-livestream-engine.vercel.app</span>
+    <span class="foot-brand">lnr Studio &mdash; lnr-storytelling-hub.vercel.app</span>
     <nav class="foot-nav" aria-label="Footer">
       <a href="#studio" data-page-link="studio">Studio</a>
       <a href="#settings" data-page-link="settings">Settings</a>
@@ -1071,8 +1097,11 @@
 
       <div class="sub-head"><span>Music bed</span><em>plays under the quiz</em></div>
       <div class="music-grid" id="musicGrid">
-        <button class="music-card is-selected" type="button" data-music="all_eyes_on_us">
-          <b>All Eyes On Us</b><span>Default background track</span>
+        <button class="music-card is-selected" type="button" data-music="lnr_stream_bed">
+          <b>LNR Stream Bed</b><span>Upbeat default &middot; keeps viewers engaged</span>
+        </button>
+        <button class="music-card" type="button" data-music="all_eyes_on_us">
+          <b>All Eyes On Us</b><span>Calm alternate track</span>
         </button>
         <button class="music-card" type="button" data-music="moment_of_truth">
           <b>Moment Of Truth</b><span>Alternate background track</span>
@@ -1204,7 +1233,7 @@
       <div class="dsec-head"><h3>Look &amp; branding</h3><span class="dsec-tag">Unlocked</span></div>
       <div class="field-row">
         <label class="field field-wide"><span>Watermark</span><input type="text" id="watermarkInput" maxlength="14" value="LNR" /></label>
-        <label class="field field-wide"><span>Site line</span><input type="text" id="siteInput" maxlength="42" value="lnr-studio-247-livestream-engine.vercel.app" /></label>
+        <label class="field field-wide"><span>Site line</span><input type="text" id="siteInput" maxlength="42" value="lnr-storytelling-hub.vercel.app" /></label>
       </div>
       <label class="switch-row">
         <input type="checkbox" id="safeDefault" />

@@ -55,7 +55,7 @@
 
   /* ---------- settings ---------- */
   var DEFAULT_WATERMARK = 'LNR';
-  var DEFAULT_SITE = 'lnr-studio-247-livestream-engine.vercel.app';
+  var DEFAULT_SITE = 'lnr-storytelling-hub.vercel.app';
   var DEFAULT_BRAND = 'LNR STUDIO';
 
   var defaults = {
@@ -88,7 +88,7 @@
     promoOrder: 'sequential',      /* 'sequential' | 'shuffle' */
     promoOverlayStyle: 'disclosure', /* 'disclosure' | 'clean-brand' | 'raw' */
     autoRotate: true,
-    music: 'all_eyes_on_us',
+    music: 'lnr_stream_bed',
     musicVol: 35,
     sfxOn: true,
     voiceOn: true,
@@ -107,6 +107,13 @@
   });
   if (S.site === 'www.lnrstudio.com') S.site = DEFAULT_SITE;
   if (S.promoOverlayStyle === 'youtube-ad') S.promoOverlayStyle = 'disclosure';
+  /* One-time move to the upbeat bed. Anyone who never touched the music
+     setting was on the old calm default; carry them to the new one, but
+     leave a deliberate choice (Moment Of Truth / No music) alone. */
+  if (!S.__bedMigrated) {
+    if (S.music === 'all_eyes_on_us') S.music = 'lnr_stream_bed';
+    S.__bedMigrated = true;
+  }
 
   function clampNumSetting(key, min, max) {
     var n = Number(S[key]);
@@ -134,7 +141,7 @@
   if (S.promoDisplayMode !== 'full' && S.promoDisplayMode !== 'pip' && S.promoDisplayMode !== 'split') S.promoDisplayMode = 'full';
   if (S.promoOrder !== 'sequential' && S.promoOrder !== 'shuffle') S.promoOrder = 'sequential';
   if (S.promoOverlayStyle !== 'disclosure' && S.promoOverlayStyle !== 'clean-brand' && S.promoOverlayStyle !== 'raw') S.promoOverlayStyle = 'disclosure';
-  if (S.music !== 'all_eyes_on_us' && S.music !== 'moment_of_truth' && S.music !== 'off') S.music = defaults.music;
+  if (S.music !== 'lnr_stream_bed' && S.music !== 'all_eyes_on_us' && S.music !== 'moment_of_truth' && S.music !== 'off') S.music = defaults.music;
 
   function save() {
     try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {}
@@ -428,6 +435,8 @@
     'storyCanvas', 'storyVisualHost', 'storyNarrationBox', 'storyNarrationText',
     'videoStage', 'stageVideo', 'stageVideoB', 'demoVideoCanvas', 'videoEmpty', 'videoEmptyTitle', 'videoEmptyNote',
     'promoAdOverlay', 'promoAdBadge', 'promoAdTitle', 'promoAdClock', 'promoAdReturn', 'promoUnmuteBtn',
+    'promoFunnel', 'promoFunnelImg', 'promoFunnelKicker', 'promoFunnelTitle', 'promoFunnelCopy',
+    'promoFunnelUrl', 'promoFunnelClock',
     'adNotice', 'adNoticeBadge', 'adNoticeTitle', 'adNoticeSub', 'adNoticeTimer', 'adNoticeFill',
     'promoBrand', 'promoBrandText', 'loopBadge', 'loopBadgeText',
     'progFill', 'watermark', 'frameSite', 'curtain', 'safePeek',
@@ -1117,9 +1126,205 @@
 
   /* embedded default background tracks & SFX - excluded on video/promo phases */
   var DEFAULT_BG_TRACKS = {
+    lnr_stream_bed: { name: 'LNR Stream Bed', url: '', synth: true },
     all_eyes_on_us: { name: 'All Eyes On Us', url: '/assets/aistudio/all_eyes_on_us_5bb2d8a8.mp3' },
     moment_of_truth: { name: 'Moment Of Truth', url: '/assets/aistudio/moment_of_truth_7e44ef53.mp3' }
   };
+
+  /* ------------------------------------------------------------------
+     LNR STREAM BED — synthesised, not sampled
+
+     The default bed is generated live with Web Audio instead of shipping an
+     MP3. Two reasons: nothing third-party is ever in the stream (so there is
+     no licence to clear and no Content ID match on a YouTube broadcast), and
+     there is no multi-megabyte asset to load before the first note.
+
+     104 BPM, I–V–vi–IV in C major (C–G–Am–F), a soft pad, a plucked arp and
+     a light kick/clap. A lookahead scheduler keeps it sample-accurate even
+     when the tab throttles, which a setInterval-driven sequencer does not.
+     ------------------------------------------------------------------ */
+  var BED = {
+    bpm: 104,
+    chords: [
+      { root: 130.81, notes: [261.63, 329.63, 392.00] }, /* C  */
+      { root: 98.00,  notes: [246.94, 293.66, 392.00] }, /* G  */
+      { root: 110.00, notes: [261.63, 329.63, 440.00] }, /* Am */
+      { root: 87.31,  notes: [261.63, 349.23, 440.00] }  /* F  */
+    ],
+    nodes: null,
+    timer: 0,
+    nextNoteTime: 0,
+    step: 0
+  };
+
+  function bedBus() {
+    var ctx = ensureAudioCtx();
+    if (!ctx) return null;
+    if (BED.nodes && BED.nodes.ctx === ctx) return BED.nodes;
+
+    var master = ctx.createGain();
+    master.gain.value = 0.0001;
+
+    /* A gentle low-pass keeps the pad from sounding brittle on phone
+       speakers, and a short plate-ish delay gives it air. */
+    var lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2600;
+    lp.Q.value = 0.4;
+
+    var delay = ctx.createDelay(0.6);
+    delay.delayTime.value = 0.28;
+    var fb = ctx.createGain();
+    fb.gain.value = 0.22;
+    var wet = ctx.createGain();
+    wet.gain.value = 0.18;
+
+    lp.connect(master);
+    lp.connect(delay);
+    delay.connect(fb);
+    fb.connect(delay);
+    delay.connect(wet);
+    wet.connect(master);
+    master.connect(ctx.destination);
+
+    BED.nodes = { ctx: ctx, master: master, input: lp };
+    return BED.nodes;
+  }
+
+  function bedNote(freq, t0, dur, peak, type) {
+    var n = BED.nodes;
+    if (!n) return;
+    var ctx = n.ctx;
+    var osc = ctx.createOscillator();
+    var g = ctx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(peak, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g);
+    g.connect(n.input);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.03);
+  }
+
+  function bedKick(t0) {
+    var n = BED.nodes;
+    if (!n) return;
+    var ctx = n.ctx;
+    var osc = ctx.createOscillator();
+    var g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(120, t0);
+    osc.frequency.exponentialRampToValueAtTime(46, t0 + 0.11);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(0.5, t0 + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.2);
+    osc.connect(g);
+    g.connect(n.input);
+    osc.start(t0);
+    osc.stop(t0 + 0.24);
+  }
+
+  function bedHat(t0, peak) {
+    var n = BED.nodes;
+    if (!n) return;
+    var ctx = n.ctx;
+    var len = Math.floor(ctx.sampleRate * 0.05);
+    var buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    var d = buf.getChannelData(0);
+    for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    var src = ctx.createBufferSource();
+    src.buffer = buf;
+    var hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 7000;
+    var g = ctx.createGain();
+    g.gain.value = peak;
+    src.connect(hp); hp.connect(g); g.connect(n.input);
+    src.start(t0);
+  }
+
+  /* One 16th-note step. 16 steps per bar, 4 bars per progression. */
+  function bedStep(step, t0) {
+    var bar = Math.floor(step / 16) % 4;
+    var s = step % 16;
+    var chord = BED.chords[bar];
+    var spb = 60 / BED.bpm;
+    var sixteenth = spb / 4;
+
+    /* pad: sustained across the bar, re-struck on the downbeat */
+    if (s === 0) {
+      chord.notes.forEach(function (f, i) {
+        bedNote(f, t0, spb * 0.98, 0.075 - i * 0.010, 'triangle');
+      });
+      bedNote(chord.root, t0, spb * 0.9, 0.068, 'sine');
+    }
+
+    /* arp: a light pluck on the off-beats, walking the chord */
+    if (s % 4 === 2) {
+      var note = chord.notes[(Math.floor(step / 4)) % chord.notes.length] * 2;
+      bedNote(note, t0, sixteenth * 2.2, 0.044, 'sine');
+    }
+
+    /* drums: kick on 1 and 3, hat on every 8th */
+    if (s === 0 || s === 8) bedKick(t0);
+    if (s % 2 === 0) bedHat(t0, s % 4 === 0 ? 0.05 : 0.028);
+  }
+
+  function bedScheduler() {
+    var n = BED.nodes;
+    if (!n) return;
+    var ctx = n.ctx;
+    var sixteenth = (60 / BED.bpm) / 4;
+    /* 120 ms lookahead, 25 ms tick: enough to survive a throttled tab. */
+    while (BED.nextNoteTime < ctx.currentTime + 0.12) {
+      bedStep(BED.step, BED.nextNoteTime);
+      BED.nextNoteTime += sixteenth;
+      BED.step++;
+    }
+  }
+
+  function startSynthBed() {
+    var n = bedBus();
+    if (!n) return false;
+    var ctx = n.ctx;
+    if (ctx.state === 'suspended') ctx.resume().catch(function () {});
+    if (BED.timer) return true;
+    BED.step = 0;
+    BED.nextNoteTime = ctx.currentTime + 0.06;
+    BED.timer = window.setInterval(bedScheduler, 25);
+    bedScheduler();
+    /* fade in so the bed never slams in under a sentence */
+    var target = customBedGain(musicDucked);
+    n.master.gain.cancelScheduledValues(ctx.currentTime);
+    n.master.gain.setValueAtTime(Math.max(0.0001, n.master.gain.value), ctx.currentTime);
+    n.master.gain.linearRampToValueAtTime(target, ctx.currentTime + 1.2);
+    return true;
+  }
+
+  function stopSynthBed() {
+    if (BED.timer) { window.clearInterval(BED.timer); BED.timer = 0; }
+    var n = BED.nodes;
+    if (!n) return;
+    var ctx = n.ctx;
+    try {
+      n.master.gain.cancelScheduledValues(ctx.currentTime);
+      n.master.gain.setValueAtTime(Math.max(0.0001, n.master.gain.value), ctx.currentTime);
+      n.master.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    } catch (e) {}
+  }
+
+  function setSynthBedGain(ducked) {
+    var n = BED.nodes;
+    if (!n || !BED.timer) return;
+    var ctx = n.ctx;
+    try {
+      n.master.gain.cancelScheduledValues(ctx.currentTime);
+      n.master.gain.setValueAtTime(Math.max(0.0001, n.master.gain.value), ctx.currentTime);
+      n.master.gain.linearRampToValueAtTime(customBedGain(ducked), ctx.currentTime + 0.25);
+    } catch (e) {}
+  }
   var audioCtx = null, musicDucked = false;
   var defaultBgAudioEl = null, defaultBgAudioKey = '';
   var customAudioEl = null, customAudioUrl = '', customAudioName = '';
@@ -1129,6 +1334,14 @@
     /* 35% on the slider ~= 62% of the track's own level - present, not loud. */
     var base = Math.min(1, Math.max(0.02, (S.musicVol / 100) * 1.75));
     return base * (ducked ? 0.55 : 1);
+  }
+
+  /* A preview is an audition, not a broadcast: it must be clearly audible
+     whatever the bed slider says, and the bed's ducking must never touch it.
+     The old code reused the bed gain, so at a low slider the preview was
+     near-silent and looked broken. */
+  function previewGain() {
+    return Math.min(1, Math.max(0.55, (S.musicVol / 100) * 1.75));
   }
 
   function applyCustomVolume(ducked) {
@@ -1155,7 +1368,7 @@
   }
 
   function ensureDefaultBgAudio(key) {
-    var resolvedKey = DEFAULT_BG_TRACKS[key] ? key : 'all_eyes_on_us';
+    var resolvedKey = DEFAULT_BG_TRACKS[key] ? key : 'lnr_stream_bed';
     var track = DEFAULT_BG_TRACKS[resolvedKey];
     if (!defaultBgAudioEl || defaultBgAudioKey !== resolvedKey) {
       if (defaultBgAudioEl) {
@@ -1245,7 +1458,12 @@
       updateVoiceBtn();
       return;
     }
-    stopAudioPreview();
+    /* Never let the bed start on top of an audition: that is what made an
+       uploaded MP3 appear to "not play" \u2014 the bed took the element over. */
+    if (previewingAudio) {
+      updateVoiceBtn();
+      return;
+    }
     if (customAudioEl) {
       customAudioEl.volume = customBedGain(musicDucked);
       customAudioEl.loop = true;
@@ -1253,7 +1471,12 @@
       updateVoiceBtn();
       return;
     }
-    var bedKey = DEFAULT_BG_TRACKS[S.music] ? S.music : 'all_eyes_on_us';
+    var bedKey = DEFAULT_BG_TRACKS[S.music] ? S.music : 'lnr_stream_bed';
+    if (DEFAULT_BG_TRACKS[bedKey] && DEFAULT_BG_TRACKS[bedKey].synth) {
+      startSynthBed();
+      updateVoiceBtn();
+      return;
+    }
     var bgAudio = ensureDefaultBgAudio(bedKey);
     if (bgAudio) {
       bgAudio.volume = customBedGain(musicDucked);
@@ -1264,6 +1487,7 @@
   }
 
   function stopMusic() {
+    stopSynthBed();
     if (customAudioEl && !previewingAudio) {
       try { customAudioEl.pause(); } catch (e) {}
     }
@@ -1351,11 +1575,19 @@
   }
 
   function stopAudioPreview() {
+    if (previewSto);
+    syncMusicCardsUI();
+  }
+
+  function stopAudioPreview() {
     if (previewStopTimer) { window.clearTimeout(previewStopTimer); previewStopTimer = 0; }
-    if (customAudioEl && previewingAudio && (!live.running || live.paused || isAudioSuppressedPhase())) {
+    /* Always actually stop the element that was auditioning. The old version
+       only paused it when the show was idle, so pressing Stop during a live
+       session left the track playing while the button said "Preview". */
+    if (customAudioEl && previewingAudio) {
       try { customAudioEl.pause(); customAudioEl.currentTime = 0; } catch (e) {}
     }
-    if (defaultBgAudioEl && previewingAudio && (!live.running || live.paused || isAudioSuppressedPhase() || customAudioEl || S.music === 'off')) {
+    if (defaultBgAudioEl && previewingAudio) {
       try { defaultBgAudioEl.pause(); defaultBgAudioEl.currentTime = 0; } catch (e) {}
     }
     previewingAudio = false;
@@ -1367,9 +1599,10 @@
     if (customAudioEl) {
       previewingAudio = true;
       try { customAudioEl.currentTime = 0; } catch (e) {}
-      /* Preview at the same level the bed will actually run at, so what the
-         operator hears is what the stream gets. */
-      customAudioEl.volume = Math.min(1, Math.max(0.05, (S.musicVol / 100) * 1.75));
+      /* Audition level: audible regardless of the bed slider, and immune to
+         ducking (applyCustomVolume / setMusicDucking both skip while
+         previewingAudio is true). */
+      customAudioEl.volume = previewGain();
       customAudioEl.loop = false;
       customAudioEl.onended = function () {
         if (previewingAudio) stopAudioPreview();
@@ -1382,12 +1615,12 @@
       syncAudioPreviewUI();
       return;
     }
-    var bedKey = DEFAULT_BG_TRACKS[S.music] ? S.music : 'all_eyes_on_us';
+    var bedKey = DEFAULT_BG_TRACKS[S.music] ? S.music : 'lnr_stream_bed';
     var bgAudio = ensureDefaultBgAudio(bedKey);
     if (!bgAudio) return;
     previewingAudio = true;
     try { bgAudio.currentTime = 0; } catch (e) {}
-    bgAudio.volume = Math.min(1, Math.max(0.05, (S.musicVol / 100) * 1.75));
+    bgAudio.volume = previewGain();
     bgAudio.loop = false;
     bgAudio.onended = function () {
       if (previewingAudio) stopAudioPreview();
@@ -1400,13 +1633,39 @@
     syncAudioPreviewUI();
   }
 
+  /* Some Android/Windows pickers hand over a File with an empty or wrong
+     `type` ("" or "application/octet-stream"). A blob URL built from that
+     carries no usable MIME type, and Chrome then refuses to decode it \u2014
+     the upload "succeeds" and the track silently never plays. Re-wrap the
+     bytes with a type derived from the filename so the decoder is told what
+     it is looking at. */
+  function audioBlobFor(blob, name) {
+    var type = (blob && blob.type) || '';
+    var looksAudio = /^audio\//i.test(type);
+    if (looksAudio) return blob;
+    var ext = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+    var map = {
+      mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4', aac: 'audio/aac',
+      wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg',
+      flac: 'audio/flac', webm: 'audio/webm'
+    };
+    var guessed = ext ? map[ext[1]] : '';
+    if (!guessed) return blob;
+    try {
+      return new Blob([blob], { type: guessed });
+    } catch (e) {
+      return blob;
+    }
+  }
+
   function loadCustomAudioBlob(blob, name) {
     stopAudioPreview();
     if (customAudioUrl) { try { URL.revokeObjectURL(customAudioUrl); } catch (e) {} customAudioUrl = ''; }
     if (customAudioEl) { try { customAudioEl.pause(); } catch (e) {} }
-    customAudioUrl = URL.createObjectURL(blob);
+    var playable = audioBlobFor(blob, name);
+    customAudioUrl = URL.createObjectURL(playable);
     customAudioName = name || 'Custom track';
-    var audio = new Audio(customAudioUrl);
+    var audio = new Audio();
     audio.preload = 'metadata';
     audio.loop = true;
     audio.onloadedmetadata = function () {
@@ -1416,8 +1675,13 @@
       }
     };
     audio.onerror = function () {
-      toast('Could not decode audio file: ' + (name || 'track'), true);
+      var code = audio.error && audio.error.code;
+      var why = code === 4 ? 'this browser cannot decode that format \u2014 try MP3 or M4A'
+        : code === 3 ? 'the file looks corrupted'
+        : 'the file could not be read';
+      toast('Could not load audio "' + (name || 'track') + '": ' + why + '.', true);
     };
+    audio.src = customAudioUrl;
     customAudioEl = audio;
     syncAudioPreviewUI();
   }
@@ -2301,11 +2565,29 @@
     if (show && el.promoBrandText) el.promoBrandText.textContent = effectiveBranding().brand || 'LNR STUDIO';
   }
 
+  /* The text-only promo funnel. Shown during a promo break when there is no
+     sponsor clip to play, so the break still earns its place: it advertises
+     the studio itself and sends viewers to the site. */
+  function updatePromoFunnel() {
+    if (!el.promoFunnel) return;
+    var list = effectivePromoList();
+    var show = live.inSession && live.phase === 'promo' && !list.length;
+    el.promoFunnel.hidden = !show;
+    if (!show) return;
+
+    var b = effectiveBranding();
+    if (el.promoFunnelUrl) el.promoFunnelUrl.textContent = b.site || DEFAULT_SITE;
+    if (el.promoFunnelKicker) el.promoFunnelKicker.textContent = (b.brand || DEFAULT_BRAND) + ' \u00b7 LIVESTREAM CONTROL ROOM';
+    var remMs = Math.max(0, live.phaseEndsAt - (live.paused ? live.pausedAt : now()));
+    if (el.promoFunnelClock) el.promoFunnelClock.textContent = clock(remMs);
+  }
+
   function updatePromoOverlay() {
     if (!el.promoAdOverlay) return;
     var ov = S.promoOverlayStyle || 'disclosure';
     var show = live.inSession && live.phase === 'promo' && ov === 'disclosure';
     el.promoAdOverlay.hidden = !show;
+    updatePromoFunnel();
     if (!show) {
       if (el.promoUnmuteBtn) el.promoUnmuteBtn.hidden = true;
       return;
@@ -2408,6 +2690,7 @@
     if (el.loopBadge) el.loopBadge.hidden = true;
     if (el.promoBrand) el.promoBrand.hidden = true;
     if (el.promoAdOverlay) el.promoAdOverlay.hidden = true;
+    if (el.promoFunnel) el.promoFunnel.hidden = true;
     if (el.promoUnmuteBtn) el.promoUnmuteBtn.hidden = true;
     if (el.videoEmpty) el.videoEmpty.hidden = true;
   }
@@ -3055,11 +3338,23 @@
      ------------------------------------------------------------------ */
   var CLAUSE_MARKS = [';', ':', ',', '\u2014', '\u2013'];
 
+  /* Abbreviations whose full stop is NOT a sentence end. Without this the
+     sentence pass split "Dr. Smith" and "e.g. this" into two utterances, and
+     the engine's own inter-utterance gap landed in the middle of a phrase. */
+  var ABBREV_TAIL = /\b(Mr|Mrs|Ms|Dr|Prof|St|Jr|Sr|vs|etc|approx|ca|No|Nos|Vol|Ch|pp|Fig|Rev|Gen|Ex|Deut|Ps|Prov|Isa|Jer|Matt|Mk|Lk|Jn|Rom|Cor|Gal|Eph|Phil|Col|Thess|Tim|Heb|Jas|Pet|e\.g|i\.e)\./gi;
+
   function splitSpeechText(text, maxLen) {
     var clean = String(text || '').replace(/\s+/g, ' ').trim();
     if (!clean) return [];
     var limit = Math.max(60, Number(maxLen) || 150);
     if (clean.length <= limit) return [clean];
+
+    /* Protect abbreviation stops and decimal points so the sentence pass
+       cannot mistake them for the end of a sentence. \u0001 / \u0002 are
+       restored before anything is spoken. */
+    var guarded = clean
+      .replace(ABBREV_TAIL, function (m) { return m.slice(0, -1) + '\u0001'; })
+      .replace(/(\d)\.(\d)/g, '$1\u0002$2');
 
     var out = [];
     function pushChunk(s) {
@@ -3067,22 +3362,36 @@
       if (t) out.push(t);
     }
 
-    /* A sentence that still does not fit: cut at the punctuation nearest the
-       middle of the window, never at a bare character count. */
+    /* A sentence that still does not fit. Cut at the STRONGEST punctuation
+       available in the window, and only fall back to a space when the window
+       genuinely contains no punctuation at all. The old version searched for
+       the last comma anywhere in the window and, when that comma sat too
+       early, silently cut at a bare space \u2014 which is exactly the
+       mid-sentence break that made the reader sound like it ignored commas. */
     function splitLong(sentence) {
       var rest = String(sentence || '').trim();
       var guard = 0;
-      while (rest.length > limit && guard++ < 40) {
+      while (rest.length > limit && guard++ < 60) {
         var win = rest.slice(0, limit);
         var cut = -1;
+
+        /* 1. clause punctuation, strongest first, nearest the end of window */
         for (var m = 0; m < CLAUSE_MARKS.length && cut < 0; m++) {
           var idx = win.lastIndexOf(CLAUSE_MARKS[m]);
-          /* keep at least a third of the window, so we never emit a stub */
-          if (idx >= Math.floor(limit * 0.34)) cut = idx + 1;
+          if (idx >= Math.floor(limit * 0.45)) cut = idx + 1;
         }
+        /* 2. any clause punctuation at all, even early \u2014 better a short
+              chunk that ends on a comma than a long one cut mid-word */
+        if (cut < 0) {
+          for (var n = 0; n < CLAUSE_MARKS.length && cut < 0; n++) {
+            var any = win.lastIndexOf(CLAUSE_MARKS[n]);
+            if (any >= Math.floor(limit * 0.2)) cut = any + 1;
+          }
+        }
+        /* 3. last resort: a word gap, but never a stub */
         if (cut < 0) {
           var sp = win.lastIndexOf(' ');
-          cut = sp > 0 ? sp : limit;
+          cut = sp >= Math.floor(limit * 0.5) ? sp : limit;
         }
         pushChunk(rest.slice(0, cut));
         rest = rest.slice(cut).trim();
@@ -3090,9 +3399,9 @@
       pushChunk(rest);
     }
 
-    /* 1. Sentence pass — the terminator stays with its own sentence so the
+    /* 1. Sentence pass \u2014 the terminator stays with its own sentence so the
           engine still performs the full stop. */
-    var sentences = clean.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) || [clean];
+    var sentences = guarded.match(/[^.!?\u2026]+[.!?\u2026]+["')\]]*|[^.!?\u2026]+$/g) || [guarded];
     sentences.forEach(function (s) {
       var t = String(s || '').trim();
       if (!t) return;
@@ -3100,7 +3409,23 @@
       else splitLong(t);
     });
 
-    return out.length ? out : [clean];
+    /* 2. Merge stubs. A 12-character fragment spoken as its own utterance
+          gets a full engine gap around it, which reads as a stutter. */
+    var merged = [];
+    out.forEach(function (chunk) {
+      var prev = merged.length ? merged[merged.length - 1] : null;
+      if (prev && (prev.length < 28 || chunk.length < 28) && (prev.length + chunk.length + 1) <= limit) {
+        merged[merged.length - 1] = prev + ' ' + chunk;
+      } else {
+        merged.push(chunk);
+      }
+    });
+
+    var restored = merged.map(function (c) {
+      return c.replace(/\u0001/g, '.').replace(/\u0002/g, '.');
+    });
+
+    return restored.length ? restored : [clean];
   }
 
   function speakParts(parts, isReveal, voiceOpts) {
@@ -3163,10 +3488,16 @@
       var last = t.slice(-1);
       var ms;
       if (last === '.' || last === '!' || last === '?') ms = 430;
+      else if (last === '\u2026') ms = 520;
       else if (last === ';' || last === ':') ms = 300;
       else if (last === ',') ms = 205;
       else if (last === '\u2014' || last === '\u2013') ms = 250;
       else ms = 95;
+
+      /* A very short chunk is usually a fragment ("Act two." / "Clue one.").
+         Give it a touch more air so it does not clip into the next line. */
+      if (t.length < 26) ms += 60;
+
       return Math.round(ms / Math.max(0.6, rate));
     }
 
@@ -3197,7 +3528,11 @@
       var p = entry.text;
       var u = new SpeechSynthesisUtterance(p);
       if (v) u.voice = v;
-      u.rate = rate;
+      /* A hair of variation per chunk. A perfectly constant rate across a
+         long read is the biggest "robot" tell; ±2% is inaudible as a change
+         of speed but removes the metronome feel. */
+      var jitter = 1 + (((idx * 37) % 5) - 2) * 0.01;
+      u.rate = Math.max(0.5, Math.min(1.6, rate * jitter));
       u.pitch = pitch;
       if (entry.isLastSync) u._isLastSyncChunk = true;
       activeUtterances.push(u);
@@ -4823,7 +5158,6 @@
     } else if (mode === 'comparison') {
       var lList = (vis.leftItems || []).map(function (it) { return '<li>' + escHtml(it) + '</li>'; }).join('');
       var rList = (vis.rightItems || []).map(function (it) { return '<li>' + escHtml(it) + '</li>'; }).join('');
-      el.storyVisualHost.innerHTML = kicker + headline +
         '<div class="story-compare-grid">' +
           '<div class="story-compare-col"><h4>' + escHtml(vis.leftTitle || 'Claim') + '</h4><ul>' + lList + '</ul></div>' +
           '<div class="story-compare-col is-right"><h4>' + escHtml(vis.rightTitle || 'Evidence') + '</h4><ul>' + rList + '</ul></div>' +
@@ -7285,9 +7619,10 @@
     audio: function () {
       return {
         ctxState: audioCtx ? audioCtx.state : 'none',
-        bedRunning: !!(defaultBgAudioEl && !defaultBgAudioEl.paused),
-        bedTrack: defaultBgAudioKey || null,
-        bedVolume: defaultBgAudioEl ? Math.round(defaultBgAudioEl.volume * 100) / 100 : null,
+        bedRunning: !!(BED.timer || (defaultBgAudioEl && !defaultBgAudioEl.paused)),
+        bedTrack: BED.timer ? 'lnr_stream_bed (synth)' : (defaultBgAudioKey || null),
+        bedVolume: BED.nodes ? Math.round(BED.nodes.master.gain.value * 100) / 100
+          : (defaultBgAudioEl ? Math.round(defaultBgAudioEl.volume * 100) / 100 : null),
         customTrack: customAudioName || null,
         customPlaying: !!(customAudioEl && !customAudioEl.paused),
         customVolume: customAudioEl ? Math.round(customAudioEl.volume * 100) / 100 : null,

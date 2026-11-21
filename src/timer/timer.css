@@ -1573,6 +1573,37 @@ body.screen-stage .screen-stage {
 }
 .frame-site { font-size: max(10px, 1.15cqw); color: #8b9a92; letter-spacing: .04em; }
 
+/* Call to action. The site line used to sit there as a bare URL, which reads
+   as a watermark rather than an invitation. This pairs a short imperative with
+   the address so a viewer knows what to do with it. */
+.frame-cta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: .55em;
+  min-width: 0;
+}
+.frame-cta-lead {
+  font-size: max(10px, 1.15cqw);
+  font-weight: 600;
+  color: #d9b478;
+  white-space: nowrap;
+}
+.frame-cta .frame-site {
+  color: #a9b8af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* On a narrow stage the lead would push the URL out of the frame, so the
+   address keeps the space and the lead drops to its own line. */
+@media (max-width: 620px), (max-aspect-ratio: 1/1) {
+  .frame-cta { flex-direction: column; align-items: flex-end; gap: 1px; }
+  .frame-cta-lead { font-size: 9.5px; }
+  .frame-cta .frame-site { font-size: 9.5px; max-width: 46vw; }
+}
+
 /* ---------------- video engine: clean picture ----------------
    The prerecorded video engine must show the footage and nothing else.
    No segment label, no counter, no timer, no progress bar, no watermark,
@@ -4011,4 +4042,188 @@ body.safe .chat-safe-guide { display: none !important; }
   .frame-top { padding-bottom: .6cqw; }
   .frame-bottom { padding-top: .5cqw; }
   .frame-progress { margin-bottom: .5cqw; }
+}
+/* ==========================================================================
+   Text-only promo funnel (default break surface)
+   --------------------------------------------------------------------------
+   Shown during a promo break when no sponsor clip is loaded. It replaces an
+   empty video stage with a clean, premium card that advertises the studio and
+   drives viewers to the site. Deliberately borderless: one soft key-light,
+   one hairline rule, no card-inside-card chrome.
+   ========================================================================== */
+
+.promo-funnel {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: clamp(14px, 2.4cqw, 40px);
+  padding: clamp(16px, 3cqw, 56px);
+  background:
+    radial-gradient(120% 90% at 12% 0%, rgba(207, 163, 90, 0.13) 0%, transparent 58%),
+    radial-gradient(90% 80% at 100% 100%, rgba(24, 60, 46, 0.5) 0%, transparent 62%),
+    linear-gradient(160deg, #0a1210 0%, #060b09 100%);
+  overflow: hidden;
+}
+
+.promo-funnel[hidden] { display: none; }
+
+.promo-funnel-media {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.promo-funnel-media img {
+  display: block;
+  width: 100%;
+  max-width: clamp(150px, 26cqw, 340px);
+  max-height: 62cqh;
+  object-fit: cover;
+  object-position: top center;
+  border-radius: clamp(10px, 1.4cqw, 20px);
+  box-shadow:
+    0 30px 70px -28px rgba(0, 0, 0, 0.95),
+    0 0 0 1px rgba(240, 232, 212, 0.09);
+}
+
+.promo-funnel-body {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.2cqw, 16px);
+  min-width: 0;
+  max-width: 46ch;
+}
+
+.promo-funnel-kicker {
+  font-family: var(--mono);
+  font-size: clamp(9.5px, 1.05cqw, 12.5px);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #d9b478;
+}
+
+.promo-funnel-title {
+  margin: 0;
+  font-family: var(--display, ui-serif, Georgia, serif);
+  font-size: clamp(20px, 3.1cqw, 44px);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  color: #fbf6ea;
+  text-wrap: balance;
+}
+
+.promo-funnel-copy {
+  margin: 0;
+  font-size: clamp(12px, 1.5cqw, 18px);
+  line-height: 1.5;
+  color: #b9c6bd;
+  text-wrap: pretty;
+}
+
+.promo-funnel-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: clamp(2px, 0.6cqw, 8px);
+  padding-top: clamp(8px, 1.1cqw, 14px);
+  border-top: 1px solid rgba(240, 232, 212, 0.14);
+}
+
+.promo-funnel-url {
+  font-family: var(--mono);
+  font-size: clamp(13px, 1.7cqw, 21px);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #f0cf95;
+  word-break: break-all;
+}
+
+.promo-funnel-hint {
+  font-size: clamp(10.5px, 1.2cqw, 14px);
+  color: #8fa096;
+}
+
+.promo-funnel-clock {
+  align-self: flex-start;
+  margin-top: clamp(2px, 0.5cqw, 6px);
+  font-family: var(--mono);
+  font-size: clamp(11px, 1.25cqw, 14px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #191206;
+  background: var(--brass);
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+/* Portrait / narrow stage: stack the image above the copy. */
+@media (max-aspect-ratio: 1/1), (max-width: 620px) {
+  .promo-funnel {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    justify-items: center;
+    text-align: center;
+    gap: clamp(10px, 2cqw, 20px);
+    padding: clamp(12px, 3cqw, 28px);
+  }
+  .promo-funnel-media img {
+    max-width: min(100%, 200px);
+    max-height: 100%;
+  }
+  .promo-funnel-body { align-items: center; max-width: 34ch; }
+  .promo-funnel-cta { align-items: center; width: 100%; }
+  .promo-funnel-clock { align-self: center; }
+}
+
+/* ==========================================================================
+   Pre-break notices (quiz / anecdote)
+   --------------------------------------------------------------------------
+   These reuse the promo notice's exact anatomy (.studio-break-notice,
+   .studio-break-pill, .studio-break-bar) so all three break types read as one
+   system. The only difference is the container: the promo notice lives in the
+   stage, these live in the break overlay, so the card is stripped back to a
+   bare centred frame and the notice is pinned to the same bottom-right corner
+   at the same size.
+   ========================================================================== */
+
+.vbreak-card.vbreak-notice-card {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.vbreak-card.vbreak-notice-card::before,
+.vbreak-card.vbreak-notice-card::after { display: none; }
+
+.vbreak-notice {
+  position: absolute;
+  right: clamp(12px, 2.2cqw, 34px);
+  bottom: clamp(12px, 2.4cqw, 34px);
+  left: auto;
+  top: auto;
+  width: min(92%, 420px);
+  margin: 0;
+}
+
+/* On a narrow stage the notice spans the width instead of hugging a corner,
+   so the copy never wraps into a tall sliver. */
+@media (max-width: 620px), (max-aspect-ratio: 1/1) {
+  .vbreak-notice {
+    left: clamp(10px, 3cqw, 20px);
+    right: clamp(10px, 3cqw, 20px);
+    bottom: clamp(10px, 3cqw, 20px);
+    width: auto;
+  }
+  .vbreak-notice .studio-break-notice-copy b { font-size: 13.5px; }
+  .vbreak-notice .studio-break-notice-copy span { font-size: 11.5px; }
 }
