@@ -1,11 +1,14 @@
 import {
   createAdminToken,
+  createOwnerToken,
   createProLicenseKey,
   getAdminPassword,
   getGoogleFormUrl,
   json,
   readJson,
+  sanitizeDeviceId,
   verifyAdminToken,
+  verifyOwnerToken,
   verifyPasswordCandidate,
 } from './_edge';
 import { PRIVATE_BANKS } from './_banks/index';
@@ -83,6 +86,54 @@ export default async function handler(req: Request): Promise<Response> {
       adminToken,
       config: { googleFormUrl: getGoogleFormUrl() },
       banks: PRIVATE_BANKS,
+    });
+  }
+
+  /* Register this browser as the owner's device. It is the password unlock
+     plus a long-lived, device-bound token, so the phone does not have to type
+     the password every time — and no other device can mint keys. */
+  if (action === 'owner_enroll') {
+    const attemptKey = clientKey(req);
+    if (isUnlockThrottled(attemptKey)) {
+      return json(429, {
+        ok: false,
+        error: 'Too many incorrect attempts. Wait 10 minutes and try again.',
+      });
+    }
+    const check = await verifyPasswordCandidate(String(body.password || ''));
+    if (!check.ok) {
+      noteUnlockFailure(attemptKey);
+      return json(401, { ok: false, error: check.error || 'Unauthorized' });
+    }
+    const deviceId = sanitizeDeviceId(body.deviceId);
+    if (deviceId.length < 16) {
+      return json(400, { ok: false, error: 'This browser did not send a valid device id.' });
+    }
+    failedUnlocks.delete(attemptKey);
+    return json(200, {
+      ok: true,
+      deviceId,
+      ownerToken: await createOwnerToken(deviceId),
+      adminToken: await createAdminToken(30),
+    });
+  }
+
+  /* Silent re-check on every boot: proves this is still the registered
+     device and hands back a fresh admin session, so the owner never types
+     the password again on this phone. */
+  if (action === 'owner_check') {
+    const deviceId = sanitizeDeviceId(body.deviceId);
+    const check = await verifyOwnerToken(String(body.ownerToken || ''));
+    if (!check.ok || !deviceId || check.deviceId !== deviceId) {
+      return json(401, {
+        ok: false,
+        error: check.error || 'This device is not registered.',
+      });
+    }
+    return json(200, {
+      ok: true,
+      deviceId,
+      adminToken: await createAdminToken(30),
     });
   }
 

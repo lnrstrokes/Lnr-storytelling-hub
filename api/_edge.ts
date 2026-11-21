@@ -19,6 +19,13 @@ export interface AdminTokenPayload {
   exp: number;
 }
 
+export interface OwnerTokenPayload {
+  role: 'owner';
+  did: string;
+  iat: number;
+  exp: number;
+}
+
 export interface ProLicensePayload {
   v: 1;
   tier: 'pro';
@@ -195,6 +202,64 @@ export async function verifyAdminToken(token: string): Promise<{ ok: boolean; er
     return { ok: true };
   } catch {
     return { ok: false, error: 'Malformed admin session.' };
+  }
+}
+
+/**
+ * Owner device identity.
+ *
+ * A device id is a random string the browser makes once and keeps. It is not
+ * a fingerprint: it identifies a browser install, which is exactly the scope
+ * of "this is my phone". Only a signature minted by the server after the
+ * admin password was entered can turn it into an owner device.
+ */
+export function sanitizeDeviceId(raw: unknown): string {
+  return String(raw || '')
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .slice(0, 64);
+}
+
+export async function createOwnerToken(deviceId: string, ttlDays = 365): Promise<string> {
+  const now = Date.now();
+  const payload: OwnerTokenPayload = {
+    role: 'owner',
+    did: deviceId,
+    iat: now,
+    exp: now + ttlDays * 86400 * 1000,
+  };
+  const body = toBase64Url(encoder.encode(JSON.stringify(payload)));
+  const signature = await hmacSegment(`OWN.${body}`, await signingSecret());
+  return `LNROWN.${body}.${signature}`;
+}
+
+export async function verifyOwnerToken(
+  token: string
+): Promise<{ ok: boolean; deviceId?: string; error?: string }> {
+  let secret: Uint8Array;
+  try {
+    secret = await signingSecret();
+  } catch {
+    return { ok: false, error: 'Admin password env var is missing.' };
+  }
+  const parts = String(token || '').trim().split('.');
+  if (parts.length !== 3 || parts[0] !== 'LNROWN') {
+    return { ok: false, error: 'This device is not registered.' };
+  }
+  const [, body, signature] = parts;
+  if (!(await verifySegment(`OWN.${body}`, signature, secret))) {
+    return { ok: false, error: 'Device registration is invalid.' };
+  }
+  try {
+    const parsed = JSON.parse(decoder.decode(fromBase64Url(body))) as OwnerTokenPayload;
+    if (parsed.role !== 'owner' || !parsed.did || !parsed.exp) {
+      return { ok: false, error: 'Malformed device registration.' };
+    }
+    if (Date.now() > parsed.exp) {
+      return { ok: false, error: 'This device registration has expired. Enter the admin password again.' };
+    }
+    return { ok: true, deviceId: parsed.did };
+  } catch {
+    return { ok: false, error: 'Malformed device registration.' };
   }
 }
 
