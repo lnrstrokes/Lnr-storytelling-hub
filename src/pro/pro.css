@@ -8,6 +8,13 @@
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
+/* The licence pill is a studio control, never part of the broadcast: on the
+   live stage (and in stream-safe mode) it is hidden, along with its panel. */
+body.screen-stage .lnr-pro,
+body.safe .lnr-pro {
+  display: none !important;
+}
+
 .lnr-pro-pill {
   display: inline-flex;
   align-items: center;
