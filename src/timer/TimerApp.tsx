@@ -14,6 +14,7 @@ import './demo-content.ts';
 import './speech.js';
 import { installProGate } from './pro-gate.ts';
 import { installVideoBreaks } from './video-breaks.ts';
+import { installVideoSetup } from './video-setup.ts';
 import { installAdminKeys } from './admin-keys.ts';
 
 declare global {
@@ -97,6 +98,7 @@ export default function TimerApp() {
     // capture phase, so it always sees a gated control's event first.
     installProGate(host);
     installVideoBreaks(host);
+    installVideoSetup(host);
     installAdminKeys(host);
 
     let cancelled = false;
