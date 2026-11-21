@@ -3350,10 +3350,13 @@
     if (clean.length <= limit) return [clean];
 
     /* Protect abbreviation stops and decimal points so the sentence pass
-       cannot mistake them for the end of a sentence. \u0001 / \u0002 are
-       restored before anything is spoken. */
+       cannot mistake them for the end of a sentence. EVERY period inside the
+       abbreviation is masked, not just the last one: masking only the final
+       stop left the internal dot of "e.g." and "i.e." visible, and the
+       sentence pass split "e." / "g. slower than expected" into two
+       utterances. \u0001 / \u0002 are restored before anything is spoken. */
     var guarded = clean
-      .replace(ABBREV_TAIL, function (m) { return m.slice(0, -1) + '\u0001'; })
+      .replace(ABBREV_TAIL, function (m) { return m.replace(/\./g, '\u0001'); })
       .replace(/(\d)\.(\d)/g, '$1\u0002$2');
 
     var out = [];
