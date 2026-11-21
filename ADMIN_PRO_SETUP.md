@@ -6,17 +6,21 @@ create a licence key for a customer.
 **The short version**
 
 1. Tap the brand logo **7 times** → **Studio Operator Tools** opens.
-2. Scroll to the bottom of that panel → **Pro Licence Keys**.
-3. Type your `ADMIN_PASSWORD`, fill in the brand, tap **Create licence key**.
-4. Copy the key and send it to the customer.
+2. The first time on a new phone, tap **Register this device** and type your
+   `ADMIN_PASSWORD` once. That phone becomes the owner device.
+3. From then on that panel opens by itself on that phone — and stays locked on
+   everyone else's.
+4. Fill in the brand and tap **Create licence key**, copy the key, send it to the
+   customer.
 
-The badge next to *Pro Licence Keys* tells you whether the server is ready before
-you type anything.
+The badge next to *Owner & Pro Licence Keys* tells you whether the server is
+ready before you type anything.
 
 | System | What it protects | Where it lives |
 | --- | --- | --- |
-| Operator Tools | Break folders, layout, and licence key minting | Hidden panel in the app — 7 taps on the brand logo |
-| `ADMIN_PASSWORD` | Who may create a key | Vercel environment variable |
+| Operator Tools | Break folders, layout, and licence key minting | Hidden panel, and only on the registered owner device |
+| Owner device | Who may open the operator panel at all | A signed `LNROWN.…` token issued after the admin password is entered once |
+| `ADMIN_PASSWORD` | Who may register a device or create a key | Vercel environment variable |
 | `LICENSE_SECRET` | Makes keys impossible to forge | Vercel environment variable |
 | Pro licence | The customer's paid features | `LNRPRO.…` key signed with `LICENSE_SECRET` |
 
@@ -109,20 +113,60 @@ The status badge on that section is a live server check:
 | `server unreachable` | Old build with no `/api/admin`, or no connection | Deploy the latest `main` |
 | `checking server…` | Still asking the server | Wait a second |
 
-The panel is a convenience gate, not a password prompt: it only reveals the form.
-Creating a key still requires the real `ADMIN_PASSWORD`, which the server checks
-and never sends back. The password you type stays in memory for the session and
-is never written to `localStorage`.
+On an unregistered device the same panel opens but every operator control is
+hidden, replaced by a locked notice. That is deliberate: the 7-tap gesture is not
+a secret worth protecting, so the panel itself is bound to your phone.
 
 ---
 
-## Part 3 — Create a licence key
+## Part 3 — Make a phone the owner device
+
+The owner device is how the app knows "this is the studio, not a customer". It is
+what unlocks the operator panel, and it is what gives you a Free/Pro switch for
+testing.
+
+1. Tap the brand logo **7 times**.
+2. Under **Owner & Pro Licence Keys**, type `ADMIN_PASSWORD`.
+3. Tap **Register this device**. The device line changes to
+   `Owner device 1A2B3C4D · Pro mode.`
+4. Reload the app: it stays the owner device without asking again.
+
+What happens under the hood:
+
+- This browser generates a random device id once and keeps it.
+- The server checks the password and returns a signed `LNROWN.…` token bound to
+  that id, valid for a year.
+- On every start the app silently calls `/api/admin` with the token and receives
+  a fresh admin session, so key minting works without typing the password again.
+- The password itself is never stored.
+
+The token lives in this browser's storage. Anyone who knows the URL and the
+7-tap gesture but does not have the token sees the locked notice; a different
+browser with the password can register itself, so keep `ADMIN_PASSWORD` private.
+A full device backup that includes browser storage would carry the token along.
+
+### Switching your own device between Free and Pro
+
+The owner device does not need a minted key — a key is for customers, and a key
+locked to a domain will not fit a different one.
+
+- Tap the **Free / Pro** pill (or use the panel's **Switch this device to …**
+  button). The tier changes immediately and survives reloads.
+- Owner Pro is a local mode: it unlocks Pro limits but **never** locks or
+  overwrites your own brand text, and it does not create a customer key.
+- **Forget this device** removes the registration and the mode; the phone returns
+  to the locked panel until the password is entered again. Do this before handing
+  the phone to someone else.
+
+---
+
+## Part 4 — Create a licence key
 
 Do this **only after the payment has cleared**.
 
 | Field | Meaning | Notes |
 | --- | --- | --- |
-| Admin password | `ADMIN_PASSWORD` | 6 wrong tries per IP per 10 minutes, then a 10-minute lockout |
+| Admin password | `ADMIN_PASSWORD` | Only needed on a device that is not yet registered. 6 wrong tries per IP per 10 minutes, then a 10-minute lockout |
 | Brand strap | Text burned into their broadcast | Max 28 chars, **locked** for the customer afterwards. Blank → `CREATOR STUDIO` |
 | Watermark | Stage watermark | Max 14 chars. Blank → `CHANNEL` |
 | Customer email | Your records only | Never checked by the app |
@@ -130,7 +174,8 @@ Do this **only after the payment has cleared**.
 | Plan | monthly / yearly / custom | Label only — the real limit is *Days valid* |
 | Days valid | Licence lifetime | 1–3650, default 365 |
 
-1. Type the admin password.
+1. On the owner device the form is already unlocked. Otherwise register the
+   device first (Part 3).
 2. Fill in the brand (and anything else you want).
 3. Tap **Create licence key**.
 4. Tap **Copy key**. The key starts with `LNRPRO.` and is about 265 characters —
@@ -154,7 +199,7 @@ key or `localStorage` cannot create Pro; only the server can issue one.
 
 ---
 
-## Part 4 — Customer activates it
+## Part 5 — Customer activates it
 
 1. Open the app and tap the **Free / Pro** pill in the corner.
 2. Paste the whole key into **Pro key** and tap **Activate Pro**.
@@ -171,7 +216,7 @@ After that:
 
 ---
 
-## Part 5 — Confirm Pro is actually working
+## Part 6 — Confirm Pro is actually working
 
 Do this in a **private/incognito tab** so no old key is cached.
 
@@ -210,7 +255,9 @@ beyond the Free limit are blocked.
 
 | Symptom | Cause and fix |
 | --- | --- |
-| 7 taps opens Operator Tools but there is no **Pro Licence Keys** section | That deployment is an old build. Deploy the latest `main`, then hard-refresh (or reinstall the PWA). |
+| 7 taps opens a panel with only "This browser is not registered as the owner device" | Expected on any device that is not yours. On your own phone, enter `ADMIN_PASSWORD` and tap **Register this device**. |
+| The whole operator panel is empty on my phone | The device registration is missing or was forgotten. Register it again (Part 3). |
+| 7 taps opens Operator Tools but there is no **Owner & Pro Licence Keys** section | That deployment is an old build. Deploy the latest `main`, then hard-refresh (or reinstall the PWA). |
 | `/admin-issue.html` returns 404 | Same cause: old build. Use the in-app panel, or deploy again. |
 | Badge says `admin password missing` | `ADMIN_PASSWORD` is not set on this deployment, or you did not redeploy after adding it. |
 | Badge says `server unreachable` | Old build without `/api/admin`, or the device is offline. |
@@ -224,6 +271,9 @@ beyond the Free limit are blocked.
 | "Invalid license key signature." | Truncated copy (~265 chars), a changed character, or `LICENSE_SECRET` was rotated after issue. |
 | "Could not confirm this Pro key — go online once…" | More than 7 days offline. Connect once and reopen the app. |
 | Everything still says Free after activating | Activate on the same hostname the key is locked to. `localhost` is exempt; production domains are not. |
+| A key I minted will not activate on my own phone | Your phone is the owner device: use the Free/Pro switch instead of a customer key, or mint the key with **Lock to domain** blank. |
+| "This device is not registered." on a phone that was registered | The owner token expired (1 year) or `LICENSE_SECRET` was rotated. Enter `ADMIN_PASSWORD` and register the device again. |
+| Operator panel still works after **Forget this device** | That phone still has a valid cached recognition; reload the app. The server token is gone immediately. |
 
 ### Two rules to remember
 
