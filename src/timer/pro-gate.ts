@@ -29,7 +29,7 @@
    agree. The previous value is remembered and restored on deactivation.
    ========================================================================== */
 
-import { PRO_LIMITS, getProState } from '../pro/license';
+import { PRO_LIMITS, getProState, openProPanel } from '../pro/license';
 
 const SETTINGS_KEY = 'lnr_timer_v2';
 const PREV_BRAND_KEY = 'lnr_pro_prev_brand';
@@ -39,11 +39,15 @@ const BRAND_FIELDS = ['stBrandOverlayInput', 'brandOverlayInput'];
 const WATERMARK_FIELDS = ['stWatermarkInput', 'watermarkInput'];
 
 /** File input id -> the list the engine renders its clips into. */
-const UPLOAD_LISTS: Record<string, string> = {
-  promoInput: 'promoList',
-  adminPromoFilesInput: 'adminPromoList',
-  adminPromoFolderInput: 'adminPromoList'
+const UPLOAD_LISTS: Record<string, { listId: string; kind: 'video' | 'promo' }> = {
+  videoInput: { listId: 'clipList', kind: 'video' },
+  promoInput: { listId: 'promoList', kind: 'promo' },
+  adminPromoFilesInput: { listId: 'adminPromoList', kind: 'promo' },
+  adminPromoFolderInput: { listId: 'adminPromoList', kind: 'promo' }
 };
+
+/** Prerecorded videos a Free account may upload. */
+const FREE_VIDEO_CLIPS = 1;
 
 /** Controls that make up the promo rotation sequence. */
 const SEQUENCE_CONTROLS = ['adminPromoOrder', 'adminPromoDisplay'];
@@ -173,6 +177,59 @@ function applyUiState(): void {
     control.disabled = !licence;
     control.title = licence ? '' : 'Promo rotation is a Pro feature';
   });
+
+  applyVideoTierUi();
+}
+
+/**
+ * The upload dropzone note and its upgrade link.
+ *
+ * The note lives in the markup (`#videoTierLimitNote`); the link is created
+ * here as a SIBLING of the dropzone label, never inside it — a link inside a
+ * <label> would open the file picker when tapped.
+ */
+function applyVideoTierUi(): void {
+  const licence = getProState().active;
+  const note = document.getElementById('videoTierLimitNote');
+  if (note) {
+    note.textContent = licence
+      ? `Pro: up to ${PRO_LIMITS.videoClips} videos (MP4/WebM/MOV) \u00b7 stored locally on device`
+      : `Free: ${FREE_VIDEO_CLIPS} video. Pro: up to ${PRO_LIMITS.videoClips}.`;
+  }
+
+  const drop = document.getElementById('videoDrop');
+  if (!drop) return;
+
+  let bar = document.getElementById('videoTierUpgrade');
+  if (!bar) {
+    bar = document.createElement('p');
+    bar.id = 'videoTierUpgrade';
+    bar.className = 'video-tier-upgrade';
+
+    const text = document.createElement('span');
+    text.id = 'videoTierUpgradeText';
+    bar.appendChild(text);
+
+    const link = document.createElement('a');
+    link.id = 'videoTierUpgradeLink';
+    link.href = '#';
+    link.textContent = 'Upgrade to Pro';
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      openProPanel();
+    });
+    bar.appendChild(link);
+
+    drop.insertAdjacentElement('afterend', bar);
+  }
+
+  const text = document.getElementById('videoTierUpgradeText');
+  const link = document.getElementById('videoTierUpgradeLink');
+  bar.hidden = licence;
+  if (!licence) {
+    if (text) text.textContent = `Free includes ${FREE_VIDEO_CLIPS} video. `;
+    if (link) link.hidden = false;
+  }
 }
 
 /**
@@ -219,16 +276,34 @@ function onChangeCapture(event: Event): void {
   const id = fieldId(event);
   if (!id) return;
 
-  /* --- promo clip uploads --- */
-  const listId = UPLOAD_LISTS[id];
-  if (listId) {
+  /* --- clip / promo uploads --- */
+  const upload = UPLOAD_LISTS[id];
+  if (upload) {
     const input = event.target as HTMLInputElement;
     const incoming = input.files ? input.files.length : 0;
     if (!incoming) return;
 
     const state = getProState();
+    const existing = document.getElementById(upload.listId)?.childElementCount ?? 0;
+
+    /* Videos: 1 on Free, 3 on Pro. Only new uploads are blocked — clips
+       already on the device are never removed by the gate. */
+    if (upload.kind === 'video') {
+      const limit = state.active ? PRO_LIMITS.videoClips : FREE_VIDEO_CLIPS;
+      if (existing + incoming > limit) {
+        event.preventDefault();
+        event.stopPropagation();
+        input.value = '';
+        notify(
+          state.active
+            ? `Pro allows up to ${limit} videos. Remove one first.`
+            : `Free includes ${FREE_VIDEO_CLIPS} video. Activate a Pro key to upload up to ${PRO_LIMITS.videoClips}.`
+        );
+      }
+      return;
+    }
+
     const limit = state.active ? PRO_LIMITS.promoClips : 0;
-    const existing = document.getElementById(listId)?.childElementCount ?? 0;
 
     if (limit === 0) {
       event.preventDefault();
