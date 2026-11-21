@@ -1,0 +1,547 @@
+/* ==========================================================================
+   breaks.css — quiz & anecdote breaks (video engine)
+   --------------------------------------------------------------------------
+   Two surfaces:
+     · the setup panel injected under the video upload list
+     · the break card overlaid on the video stage during playback
+   Mobile-first: every control is at least 44px tall, and the card scrolls
+   inside the stage instead of being clipped.
+   ========================================================================== */
+
+.vbreak-panel {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(217, 171, 99, 0.24);
+  border-radius: 14px;
+  background: linear-gradient(170deg, rgba(23, 36, 30, 0.92), rgba(11, 18, 15, 0.96));
+  color: #e8e1cf;
+}
+
+.vbreak-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.vbreak-title {
+  margin: 0 0 4px;
+  font-family: var(--display, ui-serif, Georgia, serif);
+  font-size: 17px;
+  letter-spacing: 0.01em;
+  color: #f6efdd;
+}
+
+.vbreak-sub {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #9aab9f;
+  max-width: 46ch;
+}
+
+/* ------------------------------------------------------------------ switch */
+
+.vbreak-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 0 4px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  user-select: none;
+}
+
+.vbreak-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.vbreak-switch-track {
+  position: relative;
+  width: 50px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgba(217, 171, 99, 0.35);
+  background: rgba(240, 232, 212, 0.08);
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.vbreak-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #cdd7cf;
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.vbreak-switch input:checked + .vbreak-switch-track {
+  background: rgba(217, 171, 99, 0.34);
+  border-color: rgba(217, 171, 99, 0.72);
+}
+
+.vbreak-switch input:checked + .vbreak-switch-track::after {
+  transform: translateX(20px);
+  background: #f6dfb3;
+}
+
+.vbreak-switch input:focus-visible + .vbreak-switch-track {
+  outline: 2px solid rgba(217, 171, 99, 0.8);
+  outline-offset: 3px;
+}
+
+.vbreak-switch-label {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b9c6bc;
+  min-width: 24px;
+}
+
+.vbreak-switch.is-on .vbreak-switch-label {
+  color: #f0cf95;
+}
+
+.vbreak-switch.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ------------------------------------------------------------------ locked */
+
+.vbreak-locked {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed rgba(217, 171, 99, 0.35);
+  background: rgba(217, 171, 99, 0.06);
+  font-size: 12.5px;
+  color: #c7d0c8;
+}
+
+.vbreak-locked p {
+  margin: 0;
+}
+
+.vbreak-locked a {
+  color: #f0cf95;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* -------------------------------------------------------------------- body */
+
+.vbreak-body {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vbreak-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.vbreak-field {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #93a498;
+}
+
+.vbreak-select {
+  min-height: 44px;
+  min-width: 160px;
+  flex: 1 1 180px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(240, 232, 212, 0.16);
+  background: rgba(8, 14, 11, 0.85);
+  color: #ece5d6;
+  font-size: 14px;
+}
+
+.vbreak-attached {
+  margin: 0;
+  font-size: 12.5px;
+  color: #9aab9f;
+}
+
+.vbreak-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.vbreak-btn {
+  min-height: 46px;
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(217, 171, 99, 0.42);
+  background: linear-gradient(180deg, rgba(217, 171, 99, 0.18), rgba(217, 171, 99, 0.09));
+  color: #f7edd8;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.vbreak-btn:hover,
+.vbreak-btn:focus-visible {
+  background: rgba(217, 171, 99, 0.26);
+  border-color: rgba(217, 171, 99, 0.7);
+}
+
+.vbreak-btn-quiet {
+  background: rgba(240, 232, 212, 0.06);
+  border-color: rgba(240, 232, 212, 0.2);
+  color: #dcd5c5;
+}
+
+.vbreak-status {
+  margin: 0;
+  min-height: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #a9b8ad;
+}
+
+.vbreak-status[data-state='ok'] {
+  color: #cfe3c3;
+}
+
+.vbreak-status[data-state='error'] {
+  color: #f0b9a4;
+}
+
+.vbreak-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(240, 232, 212, 0.1);
+}
+
+.vbreak-link {
+  min-height: 44px;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: #f0cf95;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.vbreak-dot {
+  color: #6d7b71;
+}
+
+.vbreak-note {
+  margin: 8px 0 0;
+  min-height: 16px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #93a498;
+}
+
+/* ----------------------------------------------------- video tier upgrade */
+
+.video-tier-upgrade {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: #9aab9f;
+}
+
+.video-tier-upgrade a {
+  color: #f0cf95;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.video-tier-upgrade[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------- playback overlay */
+
+.vbreak-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(10px, 2.4cqw, 30px);
+  background:
+    radial-gradient(70% 70% at 50% 30%, rgba(24, 42, 33, 0.9) 0%, rgba(4, 9, 7, 0.97) 72%),
+    #040907;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.vbreak-overlay[hidden] {
+  display: none;
+}
+
+.vbreak-card {
+  width: min(100%, 720px);
+  max-height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.4cqw, 16px);
+  padding: clamp(14px, 2.2cqw, 30px);
+  border-radius: clamp(12px, 1.4cqw, 18px);
+  color: #f2ecdc;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.9);
+  animation: vbreak-rise 240ms ease both;
+}
+
+@keyframes vbreak-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Three rotating looks, so consecutive breaks do not feel identical. */
+.vbreak-style-1 {
+  background: linear-gradient(160deg, #17281f 0%, #0b1511 68%);
+  border: 1px solid rgba(217, 171, 99, 0.34);
+  border-left: 5px solid rgba(217, 171, 99, 0.75);
+}
+
+.vbreak-style-2 {
+  background:
+    radial-gradient(90% 120% at 50% 0%, rgba(214, 158, 74, 0.18) 0%, transparent 60%),
+    linear-gradient(200deg, #141a26 0%, #080b12 72%);
+  border: 1px solid rgba(214, 158, 74, 0.28);
+  text-align: center;
+  align-items: center;
+}
+
+.vbreak-style-3 {
+  background: linear-gradient(180deg, #201a12 0%, #0d0a07 100%);
+  border: 1px solid rgba(232, 205, 160, 0.24);
+  border-top: 5px solid rgba(217, 171, 99, 0.8);
+}
+
+.vbreak-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.vbreak-kicker {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: clamp(10px, 1.3cqw, 13px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #e2bf88;
+}
+
+.vbreak-counter {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: clamp(10px, 1.2cqw, 12px);
+  color: #8d9c92;
+}
+
+.vbreak-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  width: 100%;
+  padding-bottom: 2px;
+}
+
+.vbreak-meta-title {
+  font-family: var(--display, ui-serif, Georgia, serif);
+  font-size: clamp(14px, 1.8cqw, 21px);
+  color: #f6efdd;
+}
+
+.vbreak-meta-church {
+  font-size: clamp(11px, 1.3cqw, 14px);
+  letter-spacing: 0.04em;
+  color: #a3b2a9;
+}
+
+.vbreak-q {
+  margin: 0;
+  font-family: var(--display, ui-serif, Georgia, serif);
+  font-size: clamp(19px, 3.1cqw, 34px);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: #fbf7ee;
+  text-wrap: balance;
+}
+
+.vbreak-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.vbreak-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 14px;
+  border-radius: 11px;
+  border: 1px solid rgba(240, 232, 212, 0.14);
+  border-left: 3px solid rgba(217, 171, 99, 0.42);
+  background: rgba(245, 239, 226, 0.05);
+  color: #ece5d6;
+  font: inherit;
+  font-size: clamp(14px, 1.9cqw, 19px);
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vbreak-opt:disabled {
+  cursor: default;
+}
+
+.vbreak-opt.is-correct {
+  background: rgba(148, 196, 122, 0.18);
+  border-color: rgba(148, 196, 122, 0.7);
+  border-left-color: #94c47a;
+  color: #f2ffe9;
+}
+
+.vbreak-opt.is-wrong {
+  background: rgba(214, 110, 88, 0.16);
+  border-color: rgba(214, 110, 88, 0.6);
+  color: #ffe9e2;
+}
+
+.vbreak-opt-badge {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(217, 171, 99, 0.16);
+  border: 1px solid rgba(217, 171, 99, 0.38);
+  color: #e8cfa4;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.vbreak-opt.is-correct .vbreak-opt-badge {
+  background: #94c47a;
+  border-color: #94c47a;
+  color: #10200c;
+}
+
+.vbreak-clock {
+  align-self: flex-start;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: #c8b48d;
+}
+
+.vbreak-reveal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding-top: 10px;
+  border-top: 1px solid rgba(240, 232, 212, 0.14);
+  animation: vbreak-rise 220ms ease both;
+}
+
+.vbreak-answer {
+  margin: 0;
+  font-size: clamp(14px, 1.8cqw, 19px);
+  font-weight: 700;
+  color: #f0cf95;
+}
+
+.vbreak-explain {
+  margin: 0;
+  font-size: clamp(13px, 1.6cqw, 17px);
+  line-height: 1.45;
+  color: #ddd6c6;
+}
+
+.vbreak-footer-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.vbreak-anecdote-title {
+  margin: 0;
+  font-family: var(--display, ui-serif, Georgia, serif);
+  font-size: clamp(19px, 2.6cqw, 30px);
+  color: #f6efdd;
+}
+
+.vbreak-anecdote-text {
+  margin: 0;
+  font-size: clamp(14px, 1.9cqw, 20px);
+  line-height: 1.55;
+  color: #e6dfd0;
+  white-space: pre-wrap;
+}
+
+.vbreak-host-note {
+  margin: 0;
+  font-size: clamp(12px, 1.4cqw, 14px);
+  font-style: italic;
+  color: #a3b2a9;
+}
+
+/* Short/narrow stages: keep the card usable on a phone in portrait. */
+@media (max-width: 560px) {
+  .vbreak-card {
+    gap: 12px;
+    padding: 16px;
+  }
+  .vbreak-head {
+    flex-direction: column;
+  }
+  .vbreak-switch {
+    align-self: flex-start;
+  }
+  .vbreak-actions .vbreak-btn {
+    flex: 1 1 100%;
+  }
+}
