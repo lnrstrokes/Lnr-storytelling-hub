@@ -21,11 +21,14 @@
      · gives an extension-less file a .txt name before the parser sees it
      · reports "file loaded" (or the parser's own error) in the panel
      · persists Sequential / Shuffle and paints the selected pill
+     · keeps a quiet music bed under the quiz/anecdote break card
 
    The engine reads the same order key when it hands off to the next clip
    (see clipOrderPlugin in vite.config.ts), so a change applies from the next
    clip without a reload.
    ========================================================================== */
+
+import { startBreakBed, stopBreakBed } from './break-audio';
 
 const ORDER_KEY = 'lnr_video_order_v1';
 
@@ -230,6 +233,46 @@ function statusFingerprint(): string {
   return status ? `${status.dataset.state || ''}|${status.textContent || ''}` : '';
 }
 
+/* --------------------------------------------------------------------------
+   Break sound
+   --------------------------------------------------------------------------
+   A break pauses the clip, so the stream falls into silence for 20-40s right
+   when viewers decide whether to stay. The break module owns that card, and we
+   leave it untouched: we only watch the card's `hidden` attribute and fade a
+   quiet music bed in while it is on screen, then out before the clip resumes.
+   -------------------------------------------------------------------------- */
+let breakWatchStarted = false;
+
+function installBreakSound(): void {
+  if (breakWatchStarted) return;
+  breakWatchStarted = true;
+
+  let card: HTMLElement | null = null;
+  let sounding = false;
+
+  const sync = (): void => {
+    const visible = !!card && !card.hidden;
+    if (visible === sounding) return;
+    sounding = visible;
+    if (visible) startBreakBed();
+    else stopBreakBed();
+  };
+
+  const cardObserver = new MutationObserver(sync);
+
+  const findCard = (): void => {
+    const found = document.querySelector<HTMLElement>('.vbreak-overlay');
+    if (found === card) return;
+    cardObserver.disconnect();
+    card = found;
+    if (card) cardObserver.observe(card, { attributes: true, attributeFilter: ['hidden', 'class'] });
+    sync();
+  };
+
+  new MutationObserver(findCard).observe(document.body, { childList: true, subtree: true });
+  findCard();
+}
+
 let installed = false;
 
 /** Call once, after installVideoBreaks() has built the panel. */
@@ -237,6 +280,17 @@ export function installVideoSetup(root: HTMLElement): void {
   if (installed) return;
   installed = true;
 
-  installRotation(root);
-  installUploads();
+  /* Sound first, and never behind another step: a break must not be silent
+     just because a control above could not be rewired. */
+  installBreakSound();
+  try {
+    installRotation(root);
+  } catch {
+    /* the panel stays usable */
+  }
+  try {
+    installUploads();
+  } catch {
+    /* the panel stays usable */
+  }
 }
