@@ -26,9 +26,13 @@
    minting if the key must travel between domains.
    ========================================================================== */
 
+import { getOwnerMode, isOwnerDevice } from './owner';
+
 export interface ProLicense {
   v: 1;
   tier: 'pro';
+  /** True for the owner-device switch: it is not a signed customer key. */
+  owner?: boolean;
   plan: string;
   /** Channel watermark shown on the stage, e.g. "LNR". */
   watermark: string;
@@ -160,12 +164,43 @@ function evaluate(rec: StoredRecord | null): ProState {
 
 let state: ProState = evaluate(readRecord());
 
+/**
+ * The owner device with the switch on Pro.
+ *
+ * This is a local mode, not a licence: it carries no brand and locks nothing,
+ * precisely so the studio's own branding and settings stay editable.
+ */
+function ownerState(): ProState {
+  return {
+    active: true,
+    license: {
+      v: 1,
+      tier: 'pro',
+      owner: true,
+      plan: 'custom',
+      watermark: '',
+      site: '',
+      brand: '',
+      email: '',
+      lockBrand: false,
+      iat: 0,
+      exp: Date.now() + 100 * 365 * 24 * 60 * 60 * 1000
+    },
+    checkedAt: Date.now(),
+    error: ''
+  };
+}
+
+function ownerProActive(): boolean {
+  return isOwnerDevice() && getOwnerMode() === 'pro';
+}
+
 export function getProState(): ProState {
-  return state;
+  return ownerProActive() ? ownerState() : state;
 }
 
 export function isPro(): boolean {
-  return state.active;
+  return getProState().active;
 }
 
 function setState(next: ProState): ProState {
@@ -334,6 +369,14 @@ export function installProBridge(): void {
     void refreshPro();
   };
   window.addEventListener('focus', onFocus);
+
+  /* Switching the owner device between Free and Pro must reach every
+     surface that renders tier state (the gate, the dock, the engine). */
+  window.addEventListener('lnr:owner-changed', () => {
+    state = evaluate(readRecord());
+    emit();
+  });
+
   void refreshPro();
 }
 
