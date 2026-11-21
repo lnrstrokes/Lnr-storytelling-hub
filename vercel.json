@@ -1,9 +1,17 @@
+
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "installCommand": "npm install --no-audit --no-fund",
   "outputDirectory": "dist",
   "framework": "vite",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "destination": "https://lnr-storytelling-hub.vercel.app/",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     { "source": "/timer", "destination": "/index.html" },
     { "source": "/timer/(.*)", "destination": "/index.html" },
