@@ -79,7 +79,8 @@ function writeSettings(settings: Settings): void {
 function lockedBrand(): string | null {
   const state = getProState();
   const licence = state.active ? state.license : null;
-  return licence && licence.lockBrand ? licence.brand : null;
+  /* The owner-device switch carries no brand: the studio keeps its own. */
+  return licence && licence.lockBrand && !licence.owner ? licence.brand : null;
 }
 
 /* ------------------------------------------------------------------ toast */
@@ -145,12 +146,14 @@ function watchBrandFields(): void {
 function applyUiState(): void {
   const state = getProState();
   const licence = state.active ? state.license : null;
+  /* Customer keys carry a brand; the owner device does not. */
+  const branded = licence && !licence.owner ? licence : null;
   const brand = lockedBrand();
 
   BRAND_FIELDS.forEach((id) => {
     const input = document.getElementById(id) as HTMLInputElement | null;
     if (!input) return;
-    if (licence) input.value = licence.brand;
+    if (branded) input.value = branded.brand;
     input.readOnly = !!brand;
     input.classList.toggle('is-locked', !!brand);
     input.title = brand
@@ -161,7 +164,7 @@ function applyUiState(): void {
   WATERMARK_FIELDS.forEach((id) => {
     const input = document.getElementById(id) as HTMLInputElement | null;
     if (!input) return;
-    if (licence && licence.watermark) input.value = licence.watermark;
+    if (branded && branded.watermark) input.value = branded.watermark;
   });
 
   const note = document.getElementById('promoTierLimitNote');
@@ -341,6 +344,26 @@ function syncSettingsToLicence(): boolean {
   const state = getProState();
   const settings = readSettings();
   const currentBrand = typeof settings.brand === 'string' ? settings.brand : '';
+
+  /* Owner Pro keeps the studio's own branding: restore whatever a customer
+     key replaced, then stop. */
+  if (state.active && state.license && state.license.owner) {
+    let previous: string | null = null;
+    try {
+      previous = localStorage.getItem(PREV_BRAND_KEY);
+    } catch {
+      previous = null;
+    }
+    if (previous === null) return false;
+    settings.brand = previous || 'LNR Studio';
+    writeSettings(settings);
+    try {
+      localStorage.removeItem(PREV_BRAND_KEY);
+    } catch {
+      /* ignore */
+    }
+    return true;
+  }
 
   if (state.active && state.license) {
     const licence = state.license;

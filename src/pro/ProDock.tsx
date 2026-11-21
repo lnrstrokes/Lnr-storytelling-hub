@@ -7,6 +7,14 @@ import {
   refreshPro,
   type ProState
 } from './license';
+import {
+  checkOwner,
+  getDeviceId,
+  getOwnerMode,
+  isOwnerDevice,
+  setOwnerMode,
+  type OwnerMode
+} from './owner';
 import './pro.css';
 
 function expiryLabel(state: ProState): string {
@@ -36,17 +44,35 @@ export default function ProDock() {
   const [keyInput, setKeyInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [owner, setOwner] = useState(() => isOwnerDevice());
+  const [mode, setMode] = useState<OwnerMode>(() => getOwnerMode());
 
   useEffect(() => {
     const sync = () => setState(getProState());
     const show = () => setOpen(true);
+    const syncOwner = () => {
+      setOwner(isOwnerDevice());
+      setMode(getOwnerMode());
+      setState(getProState());
+    };
     window.addEventListener('lnr:pro-changed', sync);
     window.addEventListener('lnr:pro-open', show);
+    window.addEventListener('lnr:owner-changed', syncOwner);
     void refreshPro();
     return () => {
       window.removeEventListener('lnr:pro-changed', sync);
       window.removeEventListener('lnr:pro-open', show);
+      window.removeEventListener('lnr:owner-changed', syncOwner);
     };
+  }, []);
+
+  /* Boot check: quietly confirm this is still the owner device. */
+  useEffect(() => {
+    void checkOwner().then(() => {
+      setOwner(isOwnerDevice());
+      setMode(getOwnerMode());
+      setState(getProState());
+    });
   }, []);
 
   const submit = useCallback(async () => {
@@ -72,6 +98,7 @@ export default function ProDock() {
 
   const active = state.active;
   const unlock = state.license;
+  const deviceTag = getDeviceId().slice(0, 8).toUpperCase();
 
   return (
     <div className="lnr-pro">
@@ -80,22 +107,55 @@ export default function ProDock() {
         className={'lnr-pro-pill' + (active ? ' is-pro' : '')}
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        title={active ? 'Pro licence active — open licence panel' : 'Free plan — open the Pro panel'}
+        title={
+          owner
+            ? `Owner device ${deviceTag} — ${mode === 'pro' ? 'Pro' : 'Free'} mode`
+            : active
+              ? 'Pro licence active — open licence panel'
+              : 'Free plan — open the Pro panel'
+        }
       >
         <span className="lnr-pro-dot" aria-hidden="true" />
-        {active ? 'Pro' : 'Free'}
+        {owner ? (mode === 'pro' ? 'Pro' : 'Free') : active ? 'Pro' : 'Free'}
       </button>
 
       {open && (
         <div className="lnr-pro-panel" role="dialog" aria-label="Pro licence">
           <div className="lnr-pro-head">
-            <b>{active ? 'Pro licence active' : 'Free plan'}</b>
+            <b>{owner ? 'Owner device' : active ? 'Pro licence active' : 'Free plan'}</b>
             <button type="button" className="lnr-pro-x" onClick={() => setOpen(false)} aria-label="Close">
               ✕
             </button>
           </div>
 
-          {active && unlock ? (
+          {owner ? (
+            <>
+              <p className="lnr-pro-line">
+                <span>This device</span>
+                <b>{deviceTag} · registered</b>
+              </p>
+              <p className="lnr-pro-line">
+                <span>Current mode</span>
+                <b>{mode === 'pro' ? 'Pro' : 'Free'}</b>
+              </p>
+              <p className="lnr-pro-note">
+                The owner device switches tier freely and never locks its own branding. Customer
+                keys still work normally on other devices.
+              </p>
+              <button
+                type="button"
+                className="lnr-pro-btn"
+                onClick={() => {
+                  const next: OwnerMode = mode === 'pro' ? 'free' : 'pro';
+                  setMode(next);
+                  setOwnerMode(next);
+                  setMessage(next === 'pro' ? 'Owner device is now Pro.' : 'Owner device is now Free.');
+                }}
+              >
+                Switch to {mode === 'pro' ? 'Free' : 'Pro'} mode
+              </button>
+            </>
+          ) : active && unlock ? (
             <>
               <p className="lnr-pro-line">
                 <span>Brand strap</span>
