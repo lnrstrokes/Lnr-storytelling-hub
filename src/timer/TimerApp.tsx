@@ -3,6 +3,7 @@ const Analytics = () => null;
 import timerMarkup from './timer.html?raw';
 import './timer.css';
 import './offer.css';
+import './breaks.css';
 import { initLibrary } from './player-library.ts';
 import { loadBuiltInBanks } from './built-in-banks.ts';
 import { loadStoryLibrary } from './story-library.ts';
@@ -12,6 +13,7 @@ import './demo-content.ts';
 // engine, which captures the reference at boot.
 import './speech.js';
 import { installProGate } from './pro-gate.ts';
+import { installVideoBreaks } from './video-breaks.ts';
 
 declare global {
   interface Window {
@@ -93,6 +95,7 @@ export default function TimerApp() {
     // Installed BEFORE the engine boots: the gate listens on `document` in the
     // capture phase, so it always sees a gated control's event first.
     installProGate(host);
+    installVideoBreaks(host);
 
     let cancelled = false;
     void Promise.all([

@@ -54,6 +54,8 @@ export interface ProState {
 }
 
 export const PRO_LIMITS = {
+  /** Prerecorded videos a Pro licence may upload. Free: 1. */
+  videoClips: 3,
   /** Break clips a Pro licence may upload. Free: 0. */
   promoClips: 3,
   /** Break clip length cap, in seconds (unchanged by tier). */
