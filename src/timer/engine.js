@@ -931,6 +931,11 @@
         save();
         refreshPromoText();
         syncInputs();
+        /* Turning breaks off must also end a break already on air: the normal
+           exit path finalises its ad log and returns to where it came from. */
+        if (!S.promoAdsEnabled && live.phase === 'promo') {
+          enterPhase(live.promoReturnPhase || homePhase(), false);
+        }
         toast(S.promoAdsEnabled ? 'Channel / partner breaks enabled' : 'Channel breaks turned off (uninterrupted)');
       });
     });
@@ -1653,6 +1658,7 @@
     host.innerHTML = '';
     items.forEach(function (cc, i) {
       var li = document.createElement('li');
+      if (cc.id) li.setAttribute('data-clip-id', cc.id);
       var name = document.createElement('span');
       name.className = 'clip-name';
       name.textContent = (i + 1) + '. ' + cc.name;
@@ -1769,7 +1775,7 @@
       if (kind === 'admin_promo') adminPromos.push(rec);
       else if (kind === 'promo') {
         promos.push(rec);
-        S.promoAdsEnabled = true;
+        /* Uploading a clip never turns the break schedule on. */
         save();
       } else {
         clips.push(rec);
@@ -1781,7 +1787,9 @@
         if (av) av.loop = (clips.length === 1);
         if (clips.length > 1) preloadStandbyClip((live.clipIndex + 1) % clips.length);
       }
-      toast('Added ' + f.name + (d ? ' \u00b7 ' + clock(d * 1000) : ''));
+      toast(kind === 'promo' && !S.promoAdsEnabled
+        ? 'Promo breaks are off. Turn them on to use this clip.'
+        : ('Added ' + f.name + (d ? ' \u00b7 ' + clock(d * 1000) : '')));
     }).catch(function () {
       if (kind === 'promo' && pendingPromoUploads > 0) pendingPromoUploads--;
       if (kind === 'clip' && pendingClipUploads > 0) pendingClipUploads--;
@@ -5133,6 +5141,9 @@
       }
       return live.promoReturnPhase || homePhase();
     }
+    /* Breaks off: never schedule a promo. Continue with the current
+       non-promo phase instead (restarting it if it just ran out). */
+    if (!S.promoAdsEnabled) return phase;
     return 'promo';
   }
 
@@ -5320,6 +5331,11 @@
   function enterPhase(phase, first, opts) {
     opts = opts || {};
     var prevPhase = live.phase;
+    /* Last line of defence: a promo phase can never be entered while the
+       toggle is off, whichever path asked for it. */
+    if (phase === 'promo' && !S.promoAdsEnabled) {
+      phase = prevPhase && prevPhase !== 'promo' ? prevPhase : homePhase();
+    }
     if (prevPhase === 'promo' && phase !== 'promo') {
       finalizeActiveAdLog();
     }
@@ -5739,6 +5755,10 @@
           }
         }
       } else if (live.phase === 'promo') {
+        if (!S.promoAdsEnabled) {
+          enterPhase(live.promoReturnPhase || homePhase(), false);
+          return;
+        }
         var av = activeVideo();
         var activePromos = effectivePromoList();
         var promoPlaying = activePromos.length > 0 && av && !av.hidden && !av.ended && isFinite(av.duration) && av.duration > 0 && !av.paused;
