@@ -24,8 +24,8 @@ index a0a194e..d93a04e 100644
  
    SEQUENCE_CONTROLS.forEach((id) => {
 @@ -181,6 +184,16 @@ function applyUiState(): void {
-       control.title = licence ? '' : 'Promo rotation is a Pro feature';
-     });
+     control.title = licence ? '' : 'Promo rotation is a Pro feature';
+   });
  
 +  /* Free has no promo uploads at all, so the picker is disabled rather than
 +     opening and rejecting the file afterwards. The preloaded promo ads are
