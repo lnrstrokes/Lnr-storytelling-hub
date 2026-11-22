@@ -55,7 +55,7 @@
 
   /* ---------- settings ---------- */
   var DEFAULT_WATERMARK = 'LNR';
-  var DEFAULT_SITE = 'lnr-storytelling-hub.vercel.app';
+  var DEFAULT_SITE = 'https://lnr-storytelling-hub.vercel.app/';
   var DEFAULT_BRAND = 'LNR STUDIO';
 
   var defaults = {
@@ -97,7 +97,8 @@
     voiceRate: 0.96,
     watermark: DEFAULT_WATERMARK,
     site: DEFAULT_SITE,
-    safeDefault: false
+    safeDefault: false,
+    isPro: false
   };
 
   var S = {};
@@ -374,7 +375,8 @@
     'startLabel', 'startHint', 'startSummary', 'brandHome', 'savedTag',
     'quickStart', 'topbarStartBtn',
     /* multi-page views & wizard */
-    'pageHome', 'pageStudio', 'pageSettings', 'pageContact',
+    'pageHome', 'pageStudio', 'pagePricing', 'pageSettings', 'pageContact',
+    'pricingFreeBtn', 'pricingProBtn',
     'homeGoStudioBtn',
     'wizContextTag', 'wizTab1', 'wizTab2', 'wizTab3',
     'wizStep1', 'wizStep2', 'wizStep3', 'wizStep2Title',
@@ -641,11 +643,12 @@
   }
 
   function setPage(page, opts) {
-    var target = (page === 'studio' || page === 'settings' || page === 'contact') ? page : 'home';
+    var target = (page === 'studio' || page === 'settings' || page === 'contact' || page === 'pricing') ? page : 'home';
     currentPage = target;
     [
       [el.pageHome, 'home'],
       [el.pageStudio, 'studio'],
+      [el.pagePricing, 'pricing'],
       [el.pageSettings, 'settings'],
       [el.pageContact, 'contact']
     ].forEach(function (pair) {
@@ -683,6 +686,7 @@
       return;
     }
     if (h === 'settings') { setPage('settings', { updateHash: false }); return; }
+    if (h === 'pricing') { setPage('pricing', { updateHash: false }); return; }
     if (h === 'contact') { setPage('contact', { updateHash: false }); return; }
     setPage('home', { updateHash: false });
   }
@@ -700,6 +704,12 @@
     });
     on(el.homeGoStudioBtn, 'click', function () { setPage('studio'); setWizardStep(1); });
     on(el.topbarStartBtn, 'click', function () { setPage('studio'); setWizardStep(1); });
+    on(el.pricingProBtn, 'click', function () {
+      S.isPro = true;
+      save();
+      syncInputs();
+      toast('Pro Studio license activated! Promo breaks can now be toggled off freely.');
+    });
     on(el.wizToStep2Btn, 'click', function () { setWizardStep(2); });
     on(el.wizToStep3Btn, 'click', function () { setWizardStep(3); });
     on(el.wizBackTo1Btn, 'click', function () { setWizardStep(1); });
@@ -847,6 +857,7 @@
   }
 
   function syncInputs() {
+    if (!S.isPro) S.promoAdsEnabled = true;
     var promoChecked = !!S.promoAdsEnabled;
     var blockMax = String(maxBlockMins());
     var loopMax = '168';
@@ -936,6 +947,15 @@
     });
     [el.setupPromoEnabled, el.promoEnabledDrawer].forEach(function (chk) {
       on(chk, 'change', function () {
+        if (!S.isPro && !chk.checked) {
+          chk.checked = true;
+          S.promoAdsEnabled = true;
+          save();
+          refreshPromoText();
+          syncInputs();
+          toast('Promo breaks are required on Free tier. Upgrade to Pro Studio ($19/mo) to disable breaks.', true);
+          return;
+        }
         S.promoAdsEnabled = !!chk.checked;
         save();
         refreshPromoText();

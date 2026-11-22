@@ -9,6 +9,7 @@
     <nav class="topnav" aria-label="Site">
       <a class="topnav-link is-active" href="#home" data-page-link="home">Home</a>
       <a class="topnav-link" href="#studio" data-page-link="studio">Studio</a>
+      <a class="topnav-link" href="#pricing" data-page-link="pricing">Pricing</a>
       <a class="topnav-link" href="#settings" data-page-link="settings">Settings</a>
       <a class="topnav-link" href="#contact" data-page-link="contact">Contact</a>
     </nav>
@@ -801,7 +802,81 @@
       </div>
     </section>
 
-    <!-- PAGE 4: CONTACT -->
+    <!-- PAGE 4: PRICING -->
+    <section class="page-view" id="pagePricing" data-page="pricing" hidden>
+      <div class="page-head-row">
+        <div>
+          <p class="eyebrow">Plans &amp; Licensing</p>
+          <h1 class="page-title">Transparent studio pricing</h1>
+          <p class="page-sub">Unrivaled broadcast capabilities for creators, ministries, and live channels. Upgrade anytime with zero hidden fees.</p>
+        </div>
+        <span class="saved-tag">100% Secure &middot; Instant Activation</span>
+      </div>
+
+      <div class="pricing-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 32px;">
+        <article class="settings-card" style="display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--line);">
+          <div>
+            <div class="dsec-head">
+              <h3>Creator Free</h3>
+              <span class="dsec-tag">Active</span>
+            </div>
+            <div style="font-size: 32px; font-weight: 800; color: var(--cream); margin: 16px 0 8px;">$0 <span style="font-size: 14px; font-weight: 400; color: var(--muted);">/ forever</span></div>
+            <p style="font-size: 14px; color: var(--muted); margin-bottom: 20px;">Essential tools for getting started with live streaming quiz and storytelling engines.</p>
+            <ul style="list-style: none; padding: 0; margin: 0 0 24px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; color: var(--cream);">
+              <li>&#10003; 1,800+ Built-in Quiz &amp; Story Banks</li>
+              <li>&#10003; Active TTS Voice Reader</li>
+              <li>&#10003; Guess the Player SVG Cards</li>
+              <li>&#10003; Custom JSON Question Imports</li>
+              <li>&#10003; Stream-Safe Capture Mode</li>
+            </ul>
+          </div>
+          <button class="btn btn-quiet btn-lg" type="button" id="pricingFreeBtn" style="width: 100%;">Current Plan</button>
+        </article>
+
+        <article class="settings-card" style="display: flex; flex-direction: column; justify-content: space-between; border: 2px solid var(--brass); background: rgba(207,163,90,0.04); position: relative;">
+          <div style="position: absolute; top: -12px; right: 24px; background: var(--brass); color: #0b1411; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 3px 10px; border-radius: 12px; letter-spacing: .5px;">Most Popular</div>
+          <div>
+            <div class="dsec-head">
+              <h3>Pro Studio</h3>
+              <span class="dsec-tag" style="background: var(--brass); color: #0b1411;">Recommended</span>
+            </div>
+            <div style="font-size: 32px; font-weight: 800; color: var(--cream); margin: 16px 0 8px;">$19 <span style="font-size: 14px; font-weight: 400; color: var(--muted);">/ month</span></div>
+            <p style="font-size: 14px; color: var(--muted); margin-bottom: 20px;">Advanced automation, sermon loops, caption syncing, and partner break analytics.</p>
+            <ul style="list-style: none; padding: 0; margin: 0 0 24px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; color: var(--cream);">
+              <li>&#10003; Everything in Free</li>
+              <li>&#10003; <b>Sermon &amp; Message Quiz Loop Mode</b></li>
+              <li>&#10003; SRT / VTT Caption Parsing &amp; Sync</li>
+              <li>&#10003; Dual-Deck Seamless Video Looping</li>
+              <li>&#10003; Partner Break CSV Playback Logs</li>
+              <li>&#10003; Priority TTS Voice Support</li>
+            </ul>
+          </div>
+          <button class="btn btn-primary btn-lg" type="button" id="pricingProBtn" style="width: 100%;">Upgrade to Pro Studio</button>
+        </article>
+      </div>
+
+      <div class="settings-card" style="margin-top: 32px;">
+        <div class="dsec-head">
+          <h3>Frequently Asked Questions</h3>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 16px;">
+          <div>
+            <h4 style="color: var(--cream); font-size: 15px; margin-bottom: 6px;">Can I cancel anytime?</h4>
+            <p style="color: var(--muted); font-size: 13.5px; line-height: 1.5;">Yes, subscriptions are billed monthly and you can cancel with one click directly from your account settings.</p>
+          </div>
+          <div>
+            <h4 style="color: var(--cream); font-size: 15px; margin-bottom: 6px;">Does Pro unlock Sermon Loop?</h4>
+            <p style="color: var(--muted); font-size: 13.5px; line-height: 1.5;">Yes! Pro Studio fully unlocks the Sermon Loop AI questionnaire and caption sync engine.</p>
+          </div>
+          <div>
+            <h4 style="color: var(--cream); font-size: 15px; margin-bottom: 6px;">Is payment secure?</h4>
+            <p style="color: var(--muted); font-size: 13.5px; line-height: 1.5;">All transactions are encrypted and processed securely through industry-standard payment gateways.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PAGE 5: CONTACT -->
     <section class="page-view" id="pageContact" data-page="contact" hidden>
       <section class="contact" id="contact" aria-labelledby="contactTitle" style="margin-top:0">
         <div class="contact-copy">
@@ -1032,9 +1107,10 @@
   </main>
 
   <footer class="site-foot">
-    <span class="foot-brand">lnr Studio &mdash; lnr-storytelling-hub.vercel.app</span>
+    <span class="foot-brand">lnr Studio &mdash; https://lnr-storytelling-hub.vercel.app/</span>
     <nav class="foot-nav" aria-label="Footer">
       <a href="#studio" data-page-link="studio">Studio</a>
+      <a href="#pricing" data-page-link="pricing">Pricing</a>
       <a href="#settings" data-page-link="settings">Settings</a>
       <a href="#contact" data-page-link="contact">Contact</a>
       <a href="mailto:lnrstrokes@gmail.com">lnrstrokes@gmail.com</a>
