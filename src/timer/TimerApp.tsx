@@ -16,6 +16,9 @@ import { installProGate } from './pro-gate.ts';
 import { installVideoBreaks } from './video-breaks.ts';
 import { installVideoSetup } from './video-setup.ts';
 import { installAdminKeys } from './admin-keys.ts';
+// Install + streaming-route notice. Additive: injects its own markup, so
+// deleting these two lines removes every trace of it.
+import { initInstallNotice } from './install-notice.ts';
 
 declare global {
   interface Window {
@@ -100,6 +103,7 @@ export default function TimerApp() {
     installVideoBreaks(host);
     installVideoSetup(host);
     installAdminKeys(host);
+    initInstallNotice();
 
     let cancelled = false;
     void Promise.all([
