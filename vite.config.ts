@@ -74,6 +74,125 @@ function clipOrderPlugin(): Plugin {
   };
 }
 
+/*
+ * Reader guard for the engine's TTS queue.
+ *
+ * Two real-world failures made the onscreen reader go silent:
+ *
+ *   1. The boot primer spoke a blank utterance and then cancelled it in the
+ *      SAME task. Android Chrome can wedge its engine there, and the first
+ *      real sentence is swallowed.
+ *
+ *   2. A swallowed utterance fires neither onstart nor onend. The sequential
+ *      queue then waited on a chunk that was never spoken, so the reader went
+ *      quiet for the rest of the block while the scene advanced on its own
+ *      deadline.
+ *
+ * engine.js is the one file this project treats as read-only (see the clip
+ * order plugin above), so these are applied at build time instead. Every
+ * anchor must match exactly once: if engine.js ever drifts, the build fails
+ * rather than shipping a reader that silently dies mid-sentence.
+ */
+function readerGuardPlugin(): Plugin {
+  const edits: Array<{ name: string; find: string; replace: string }> = [
+    {
+      name: 'defer-primer-cancel',
+      find: '        synth.speak(primer);\n        synth.cancel();',
+      replace: [
+        '        synth.speak(primer);',
+        '        /* Do NOT cancel synchronously: on Android Chrome a cancel() in the',
+        '           same task as speak() can wedge the engine and swallow the first',
+        '           real utterance. Cancel once the prime has taken. */',
+        '        window.setTimeout(function () { try { synth.cancel(); } catch (e) {} }, 250);'
+      ].join('\n')
+    },
+    {
+      name: 'start-watchdog',
+      find: [
+        '      var advanced = false;',
+        '      function advance() {',
+        '        if (advanced) return;',
+        '        advanced = true;',
+        '        speechUtteranceEnded(gen, isReveal, u);'
+      ].join('\n'),
+      replace: [
+        '      var advanced = false;',
+        '      var started = false;',
+        '      var startTimer = 0;',
+        '',
+        '      /* START WATCHDOG. A swallowed utterance fires neither onstart nor',
+        '         onend, which used to leave the reader silent for the rest of the',
+        '         block. If no start is observed shortly, skip the chunk and keep',
+        '         reading: one lost line beats a dead reader. */',
+        '      function armStartWatchdog() {',
+        '        window.clearTimeout(startTimer);',
+        '        startTimer = window.setTimeout(function () {',
+        '          if (gen !== speechGen || started || advanced) return;',
+        '          advance();',
+        '        }, 4000);',
+        '      }',
+        '',
+        '      function advance() {',
+        '        if (advanced) return;',
+        '        advanced = true;',
+        '        window.clearTimeout(startTimer);',
+        '        speechUtteranceEnded(gen, isReveal, u);'
+      ].join('\n')
+    },
+    {
+      name: 'onstart-clears-watchdog',
+      find: [
+        '      u.onstart = function () {',
+        '        if (gen !== speechGen) return;'
+      ].join('\n'),
+      replace: [
+        '      u.onstart = function () {',
+        '        started = true;',
+        '        window.clearTimeout(startTimer);',
+        '        if (gen !== speechGen) return;'
+      ].join('\n')
+    },
+    {
+      name: 'arm-watchdog-on-speak',
+      find: [
+        '      try {',
+        '        synth.speak(u);',
+        '      } catch (e) {',
+        '        advance();',
+        '      }'
+      ].join('\n'),
+      replace: [
+        '      try {',
+        '        synth.speak(u);',
+        '        armStartWatchdog();',
+        '      } catch (e) {',
+        '        advance();',
+        '      }'
+      ].join('\n')
+    }
+  ];
+
+  return {
+    name: 'lnr-reader-guard',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/[\\/]src[\\/]timer[\\/]engine\.js$/.test(id)) return null;
+
+      let out = code;
+      for (const edit of edits) {
+        const parts = out.split(edit.find);
+        if (parts.length !== 2) {
+          this.error(
+            `engine.js: reader guard "${edit.name}" matched ${parts.length - 1} time(s), expected exactly 1`
+          );
+        }
+        out = parts.join(edit.replace);
+      }
+      return { code: out, map: null };
+    }
+  };
+}
+
 function localApiPlugin(): Plugin {
   return {
     name: 'lnr-local-api',
@@ -90,7 +209,7 @@ function localApiPlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
-    plugins: [clipOrderPlugin(), react(), tailwindcss(), localApiPlugin()],
+    plugins: [clipOrderPlugin(), readerGuardPlugin(), react(), tailwindcss(), localApiPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
