@@ -55,8 +55,12 @@
 
   /* ---------- settings ---------- */
   var DEFAULT_WATERMARK = 'LNR';
-  var DEFAULT_SITE = 'https://lnr-storytelling-hub.vercel.app/';
+  /* The site line is an address printed on the stage, not a link. No protocol
+     and no trailing slash, so the whole host fits the one-line stage slot. */
+  var DEFAULT_SITE = 'lnr-storytelling-hub.vercel.app';
   var DEFAULT_BRAND = 'LNR STUDIO';
+  /* Where a customer buys Pro. The pricing button opens this and nothing else. */
+  var PRO_CHECKOUT_URL = 'https://selar.com/399774111a';
 
   var defaults = {
     engine: 'quiz',
@@ -106,6 +110,10 @@
   Object.keys(defaults).forEach(function (k) {
     if (typeof S[k] === 'undefined' || S[k] === null) S[k] = defaults[k];
   });
+  /* Older saves kept the full URL (https://host/). The stage shows the site
+     line in a single ellipsised row, so a protocol only pushes the host out
+     of view — reduce every stored value to the bare host. */
+  S.site = normalizeSite(S.site) || DEFAULT_SITE;
   if (S.site === 'www.lnrstudio.com') S.site = DEFAULT_SITE;
   if (S.promoOverlayStyle === 'youtube-ad') S.promoOverlayStyle = 'disclosure';
   /* One-time move to the upbeat bed. Anyone who never touched the music
@@ -471,6 +479,43 @@
   ].forEach(function (id) { el[id] = $(id); });
 
   /* ---------- toast ---------- */
+  /** Bare host for the site line: no protocol, no trailing slash. */
+  function normalizeSite(value) {
+    return String(value == null ? '' : value)
+      .trim()
+      .replace(/^https?:\/\//i, '')
+      .replace(/^\/\//, '')
+      .replace(/\/+$/, '')
+      .slice(0, 42);
+  }
+
+  /**
+   * The tier the studio is actually licensed for.
+   *
+   * pro/license.ts owns this answer (a verified key or the owner device). The
+   * engine only reads it — a button click can never grant Pro.
+   */
+  function currentProTier() {
+    try {
+      if (window.LNR_PRO && typeof window.LNR_PRO.isPro === 'function') {
+        return !!window.LNR_PRO.isPro();
+      }
+    } catch (e) {
+      /* licence bridge not ready: treat the device as Free */
+    }
+    return false;
+  }
+
+  /** Send a plan button to the secure checkout (never to a local unlock). */
+  function openProCheckout() {
+    try {
+      window.open(PRO_CHECKOUT_URL, '_blank', 'noopener,noreferrer');
+      toast('Opening secure checkout. Activate your Pro key in the Pro panel after payment.');
+    } catch (e) {
+      toast('Subscribe at ' + PRO_CHECKOUT_URL + ', then activate your Pro key.');
+    }
+  }
+
   function toast(msg, bad) {
     if (!el.toasts) return;
     var t = document.createElement('div');
@@ -704,11 +749,11 @@
     });
     on(el.homeGoStudioBtn, 'click', function () { setPage('studio'); setWizardStep(1); });
     on(el.topbarStartBtn, 'click', function () { setPage('studio'); setWizardStep(1); });
-    on(el.pricingProBtn, 'click', function () {
-      S.isPro = true;
-      save();
+    on(el.pricingProBtn, 'click', openProCheckout);
+    /* A licence activated (or removed) in the dock re-evaluates the tier. */
+    window.addEventListener('lnr:pro-changed', function () {
+      S.isPro = currentProTier();
       syncInputs();
-      toast('Pro Studio license activated! Promo breaks can now be toggled off freely.');
     });
     on(el.wizToStep2Btn, 'click', function () { setWizardStep(2); });
     on(el.wizToStep3Btn, 'click', function () { setWizardStep(3); });
@@ -857,6 +902,9 @@
   }
 
   function syncInputs() {
+    /* Tier comes from the licence, not from anything stored in this blob. */
+    S.isPro = currentProTier();
+    /* Free keeps the preloaded promo ads on: the toggle cannot be switched off. */
     if (!S.isPro) S.promoAdsEnabled = true;
     var promoChecked = !!S.promoAdsEnabled;
     var blockMax = String(maxBlockMins());
@@ -1005,7 +1053,7 @@
       tier: 'studio',
       locked: false,
       watermark: S.watermark || DEFAULT_WATERMARK,
-      site: typeof S.site === 'string' ? S.site : DEFAULT_SITE,
+      site: normalizeSite(S.site) || DEFAULT_SITE,
       brand: S.brand || DEFAULT_BRAND
     };
   }
@@ -1049,7 +1097,7 @@
   });
   [el.siteInput, el.stSiteInput].forEach(function (inp) {
     on(inp, 'input', function () {
-      S.site = inp.value.slice(0, 42);
+      S.site = normalizeSite(inp.value) || DEFAULT_SITE;
       applyBranding(); save();
     });
   });

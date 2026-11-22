@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  PRO_CHECKOUT_URL,
   PRO_LIMITS,
   activatePro,
   deactivatePro,
@@ -190,6 +191,17 @@ export default function ProDock() {
                 <li>Promo rotation sequence &amp; layout controls</li>
                 <li>Brand strap locked to your licence</li>
               </ul>
+              <a
+                className="lnr-pro-btn"
+                href={PRO_CHECKOUT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Subscribe — $19/month
+              </a>
+              <p className="lnr-pro-note">
+                Pay securely, then paste the Pro key issued to you below.
+              </p>
               <label className="lnr-pro-field">
                 <span>Pro key</span>
                 <textarea
