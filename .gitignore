@@ -6,3 +6,12 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Production-only working files. These stay on the workstation and must never be
+# committed: the video prompt pack is the private source for the launch film, the
+# atmosphere pack is an internal implementation plan, and the caption file carries
+# the same script as the film. .gitignore is the guard so an accidental `git add .`
+# cannot publish them.
+LNR-Flow-Product-Video-Prompt.md
+LNR-Visual-Atmosphere-Pack-Plan.md
+captions-en.srt
