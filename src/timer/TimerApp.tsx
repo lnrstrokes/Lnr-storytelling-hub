@@ -12,10 +12,18 @@ import './demo-content.ts';
 // read numbers, verse references and dates as words. Must load before the
 // engine, which captures the reference at boot.
 import './speech.js';
+// Football pronunciation layer: sits in front of speech.js and fixes names,
+// shirt numbers and age grades ("#2" -> "jersey number two", "Under 17/18"
+// -> "Under seventeen, Under eighteen"). Loaded before the engine, which
+// captures window.LNR_SPEECH at boot.
+import './speech-football.js';
 import { installProGate } from './pro-gate.ts';
 import { installVideoBreaks } from './video-breaks.ts';
 import { installVideoSetup } from './video-setup.ts';
 import { installAdminKeys } from './admin-keys.ts';
+// Free tier: 2 hours of airtime per day. Pro is unlimited. Enforced outside
+// the engine, against the stage class the engine already sets.
+import { installAirtimeLimit } from './airtime-limit.ts';
 // Install + streaming-route notice. Additive: injects its own markup, so
 // deleting these two lines removes every trace of it.
 import { initInstallNotice } from './install-notice.ts';
@@ -103,6 +111,7 @@ export default function TimerApp() {
     installVideoBreaks(host);
     installVideoSetup(host);
     installAdminKeys(host);
+    installAirtimeLimit(host);
     initInstallNotice();
 
     let cancelled = false;
