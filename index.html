@@ -15,23 +15,35 @@
     <meta name="theme-color" content="#0c1210" />
     <title>lnr Studio — livestream storytelling hub</title>
     <meta name="description" content="lnr Studio: a livestream control room with built-in multi-hour trivia, storytelling documentaries, Guess the Player rounds, looped video, configurable breaks and YouTube-safe narration." />
-    <link rel="canonical" href="https://lnr-storytelling-hub.vercel.app/" />
+    <link rel="canonical" href="__SITE_URL__/" />
 
-    <!-- Link previews (X, WhatsApp, Discord, Slack, Messenger) -->
+    <!-- Link previews (X, WhatsApp, Discord, Slack, Messenger, iMessage).
+         Every URL here is ABSOLUTE and filled in at build time from
+         VITE_SITE_URL / the Vercel host, because a preview service fetches the
+         image from its own network — a relative path resolves against the
+         wrong host and the card renders with no picture. -->
+    <meta property="og:site_name" content="lnr Studio" />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://lnr-storytelling-hub.vercel.app/" />
+    <meta property="og:url" content="__SITE_URL__/" />
     <meta property="og:title" content="lnr Studio: Interactive Sports Broadcast Studio" />
     <meta property="og:description" content="Run Guess-the-Player, trivia and live audience challenges on your stream. Free, no signup." />
-    <meta property="og:image" content="https://lnr-storytelling-hub.vercel.app/og-image.png" />
+    <meta property="og:image" content="__SITE_URL__/og-image.png" />
+    <meta property="og:image:secure_url" content="__SITE_URL__/og-image.png" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="lnr Studio: &quot;Turn your sports channel into a game show&quot; beside a mock Guess-the-Player screen showing a mystery kit and a Chelsea clue. Free. No signup." />
+    <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@lnrstudio" />
     <meta name="twitter:title" content="lnr Studio: Interactive Sports Broadcast Studio" />
     <meta name="twitter:description" content="Run Guess-the-Player, trivia and live audience challenges on your stream. Free, no signup." />
-    <meta name="twitter:image" content="https://lnr-storytelling-hub.vercel.app/og-image.png" />
+    <meta name="twitter:image" content="__SITE_URL__/og-image.png" />
     <meta name="twitter:image:alt" content="lnr Studio: &quot;Turn your sports channel into a game show&quot; beside a mock Guess-the-Player screen showing a mystery kit and a Chelsea clue. Free. No signup." />
+    <!-- Some chat clients (WhatsApp, Telegram) read these instead of og:*. -->
+    <meta itemprop="name" content="lnr Studio: Interactive Sports Broadcast Studio" />
+    <meta itemprop="description" content="Run Guess-the-Player, trivia and live audience challenges on your stream. Free, no signup." />
+    <meta itemprop="image" content="__SITE_URL__/og-image.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

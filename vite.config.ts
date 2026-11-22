@@ -193,6 +193,44 @@ function readerGuardPlugin(): Plugin {
   };
 }
 
+/*
+ * Absolute site URL for link previews.
+ *
+ * Open Graph and Twitter card images MUST be absolute and publicly reachable:
+ * a preview service fetches the image from ITS OWN network, so a relative path
+ * resolves against the wrong host and the card renders with no picture.
+ *
+ * The URL is resolved at build time, in this order:
+ *   1. VITE_SITE_URL            — set this on Vercel to your custom domain
+ *   2. VERCEL_PROJECT_PRODUCTION_URL — Vercel's own production host
+ *   3. VERCEL_URL               — the deployment host
+ *   4. the known production host
+ *
+ * Every `__SITE_URL__` in index.html is replaced, so the tags can never drift
+ * out of sync with the deployment.
+ */
+function siteUrlPlugin(): Plugin {
+  const fallback = 'https://lnr-storytelling-hub.vercel.app';
+
+  function resolveSiteUrl(): string {
+    const explicit = (process.env.VITE_SITE_URL || '').trim();
+    const prod = (process.env.VERCEL_PROJECT_PRODUCTION_URL || '').trim();
+    const dep = (process.env.VERCEL_URL || '').trim();
+    const raw = explicit || prod || dep || fallback;
+    const withProto = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    return withProto.replace(/\/+$/, '');
+  }
+
+  return {
+    name: 'lnr-site-url',
+    enforce: 'pre',
+    transformIndexHtml(html) {
+      const site = resolveSiteUrl();
+      return html.split('__SITE_URL__').join(site);
+    }
+  };
+}
+
 function localApiPlugin(): Plugin {
   return {
     name: 'lnr-local-api',
@@ -209,7 +247,7 @@ function localApiPlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
-    plugins: [clipOrderPlugin(), readerGuardPlugin(), react(), tailwindcss(), localApiPlugin()],
+    plugins: [siteUrlPlugin(), clipOrderPlugin(), readerGuardPlugin(), react(), tailwindcss(), localApiPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),

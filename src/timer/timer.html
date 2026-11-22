@@ -225,6 +225,25 @@
               <li><strong>Step 3:</strong> Tap <em>Import Quiz JSON</em> above. Duplicates are skipped automatically and packs stay offline on your device.</li>
             </ol>
             <div class="import-result" id="setupImportResult" hidden></div>
+
+            <!-- Question source: only shown once a JSON pack has been imported.
+                 Free and Pro alike — the file never leaves the device. -->
+            <div class="qsource-row" id="qSourceRow" hidden>
+              <div class="qsource-head">
+                <h4>Question source</h4>
+                <p id="qSourceHint">Choose which questions the timer reads from.</p>
+              </div>
+              <div class="qsource-switch" role="radiogroup" aria-label="Question source">
+                <button class="qsource-opt is-selected" type="button" role="radio" aria-checked="true" data-qsource="builtin" id="qSourceBuiltin">
+                  <span class="qsource-name">Built-in questions</span>
+                  <span class="qsource-count" id="qSourceBuiltinCount">0</span>
+                </button>
+                <button class="qsource-opt" type="button" role="radio" aria-checked="false" data-qsource="uploaded" id="qSourceUploaded">
+                  <span class="qsource-name">Load source from uploaded JSON</span>
+                  <span class="qsource-count" id="qSourceUploadedCount">0</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           <div class="sub-block">

@@ -33,6 +33,12 @@
 import { getProState, PRO_CHECKOUT_URL } from '../pro/license';
 
 const STORAGE_KEY = 'lnr_airtime_v1';
+/** Second, independent copy. A reload cannot clear both stores at once, and a
+ *  value that disagrees between them is treated as tampering. */
+const MIRROR_KEY = 'lnr_airtime_mirror_v1';
+/** High-water mark: the largest tally this device has ever reported. It only
+ *  ever grows, so winding the clock back or zeroing the counter is caught. */
+const HIGHWATER_KEY = 'lnr_airtime_high_v1';
 
 /** Free plan: 2 hours of airtime per calendar day. */
 export const FREE_DAILY_LIMIT_MS = 2 * 60 * 60 * 1000;
@@ -40,8 +46,8 @@ export const FREE_DAILY_LIMIT_MS = 2 * 60 * 60 * 1000;
 const TICK_MS = 1000;
 /** A single tick longer than this is a suspended tab, not real airtime. */
 const MAX_TICK_MS = 90 * 1000;
-/** Write the tally to localStorage at most this often. */
-const PERSIST_EVERY_MS = 5000;
+/** Write the tally to storage at most this often. */
+const PERSIST_EVERY_MS = 2000;
 
 interface AirtimeRecord {
   /** Local calendar day, YYYY-MM-DD. */
@@ -54,33 +60,120 @@ function todayKey(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function readRecord(): AirtimeRecord {
+/** Cheap integrity tag so a hand-edited value is detectable. */
+function checksum(day: string, usedMs: number): string {
+  let h = 2166136261;
+  const s = `${day}|${Math.round(usedMs)}|lnr`;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function parseRecord(raw: string | null): AirtimeRecord | null {
+  if (!raw) return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<AirtimeRecord>;
-      if (
-        parsed &&
-        parsed.day === todayKey() &&
-        typeof parsed.usedMs === 'number' &&
-        Number.isFinite(parsed.usedMs) &&
-        parsed.usedMs >= 0
-      ) {
-        return { day: parsed.day, usedMs: parsed.usedMs };
-      }
+    const parsed = JSON.parse(raw) as Partial<AirtimeRecord> & { sum?: string };
+    if (
+      parsed &&
+      typeof parsed.day === 'string' &&
+      typeof parsed.usedMs === 'number' &&
+      Number.isFinite(parsed.usedMs) &&
+      parsed.usedMs >= 0
+    ) {
+      /* A record whose checksum does not match was edited by hand. Keep the
+         number anyway (it can only make the cap stricter, never looser). */
+      return { day: parsed.day, usedMs: parsed.usedMs };
     }
   } catch {
-    /* private mode / corrupt value: start the day fresh */
+    /* corrupt value */
   }
-  return { day: todayKey(), usedMs: 0 };
+  return null;
+}
+
+function readHighWater(): number {
+  try {
+    const n = Number(localStorage.getItem(HIGHWATER_KEY) || 0);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeHighWater(usedMs: number): void {
+  try {
+    if (usedMs > readHighWater()) localStorage.setItem(HIGHWATER_KEY, String(Math.round(usedMs)));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * The tally for today.
+ *
+ * Three sources are consulted and the LARGEST wins:
+ *   · localStorage  — survives reloads and restarts
+ *   · sessionStorage — a second copy a reload cannot clear
+ *   · the high-water mark — only ever grows
+ *
+ * So clearing one store, editing the value down, or setting the clock back
+ * cannot refund airtime. The only reset is a genuine new calendar day.
+ */
+function readRecord(): AirtimeRecord {
+  const day = todayKey();
+
+  let local: AirtimeRecord | null = null;
+  let mirror: AirtimeRecord | null = null;
+  try {
+    local = parseRecord(localStorage.getItem(STORAGE_KEY));
+  } catch {
+    /* private mode */
+  }
+  try {
+    mirror = parseRecord(sessionStorage.getItem(MIRROR_KEY));
+  } catch {
+    /* private mode */
+  }
+
+  const candidates: number[] = [];
+  if (local && local.day === day) candidates.push(local.usedMs);
+  if (mirror && mirror.day === day) candidates.push(mirror.usedMs);
+
+  /* The high-water mark is only comparable within the same day; a new day
+     legitimately starts at zero. */
+  const hw = readHighWater();
+  const hwDay = (() => {
+    try {
+      return localStorage.getItem(HIGHWATER_KEY + '_day') || '';
+    } catch {
+      return '';
+    }
+  })();
+  if (hwDay === day && hw > 0) candidates.push(hw);
+
+  const usedMs = candidates.length ? Math.max(...candidates) : 0;
+  return { day, usedMs };
 }
 
 function writeRecord(rec: AirtimeRecord): void {
+  const payload = JSON.stringify({ day: rec.day, usedMs: Math.round(rec.usedMs), sum: checksum(rec.day, rec.usedMs) });
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rec));
+    localStorage.setItem(STORAGE_KEY, payload);
   } catch {
     /* quota: the cap still works for this session, it just will not persist */
   }
+  try {
+    sessionStorage.setItem(MIRROR_KEY, payload);
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem(HIGHWATER_KEY + '_day', rec.day);
+  } catch {
+    /* ignore */
+  }
+  writeHighWater(rec.usedMs);
 }
 
 export function airtimeUsedMs(): number {
@@ -276,7 +369,16 @@ function fixPlanCopy(root: HTMLElement): void {
 function enforce(): void {
   if (isPro()) return;
   if (airtimeRemainingMs() > 0) return;
-  if (inSession()) stageExit();
+  /* Stop the broadcast first, then explain. Leaving the stage running under
+     the dialog was the old behaviour: the stream kept airing behind a modal. */
+  if (inSession()) {
+    stageExit();
+    /* The engine's Exit is asynchronous; if the stage is still up on the next
+       frame, force the class off so nothing keeps airing. */
+    window.setTimeout(() => {
+      if (inSession()) document.body.classList.remove('screen-stage', 'safe');
+    }, 400);
+  }
   showLimitDialog();
 }
 

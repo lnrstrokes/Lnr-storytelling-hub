@@ -102,6 +102,11 @@
     watermark: DEFAULT_WATERMARK,
     site: DEFAULT_SITE,
     safeDefault: false,
+    /* Which question bank the timer reads from:
+       'builtin'  — the shipped Bible / World History packs
+       'uploaded' — the JSON pack the creator imported on this device
+       Only meaningful once an upload exists; otherwise it falls back. */
+    questionSource: 'builtin',
     isPro: false
   };
 
@@ -150,6 +155,7 @@
   if (S.promoDisplayMode !== 'full' && S.promoDisplayMode !== 'pip' && S.promoDisplayMode !== 'split') S.promoDisplayMode = 'full';
   if (S.promoOrder !== 'sequential' && S.promoOrder !== 'shuffle') S.promoOrder = 'sequential';
   if (S.promoOverlayStyle !== 'disclosure' && S.promoOverlayStyle !== 'clean-brand' && S.promoOverlayStyle !== 'raw') S.promoOverlayStyle = 'disclosure';
+  if (S.questionSource !== 'builtin' && S.questionSource !== 'uploaded') S.questionSource = 'builtin';
   if (S.music !== 'lnr_stream_bed' && S.music !== 'all_eyes_on_us' && S.music !== 'moment_of_truth' && S.music !== 'off') S.music = defaults.music;
 
   function save() {
@@ -249,30 +255,51 @@
     if (c && c.bible && c.history) custom = c;
   } catch (e) {}
 
+  /* True when this device holds at least one imported question. */
+  function hasUploadedBank() {
+    return (Array.isArray(custom.bible) && custom.bible.length > 0) ||
+           (Array.isArray(custom.history) && custom.history.length > 0);
+  }
+
+  /* The source the timer should actually read from. 'uploaded' is only
+     honoured while an upload exists, so a cleared import can never leave the
+     studio with an empty bank. */
+  function effectiveQuestionSource() {
+    return (S.questionSource === 'uploaded' && hasUploadedBank()) ? 'uploaded' : 'builtin';
+  }
+
   function rebuildQuizBanks() {
     var builtIn = window.LNR_BUILT_IN_BANKS || {};
     var demoSource = window.LNR_DEMO || {};
+    var source = effectiveQuestionSource();
     ['bible', 'history'].forEach(function (seg) {
       var list = [];
       var seen = {};
       var builtInList = Array.isArray(builtIn[seg]) ? builtIn[seg] : [];
-      var hasCustom = Array.isArray(custom[seg]) && custom[seg].length > 0;
+      var customList = Array.isArray(custom[seg]) ? custom[seg] : [];
       usingDemo[seg] = false;
 
+      /* Uploaded source: the creator's own pack is the whole bank. */
+      if (source === 'uploaded') {
+        customList.forEach(function (q) {
+          if (!q || !q.q) return;
+          var key = qNormKey(q.q);
+          if (!seen[key]) { seen[key] = 1; list.push(q); }
+        });
+        bank[seg] = list;
+        bags[seg] = [];
+        return;
+      }
+
+      /* Built-in source: the shipped packs only. The uploaded pack is a
+         separate source, chosen with the toggle — not merged in, so the two
+         options really are different banks. */
       builtInList.forEach(function (raw) {
         var q = normalise(raw);
         if (!q || !q.q) return;
         var key = qNormKey(q.q);
         if (!seen[key]) { seen[key] = 1; list.push(q); }
       });
-
-      if (hasCustom) {
-        custom[seg].forEach(function (q) {
-          if (!q || !q.q) return;
-          var key = qNormKey(q.q);
-          if (!seen[key]) { seen[key] = 1; list.push(q); }
-        });
-      }
 
       if (!list.length && Array.isArray(demoSource[seg])) {
         usingDemo[seg] = true;
@@ -410,6 +437,8 @@
     /* quiz guide & segment */
     'quizPrivateNotice', 'quizTierLimitNote', 'segBible', 'segHistory', 'countBible', 'countHistory', 'runBible', 'runHistory',
     'setupQuizImportInput', 'dlQuizTemplateBtn', 'copyQuizPromptBtn', 'setupImportResult',
+    'qSourceRow', 'qSourceHint', 'qSourceBuiltin', 'qSourceUploaded',
+    'qSourceBuiltinCount', 'qSourceUploadedCount',
     'setupQuizMin', 'setupQSec',
     /* player quiz setup & card library */
     'playerPrivateNotice', 'playerTierLimitNote',
@@ -1874,6 +1903,21 @@
   var clips = [];        /* video engine: [{id,name,size,duration}] (up to 12) */
   var promos = [];       /* custom channel / partner break clips: up to 5 uploaded */
   var defaultFolderPromos = []; /* /promos/manifest.json default folder */
+
+  /* The compulsory studio promo shown to FREE viewers only.
+     It is a built-in file, not an upload, so it cannot be deleted from the
+     playlist, and effectivePromoList() only ever adds it when the device is
+     not Pro. Duration is the clip's real length (22s). */
+  var STUDIO_PROMO_ID = 'studio_promo_lnr';
+  var STUDIO_PROMO = {
+    id: STUDIO_PROMO_ID,
+    name: 'lnr Studio \u2014 studio promo',
+    size: 3076645,
+    duration: 22,
+    enabled: true,
+    builtIn: true,
+    externalUrl: '/promos/lnr-studio-promo.mp4'
+  };
   var adminPromos = [];  /* operator break folder clips & /promos/ manifest items */
   var clipURLs = {};     /* id -> objectURL */
   var pendingClipUploads = 0;
@@ -1896,6 +1940,14 @@
       defaultFolderPromos.forEach(function (p) {
         if (p && !seenIds[p.id]) { seenIds[p.id] = 1; list.push(p); }
       });
+    }
+    /* The compulsory studio promo is a FREE-TIER ad. It is appended last so a
+       creator's own sponsor clips still lead the rotation, and it is never
+       added for a Pro device — the tier check is the only gate, so no setting
+       or upload can bring it back. */
+    if (!currentProTier() && !seenIds[STUDIO_PROMO_ID]) {
+      seenIds[STUDIO_PROMO_ID] = 1;
+      list.push(STUDIO_PROMO);
     }
     return list;
   }
@@ -2322,6 +2374,7 @@
 
   function findMediaRecordById(id) {
     var i;
+    if (id === STUDIO_PROMO_ID) return STUDIO_PROMO;
     for (i = 0; i < adminPromos.length; i++) if (adminPromos[i].id === id) return adminPromos[i];
     for (i = 0; i < defaultFolderPromos.length; i++) if (defaultFolderPromos[i].id === id) return defaultFolderPromos[i];
     for (i = 0; i < promos.length; i++) if (promos[i].id === id) return promos[i];
@@ -3784,49 +3837,110 @@
   });
 
   /* ---------- JSON import ---------- */
+
+  /* Option badges: A..Z, then AA, AB ... so a 5- or 6-option question still
+     gets a readable letter instead of "undefined". */
+  function optionLetter(i) {
+    var s = '';
+    var n = i;
+    do {
+      s = String.fromCharCode(65 + (n % 26)) + s;
+      n = Math.floor(n / 26) - 1;
+    } while (n >= 0);
+    return s;
+  }
+
+  /* Every key a question's text may live under, in priority order. */
+  var Q_TEXT_KEYS = ['question', 'q', 'text', 'prompt', 'title', 'ask'];
+  /* Every key the option list may live under. */
+  var Q_OPT_KEYS = ['options', 'opts', 'answers', 'choices', 'answerOptions', 'answer_options'];
+  /* Every key the correct answer may live under. */
+  var Q_ANSWER_KEYS = [
+    'answer', 'correct', 'correctAnswer', 'correct_answer', 'correctIndex', 'correct_index',
+    'correctLetter', 'correct_letter', 'answerIndex', 'answer_index', 'answerKey', 'answer_key',
+    'right', 'solution'
+  ];
+
+  function firstDefined(obj, keys) {
+    for (var i = 0; i < keys.length; i++) {
+      if (obj && typeof obj[keys[i]] !== 'undefined' && obj[keys[i]] !== null) return obj[keys[i]];
+    }
+    return undefined;
+  }
+
   function validateQuestion(raw, i, out, seg) {
     var errs = [];
     var where = 'Question ' + (i + 1);
-    if (!raw || typeof raw !== 'object') { errs.push(where + ': not an object'); return errs; }
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      errs.push(where + ': not a question object');
+      return errs;
+    }
 
-    var text = raw.question || raw.q || raw.text || raw.prompt;
+    var text = firstDefined(raw, Q_TEXT_KEYS);
     if (typeof text !== 'string' || text.trim().length < 8) {
       errs.push(where + ': "question" must be at least 8 meaningful characters');
     }
 
-    var opts = raw.options || raw.opts || raw.answers || raw.choices;
-    if (!Array.isArray(opts) || opts.length < 4) {
-      errs.push(where + ': "options" must be an array of 4 answer choices' + (Array.isArray(opts) ? ' (found ' + opts.length + ')' : ''));
+    var opts = firstDefined(raw, Q_OPT_KEYS);
+    if (!Array.isArray(opts) || opts.length < 2) {
+      errs.push(
+        where + ': "options" must be an array of at least 2 answer choices' +
+        (Array.isArray(opts) ? ' (found ' + opts.length + ')' : ' (none found)')
+      );
     } else {
       opts = opts.map(function (o) {
         if (typeof o === 'string') return o.trim();
-        if (o && typeof o === 'object') return String(o.text || o.label || o.value || '').trim();
-        return String(o);
+        if (typeof o === 'number') return String(o);
+        if (o && typeof o === 'object') return String(o.text || o.label || o.value || o.option || '').trim();
+        return String(o == null ? '' : o).trim();
       });
       if (opts.some(function (o) { return !o; })) errs.push(where + ': an option is empty');
       if (new Set(opts.map(function (o) { return o.toLowerCase(); })).size !== opts.length) {
         errs.push(where + ': two options are identical');
       }
-      opts = opts.slice(0, 4);
+      /* No slice: a 5- or 6-option question is kept whole. */
     }
 
     var correct = -1;
-    var av = (typeof raw.answer !== 'undefined') ? raw.answer
-      : (typeof raw.correct !== 'undefined') ? raw.correct
-      : (typeof raw.correct_letter !== 'undefined') ? raw.correct_letter
-      : (typeof raw.correctLetter !== 'undefined') ? raw.correctLetter : null;
+    var av = firstDefined(raw, Q_ANSWER_KEYS);
 
-    if (typeof av === 'number' && av >= 0 && av < opts.length) correct = av;
-    else if (typeof av === 'string') {
+    if (typeof av === 'number' && isFinite(av)) {
+      /* 0-based index, or a 1-based number when 0 is not a valid index. */
+      if (av >= 0 && av < opts.length) correct = av;
+      else if (av >= 1 && av <= opts.length) correct = av - 1;
+    } else if (typeof av === 'boolean') {
+      correct = av ? 0 : 1;
+    } else if (typeof av === 'string') {
       var s = av.trim();
-      if (/^[A-Da-d]$/.test(s)) correct = 'ABCD'.indexOf(s.toUpperCase());
-      else if (/^\d+$/.test(s) && parseInt(s, 10) < opts.length) correct = parseInt(s, 10);
-      else {
-        var found = opts.map(function (o) { return o.toLowerCase(); }).indexOf(s.toLowerCase());
+      if (/^[A-Za-z]{1,2}$/.test(s)) {
+        /* Letter: A, B, C ... Z, AA ... */
+        var idx = 0;
+        for (var k = 0; k < s.length; k++) idx = idx * 26 + (s.toUpperCase().charCodeAt(k) - 64);
+        idx -= 1;
+        if (idx >= 0 && idx < opts.length) correct = idx;
+      } else if (/^\d+$/.test(s)) {
+        var n = parseInt(s, 10);
+        if (n >= 0 && n < opts.length) correct = n;
+        else if (n >= 1 && n <= opts.length) correct = n - 1;
+      } else {
+        /* The answer given as its text. */
+        var lower = s.toLowerCase();
+        var found = opts.map(function (o) { return o.toLowerCase(); }).indexOf(lower);
+        if (found < 0) {
+          /* Tolerate "B) Noah" / "Noah." style answers. */
+          found = opts.map(function (o) {
+            return o.toLowerCase().replace(/^[a-z][).:\-]\s*/, '').replace(/[.\s]+$/, '');
+          }).indexOf(lower.replace(/^[a-z][).:\-]\s*/, '').replace(/[.\s]+$/, ''));
+        }
         if (found >= 0) correct = found;
       }
     }
-    if (correct < 0) errs.push(where + ': "answer" must be an index (0-' + (opts.length - 1) + ') or a letter A-D');
+    if (correct < 0) {
+      errs.push(
+        where + ': "answer" must be an index (0-' + (opts.length - 1) + '), ' +
+        'a letter (A-' + optionLetter(opts.length - 1) + '), or the exact text of one option'
+      );
+    }
 
     if (errs.length) return errs;
 
@@ -3834,11 +3948,38 @@
       q: text.trim(),
       opts: opts,
       correct: correct,
-      ref: String(raw.reference || raw.ref || raw.source || raw.scripture || ''),
-      insight: String(raw.insight || raw.explanation || raw.note || ''),
-      level: String(raw.difficulty || raw.level || 'Medium')
+      ref: String(firstDefined(raw, ['reference', 'ref', 'source', 'scripture', 'verse', 'citation']) || ''),
+      insight: String(firstDefined(raw, ['insight', 'explanation', 'note', 'rationale', 'why']) || ''),
+      level: String(firstDefined(raw, ['difficulty', 'level', 'tier']) || 'Medium')
     });
     return [];
+  }
+
+  /* Pull the question array out of every shape the app (and common exporters)
+     produce: a plain array, {questions}, {items}, {data:{questions}},
+     {quiz}, {bank}, {data:[...]}, {questions:{...}} ... */
+  function extractQuestionList(data) {
+    if (Array.isArray(data)) return data;
+    if (!data || typeof data !== 'object') return null;
+
+    var direct = ['questions', 'items', 'quiz', 'bank', 'questionBank', 'question_bank', 'data', 'list', 'rows', 'entries'];
+    for (var i = 0; i < direct.length; i++) {
+      var v = data[direct[i]];
+      if (Array.isArray(v)) return v;
+      /* one level of nesting: { data: { questions: [...] } } */
+      if (v && typeof v === 'object') {
+        for (var j = 0; j < direct.length; j++) {
+          if (Array.isArray(v[direct[j]])) return v[direct[j]];
+        }
+      }
+    }
+    /* { questions: { q1: {...}, q2: {...} } } — an object keyed by id. */
+    var qObj = data.questions || data.items || data.quiz || data.bank;
+    if (qObj && typeof qObj === 'object') {
+      var vals = Object.keys(qObj).map(function (k) { return qObj[k]; });
+      if (vals.length && vals.every(function (x) { return x && typeof x === 'object'; })) return vals;
+    }
+    return null;
   }
 
   function importReport(ok, title, lines) {
@@ -3870,36 +4011,50 @@
       toast('Import failed: unreadable file', true);
     };
     reader.onload = function () {
+      var rawText = String(reader.result || '');
       var data;
       try {
-        data = JSON.parse(String(reader.result));
+        data = JSON.parse(rawText);
       } catch (e) {
-        importReport(false, 'Invalid JSON', [e.message]);
+        /* Name the actual problem instead of echoing the parser's jargon. */
+        var msg = String(e && e.message ? e.message : 'the file is not valid JSON');
+        var hint = 'Check for a missing comma, a trailing comma, or a quote that was never closed.';
+        if (/position (\d+)/i.test(msg)) {
+          var pos = parseInt(RegExp.$1, 10);
+          var before = rawText.slice(0, pos);
+          var line = before.split('\n').length;
+          var col = pos - before.lastIndexOf('\n');
+          hint = 'The problem is around line ' + line + ', column ' + col + '. ' + hint;
+        }
+        importReport(false, 'This file is not valid JSON', [msg, hint]);
         toast('Import failed: invalid JSON', true);
         return;
       }
 
-      var list = null;
       var segGuess = S.segment;
-      if (Array.isArray(data)) list = data;
-      else if (data && typeof data === 'object') {
-        list = data.questions || data.items || data.data || null;
-        if (data.segment || data.category) {
-          var g = String(data.segment || data.category).toLowerCase();
-          if (/bib|script|church/.test(g)) segGuess = 'bible';
-          else if (/hist|world/.test(g)) segGuess = 'history';
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        if (data.segment || data.category || data.subject) {
+          var g = String(data.segment || data.category || data.subject).toLowerCase();
+          if (/bib|script|church|faith/.test(g)) segGuess = 'bible';
+          else if (/hist|world|trivia/.test(g)) segGuess = 'history';
         }
       }
+
+      var list = extractQuestionList(data);
       if (!Array.isArray(list)) {
-        importReport(false, 'Wrong shape', [
-          'Expected a top-level array, or an object with a "questions" array.',
+        var topKeys = (data && typeof data === 'object' && !Array.isArray(data))
+          ? Object.keys(data).slice(0, 6).join(', ')
+          : typeof data;
+        importReport(false, 'No questions found in this file', [
+          'Expected a list of questions, or an object holding one under "questions", "items", "quiz", "bank" or "data".',
+          'This file\'s top level has: ' + topKeys + '.',
           'Example: { "segment": "bible", "questions": [ \u2026 ] }'
         ]);
-        toast('Import failed: unrecognised shape', true);
+        toast('Import failed: no question list found', true);
         return;
       }
       if (!list.length) {
-        importReport(false, 'Empty file', ['The questions array has no items.']);
+        importReport(false, 'The question list is empty', ['The file parsed correctly but contains no questions.']);
         toast('Import failed: empty file', true);
         return;
       }
@@ -3943,17 +4098,24 @@
       }
 
       saveCustom();
+      /* An upload switches the source to the uploaded pack, so the creator
+         immediately sees their own questions instead of having to hunt for
+         the toggle. */
+      S.questionSource = 'uploaded';
+      save();
       rebuildQuizBanks();       /* cleanly swaps out 5-item demo content once custom items exist */
       bags[segGuess] = [];
       setSegment(segGuess);
       refreshAccessUI();
       refreshStats();
+      renderQuestionSource();
 
       var lines = [];
       lines.push('Added ' + added + ' to ' + SEGMENTS[segGuess] + '.');
       if (dupes) lines.push('Skipped ' + dupes + ' duplicate' + (dupes === 1 ? '' : 's') + '.');
       if (errs.length) lines.push('Skipped ' + errs.length + ' malformed item' + (errs.length === 1 ? '' : 's') + '.');
       lines.push('The ' + SEGMENTS[segGuess] + ' segment now holds ' + (segGuess === 'bible' ? bank.bible.length : bank.history.length) + ' questions.');
+      lines.push('Question source is now your uploaded JSON. Switch back any time with the toggle below.');
       if (errs.length) lines = lines.concat(errs.slice(0, 4));
 
       importReport(true, 'Imported ' + added + ' question' + (added === 1 ? '' : 's'), lines);
@@ -3973,6 +4135,101 @@
     handleImport(f);
     el.setupQuizImportInput.value = '';
   });
+
+  /* ---------- question source toggle ---------- */
+  /* Which bank the timer reads from. The row stays hidden until this device
+     holds an imported pack, so there is never a switch between two identical
+     things. Free and Pro both get it: the JSON is parsed in the browser and
+     never leaves the device, so it costs nothing to serve. */
+  function uploadedCount() {
+    return (custom.bible ? custom.bible.length : 0) + (custom.history ? custom.history.length : 0);
+  }
+
+  function builtInCount() {
+    var b = window.LNR_BUILT_IN_BANKS || {};
+    return (Array.isArray(b.bible) ? b.bible.length : 0) + (Array.isArray(b.history) ? b.history.length : 0);
+  }
+
+  function renderQuestionSource() {
+    var has = hasUploadedBank();
+    var active = effectiveQuestionSource();
+
+    if (el.qSourceRow) el.qSourceRow.hidden = !has;
+
+    if (el.qSourceBuiltin) {
+      var onB = active === 'builtin';
+      el.qSourceBuiltin.classList.toggle('is-selected', onB);
+      el.qSourceBuiltin.setAttribute('aria-checked', onB ? 'true' : 'false');
+    }
+    if (el.qSourceUploaded) {
+      var onU = active === 'uploaded';
+      el.qSourceUploaded.classList.toggle('is-selected', onU);
+      el.qSourceUploaded.setAttribute('aria-checked', onU ? 'true' : 'false');
+    }
+    if (el.qSourceBuiltinCount) el.qSourceBuiltinCount.textContent = builtInCount() + ' questions';
+    if (el.qSourceUploadedCount) el.qSourceUploadedCount.textContent = uploadedCount() + ' uploaded';
+
+    if (el.qSourceHint) {
+      el.qSourceHint.textContent = !has
+        ? 'Import a JSON pack above to unlock this switch.'
+        : active === 'uploaded'
+          ? 'The timer is reading your uploaded JSON pack.'
+          : 'The timer is reading the built-in question packs.';
+    }
+  }
+
+  function setQuestionSource(source) {
+    if (source !== 'builtin' && source !== 'uploaded') return;
+    if (source === 'uploaded' && !hasUploadedBank()) {
+      toast('Import a JSON pack first', true);
+      return;
+    }
+    if (S.questionSource === source) { renderQuestionSource(); return; }
+
+    S.questionSource = source;
+    save();
+
+    /* Rebuild the active bank so the very next question comes from the new
+       source. The question already on screen is left alone, so a live
+       broadcast never jumps mid-question. */
+    rebuildQuizBanks();
+    refreshStats();
+    renderQuestionSource();
+
+    toast(source === 'uploaded'
+      ? 'Question source: uploaded JSON (' + uploadedCount() + ')'
+      : 'Question source: built-in packs (' + builtInCount() + ')');
+  }
+
+  on(el.qSourceBuiltin, 'click', function () { setQuestionSource('builtin'); });
+  on(el.qSourceUploaded, 'click', function () { setQuestionSource('uploaded'); });
+
+  /* Expose for the browser test harness and for other modules. */
+  window.LNR_QUESTION_SOURCE = {
+    get: function () { return effectiveQuestionSource(); },
+    set: setQuestionSource,
+    counts: function () {
+      return {
+        builtin: builtInCount(),
+        uploaded: uploadedCount(),
+        active: effectiveQuestionSource(),
+        activeBank: (bank[S.segment] || []).length
+      };
+    }
+  };
+
+  /* Read-only view of the promo rotation, so the free/Pro gate can be checked
+     from outside without reaching into engine internals. */
+  window.LNR_PROMO_DEBUG = {
+    list: function () {
+      return effectivePromoList().map(function (p) {
+        return { id: p.id, name: p.name, builtIn: !!p.builtIn, duration: p.duration };
+      });
+    },
+    isPro: function () { return currentProTier(); }
+  };
+
+  renderQuestionSource();
 
   /* ---------- length-driven typography ---------- */
   /* A question is set as large as it can be without crowding the frame.
@@ -4128,7 +4385,7 @@
       d.setAttribute('data-fit', fitOptionsFor(text.length));
       var badge = document.createElement('span');
       badge.className = 'opt-badge';
-      badge.textContent = 'ABCD'[i];
+      badge.textContent = optionLetter(i);
       var tx = document.createElement('span');
       tx.className = 'opt-text';
       tx.textContent = text;
@@ -4170,7 +4427,7 @@
     Array.prototype.forEach.call(el.options.children, function (child, i) {
       if (i === q.correct) child.classList.add('is-correct');
     });
-    el.revealAnswer.textContent = 'Answer: ' + 'ABCD'[q.correct] + ' \u00b7 ' + q.opts[q.correct];
+    el.revealAnswer.textContent = 'Answer: ' + optionLetter(q.correct) + ' \u00b7 ' + q.opts[q.correct];
     el.revealRef.textContent = q.ref || '';
     prepareVoiceCaption(el.revealNote, q.insight || '', !!(S.voiceOn && S.voiceReveal && synth));
     el.reveal.hidden = false;

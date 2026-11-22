@@ -4233,3 +4233,61 @@ body.safe .chat-safe-guide { display: none !important; }
   .vbreak-notice .studio-break-notice-copy b { font-size: 13.5px; }
   .vbreak-notice .studio-break-notice-copy span { font-size: 11.5px; }
 }
+
+/* ============================================================
+   Question source toggle (built-in vs uploaded JSON)
+   Shown only once a JSON pack exists on the device. Free and Pro
+   alike: the file is parsed in the browser and never uploaded.
+   ============================================================ */
+.qsource-row {
+  margin-top: 14px;
+  padding: 14px 15px;
+  border: 1px solid rgba(217, 171, 99, .28);
+  border-radius: 12px;
+  background: rgba(217, 171, 99, .05);
+}
+.qsource-head h4 {
+  margin: 0 0 3px;
+  font-size: 13.5px;
+  letter-spacing: .02em;
+  color: #f3e9d2;
+}
+.qsource-head p {
+  margin: 0 0 11px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #9aa6ae;
+}
+.qsource-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.qsource-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(232, 227, 216, .18);
+  background: rgba(255, 255, 255, .02);
+  color: #cfd6db;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+.qsource-opt:hover { border-color: rgba(217, 171, 99, .5); }
+.qsource-opt.is-selected {
+  border-color: #d9ab63;
+  background: rgba(217, 171, 99, .14);
+  color: #f7efdd;
+}
+.qsource-name { font-size: 12.5px; font-weight: 600; line-height: 1.3; }
+.qsource-count { font-size: 11px; color: #8d9aa2; }
+.qsource-opt.is-selected .qsource-count { color: #d9ab63; }
+
+@media (max-width: 560px) {
+  .qsource-switch { grid-template-columns: 1fr; }
+}
