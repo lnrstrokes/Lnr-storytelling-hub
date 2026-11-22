@@ -1,0 +1,56 @@
+diff --git a/src/timer/pro-gate.ts b/src/timer/pro-gate.ts
+index a0a194e..d93a04e 100644
+--- a/src/timer/pro-gate.ts
++++ b/src/timer/pro-gate.ts
+@@ -49,6 +49,9 @@ const UPLOAD_LISTS: Record<string, { listId: string; kind: 'video' | 'promo' }>
+ /** Prerecorded videos a Free account may upload. */
+ const FREE_VIDEO_CLIPS = 1;
+ 
++/** Every control that adds a promo break clip (setup panel and admin folder). */
++const PROMO_UPLOAD_INPUTS = ['promoInput', 'adminPromoFilesInput', 'adminPromoFolderInput'];
++
+ /** Controls that make up the promo rotation sequence. */
+ const SEQUENCE_CONTROLS = ['adminPromoOrder', 'adminPromoDisplay'];
+ const SEQUENCE_SETTINGS: Record<string, { key: string; fallback: string }> = {
+@@ -170,8 +173,8 @@ function applyUiState(): void {
+   const note = document.getElementById('promoTierLimitNote');
+   if (note) {
+     note.textContent = licence
+-      ? `Pro: up to ${PRO_LIMITS.promoClips} break clips (max 5:00 each) · optional CSV playback log`
+-      : `Promo break uploads are a Pro feature (up to ${PRO_LIMITS.promoClips} clips) · activate a key to unlock`;
++      ? `Pro: up to ${PRO_LIMITS.promoClips} break clips (max 5:00 each) \u00b7 optional CSV playback log`
++      : 'Promo break uploads are a Pro feature \u00b7 preloaded studio ads still play on Free';
+   }
+ 
+   SEQUENCE_CONTROLS.forEach((id) => {
+@@ -181,6 +184,16 @@ function applyUiState(): void {
+       control.title = licence ? '' : 'Promo rotation is a Pro feature';
+     });
+ 
++  /* Free has no promo uploads at all, so the picker is disabled rather than
++     opening and rejecting the file afterwards. The preloaded promo ads are
++     unaffected: Free keeps the breaks toggle forced ON in the engine. */
++  PROMO_UPLOAD_INPUTS.forEach((id) => {
++    const input = document.getElementById(id) as HTMLInputElement | null;
++    if (!input) return;
++    input.disabled = !licence;
++    input.title = licence ? '' : 'Promo break uploads are a Pro feature';
++  });
++
+   applyVideoTierUi();
+ }
+ 
+@@ -200,6 +213,13 @@ function applyVideoTierUi(): void {
+       : `Free: ${FREE_VIDEO_CLIPS} video. Pro: up to ${PRO_LIMITS.videoClips}.`;
+   }
+ 
++  const promoNote = document.getElementById('promoTierLimitNote');
++  if (promoNote && !promoNote.textContent) {
++    promoNote.textContent = licence
++      ? `Pro: up to ${PRO_LIMITS.promoClips} break clips (max 5:00 each) \u00b7 optional CSV playback log`
++      : 'Promo break uploads are a Pro feature \u00b7 preloaded studio ads still play on Free';
++  }
++
+   const drop = document.getElementById('videoDrop');
+   if (!drop) return;
+ 
