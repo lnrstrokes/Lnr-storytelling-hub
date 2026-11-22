@@ -18,7 +18,7 @@
        reload once and show the new build immediately.
    ============================================================ */
 
-const CACHE_VERSION = 'v28';
+const CACHE_VERSION = 'v29';
 const CACHE_NAME = `lnr-studio-${CACHE_VERSION}`;
 
 /* Only the shell is precached. Build assets are hashed and picked up
@@ -76,8 +76,11 @@ self.addEventListener('message', (event) => {
   }
 });
 
+/* ONLY Vite's fingerprinted output ("index-Kho1UJhI.js") is immutable. The
+   studio's own media lives under /assets/aistudio/ with hand-written names, so
+   matching the whole directory would pin a replaced clip in the cache forever. */
 function isHashedAsset(url) {
-  return /\/assets\/.+\.(js|css|woff2?|png|jpe?g|svg|webp)$/i.test(url.pathname);
+  return /\/assets\/[^/]*-[A-Za-z0-9_]{8}\.(js|css|woff2?|png|jpe?g|svg|webp)$/i.test(url.pathname);
 }
 
 self.addEventListener('fetch', (event) => {
@@ -86,6 +89,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
   if (url.origin !== location.origin || url.pathname.startsWith('/api/')) return; // never touch third-party or live API requests
+
+  /* Media range requests must reach the network untouched. A cached 200 reply
+     to a Range request breaks seeking in <video>/<audio>, and the studio's
+     looped clips are exactly that. */
+  if (req.headers.has('range')) return;
 
   /* Navigations: network first, cache as the offline fallback.
      This is what makes a new deploy appear on the next load. */
