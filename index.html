@@ -54,8 +54,17 @@
             console.warn('SW registration:', err);
           });
 
+          // A controllerchange on the FIRST install is not an update: the worker
+          // has merely claimed a page that was never controlled. Reloading there
+          // threw away the freshly booted app (and any speech it had queued) for
+          // no reason. Only reload when a previous build was replaced.
+          let hadController = !!navigator.serviceWorker.controller;
           let reloaded = false;
           navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!hadController) {
+              hadController = true;
+              return;
+            }
             if (reloaded) return;
             reloaded = true;
             window.location.reload();
