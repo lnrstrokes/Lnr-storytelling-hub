@@ -1,0 +1,14 @@
+diff --git a/src/pro/license.ts b/src/pro/license.ts
+index a8e16f7..29c8d89 100644
+--- a/src/pro/license.ts
++++ b/src/pro/license.ts
+@@ -70,6 +70,9 @@ export const PRO_LIMITS = {
+   lockedBrand: true
+ } as const;
+ 
++/** Where a customer subscribes to Pro. Both upgrade buttons open this. */
++export const PRO_CHECKOUT_URL = 'https://selar.com/399774111a';
++
+ const STORAGE_KEY = 'lnr_pro_license_v1';
+ const VERIFY_ENDPOINT = '/api/verify-license';
+ /** Re-verify at most this often while online. */
