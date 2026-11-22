@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "tsx server.ts",
+    "prebuild": "node scripts/assemble-og-image.mjs",
     "build": "vite build && esbuild server.ts --bundle --platform=node --target=node18 --format=cjs --external:vite --outfile=server.cjs",
     "start": "node server.cjs",
     "preview": "vite preview",
