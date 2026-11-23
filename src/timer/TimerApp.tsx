@@ -42,6 +42,8 @@ import { installVoiceOptional } from './voice-optional.ts';
 import { installSessionKeepAwake } from './session-keepawake.ts';
 // "Which build is this?" - the service worker's stamped version in Settings.
 import { installBuildTag } from './build-tag.ts';
+// Quiz pack: a Remove button so a fresh JSON pack can be loaded (Free and Pro).
+import { installQuizPackReset } from './quiz-pack-reset.ts';
 
 declare global {
   interface Window {
@@ -134,6 +136,7 @@ export default function TimerApp() {
     installVoiceOptional(host);
     installSessionKeepAwake(host);
     installBuildTag(host);
+    installQuizPackReset(host);
 
     let cancelled = false;
     void Promise.all([
