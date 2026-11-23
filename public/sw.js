@@ -1,24 +1,27 @@
 /* ============================================================
-   lnr Studio — service worker
+   lnr Studio - service worker
 
    The problem this solves: an installed PWA keeps its own copy of
    the app. If the cache name never changes, a new deploy is never
    picked up and the installed app serves the previous build
-   indefinitely — the classic "I pushed but the app looks old".
+   indefinitely - the classic "I pushed but the app looks old".
 
    Rules here:
-     · CACHE_VERSION is bumped on every release. Changing it makes
+     - CACHE_VERSION is stamped at build time by `swVersionPlugin` in
+       vite.config.ts from a hash of the built bundle. Changing it makes
        the browser install a NEW worker, which deletes every older
-       cache in `activate`. That is the whole update mechanism.
-     · Navigations are network-first, so a fresh deploy wins; the
+       cache in `activate`. That is the whole update mechanism, and it
+       now happens on every deploy without anyone remembering to bump
+       a number. The literal below is only the dev-server fallback.
+     - Navigations are network-first, so a fresh deploy wins; the
        cache is only a fallback when offline.
-     · Hashed build assets are cache-first (they are immutable —
+     - Hashed build assets are cache-first (they are immutable -
        a new build produces new filenames).
-     · The page is told when a new worker takes over, so it can
+     - The page is told when a new worker takes over, so it can
        reload once and show the new build immediately.
    ============================================================ */
 
-const CACHE_VERSION = 'v34';
+const CACHE_VERSION = 'v35';
 const CACHE_NAME = `lnr-studio-${CACHE_VERSION}`;
 
 /* Only the shell is precached. Build assets are hashed and picked up
@@ -69,10 +72,28 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-/* The page can ask a waiting worker to take over immediately. */
+/* The page can ask a waiting worker to take over immediately, or ask which
+   build is live. */
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  const data = event.data;
+  if (!data) return;
+
+  if (data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+    return;
+  }
+
+  /* The settings page shows the live build so an operator can quote it when the
+     installed app "still looks old" - the version only changes when the bundle
+     does, which is exactly the question being asked. */
+  if (data.type === 'GET_VERSION') {
+    const reply = (client) => {
+      if (client && typeof client.postMessage === 'function') {
+        client.postMessage({ type: 'SW_VERSION', version: CACHE_VERSION });
+      }
+    };
+    if (event.source) reply(event.source);
+    else self.clients.matchAll({ type: 'window' }).then((clients) => clients.forEach(reply));
   }
 });
 
@@ -146,6 +167,6 @@ self.addEventListener('fetch', (event) => {
           if (cached) return cached;
           return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
         })
-      )
+      );
   );
 });
