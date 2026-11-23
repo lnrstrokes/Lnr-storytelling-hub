@@ -381,6 +381,143 @@ function swVersionPlugin(): Plugin {
   };
 }
 
+/*
+ * One imported quiz pack at a time.
+ *
+ * Importing a JSON pack APPENDED to whatever was already imported, so loading a
+ * Chinese pack on a device that held an English one left both languages in the
+ * same custom bank and the timer read whichever came up next. The pack also had
+ * no way out: once imported, it was on the device for good.
+ *
+ * Two fixes, both in engine.js because it owns the bank, the shuffle bags and
+ * the stored copy:
+ *
+ *   1. an import now REPLACES the uploaded bank instead of merging into it, so
+ *      one import is one pack, in one language;
+ *   2. `LNR_QUESTION_SOURCE.clear()` empties that bank on request, which is
+ *      what the Remove uploaded pack button calls.
+ *
+ * Free and Pro alike: the JSON is parsed in the browser and never uploaded.
+ * Anchors must match exactly once, so drift fails the build rather than
+ * shipping an importer that quietly mixes two packs.
+ */
+function quizPackPlugin(): Plugin {
+  const edits: Array<{ name: string; find: string; replace: string }> = [
+    {
+      name: 'import-replaces-pack',
+      find: [
+        '      /* merge, skipping exact & near-duplicate questions against existing built-in + custom bank */',
+        '      var existingAll = bank[segGuess] || [];'
+      ].join('\n'),
+      replace: [
+        '      /* REPLACE, do not merge. Appending was why an English pack and a',
+        '         Chinese pack ended up in the same bank: the second import kept the',
+        '         first one behind. One import is now one pack. */',
+        '      var existingAll = [];'
+      ].join('\n')
+    },
+    {
+      name: 'collect-new-pack',
+      find: [
+        '      var added = 0, dupes = 0;',
+        '      good.forEach(function (q) {'
+      ].join('\n'),
+      replace: [
+        '      var picked = [];',
+        '      var added = 0, dupes = 0;',
+        '      good.forEach(function (q) {'
+      ].join('\n')
+    },
+    {
+      name: 'push-into-new-pack',
+      find: [
+        '        custom[segGuess].push(q);',
+        '        added++;'
+      ].join('\n'),
+      replace: [
+        '        picked.push(q);',
+        '        added++;'
+      ].join('\n')
+    },
+    {
+      name: 'commit-new-pack',
+      find: [
+        '      saveCustom();',
+        '      /* An upload switches the source to the uploaded pack, so the creator'
+      ].join('\n'),
+      replace: [
+        '      /* The uploaded bank is exactly this file. The other segment goes too,',
+        '         so a pack guessed into the wrong segment cannot leave the previous',
+        '         language behind. */',
+        '      custom = { bible: [], history: [] };',
+        '      custom[segGuess] = picked;',
+        '      saveCustom();',
+        '      /* An upload switches the source to the uploaded pack, so the creator'
+      ].join('\n')
+    },
+    {
+      name: 'clear-uploaded-bank',
+      find: [
+        '  function uploadedCount() {',
+        '    return (custom.bible ? custom.bible.length : 0) + (custom.history ? custom.history.length : 0);',
+        '  }'
+      ].join('\n'),
+      replace: [
+        '  function uploadedCount() {',
+        '    return (custom.bible ? custom.bible.length : 0) + (custom.history ? custom.history.length : 0);',
+        '  }',
+        '',
+        '  /* Remove the uploaded pack from this device and fall back to the',
+        '     built-in packs. Called by the Remove uploaded pack button, and exposed',
+        '     on LNR_QUESTION_SOURCE so the control needs no engine internals. */',
+        '  function clearUploadedBank() {',
+        '    custom = { bible: [], history: [] };',
+        '    try { localStorage.removeItem(CUSTOM_KEY); } catch (e) {}',
+        "    S.questionSource = 'builtin';",
+        '    save();',
+        '    rebuildQuizBanks();',
+        '    bags = { bible: [], history: [] };',
+        '    refreshStats();',
+        '    renderQuestionSource();',
+        '    return 0;',
+        '  }'
+      ].join('\n')
+    },
+    {
+      name: 'expose-clear',
+      find: [
+        '  window.LNR_QUESTION_SOURCE = {',
+        '    get: function () { return effectiveQuestionSource(); },'
+      ].join('\n'),
+      replace: [
+        '  window.LNR_QUESTION_SOURCE = {',
+        '    get: function () { return effectiveQuestionSource(); },',
+        '    clear: clearUploadedBank,'
+      ].join('\n')
+    }
+  ];
+
+  return {
+    name: 'lnr-quiz-pack',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/[\\/]src[\\/]timer[\\/]engine\.js$/.test(id)) return null;
+
+      let out = code;
+      for (const edit of edits) {
+        const parts = out.split(edit.find);
+        if (parts.length !== 2) {
+          this.error(
+            `engine.js: quiz pack "${edit.name}" matched ${parts.length - 1} time(s), expected exactly 1`
+          );
+        }
+        out = parts.join(edit.replace);
+      }
+      return { code: out, map: null };
+    }
+  };
+}
+
 function localApiPlugin(): Plugin {
   return {
     name: 'lnr-local-api',
@@ -397,7 +534,7 @@ function localApiPlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
-    plugins: [siteUrlPlugin(), clipOrderPlugin(), readerGuardPlugin(), packLanguagePlugin(), swVersionPlugin(), react(), tailwindcss(), localApiPlugin()],
+    plugins: [siteUrlPlugin(), clipOrderPlugin(), readerGuardPlugin(), packLanguagePlugin(), swVersionPlugin(), quizPackPlugin(), react(), tailwindcss(), localApiPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
