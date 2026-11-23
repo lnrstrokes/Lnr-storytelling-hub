@@ -34,6 +34,14 @@ import { installSegmentLabels } from './segment-label.ts';
 // Language: the reader uses the phone's own TTS voice by default and offers
 // every installed voice, so a Chinese pack is not read in an English accent.
 import { installVoiceLanguages } from './voice-language.ts';
+// Text-to-speech is optional: uploaded narration and prerecorded clips need no
+// voice at all, and the panels now say so. Words only, no engine state.
+import { installVoiceOptional } from './voice-optional.ts';
+// Keep the phone awake while a block is on the stage, so a broadcast is not
+// interrupted by the lock screen. Fail-open, and only during a session.
+import { installSessionKeepAwake } from './session-keepawake.ts';
+// "Which build is this?" - the service worker's stamped version in Settings.
+import { installBuildTag } from './build-tag.ts';
 
 declare global {
   interface Window {
@@ -110,7 +118,7 @@ export default function TimerApp() {
     window.addEventListener('appinstalled', onInstalled);
 
     host.innerHTML = timerMarkup;
-    document.title = 'lnr Studio — timer edition';
+    document.title = 'lnr Studio - timer edition';
 
     // Installed BEFORE the engine boots: the gate listens on `document` in the
     // capture phase, so it always sees a gated control's event first.
@@ -123,6 +131,9 @@ export default function TimerApp() {
     initReachOut();
     installSegmentLabels(host);
     installVoiceLanguages(host);
+    installVoiceOptional(host);
+    installSessionKeepAwake(host);
+    installBuildTag(host);
 
     let cancelled = false;
     void Promise.all([
