@@ -27,7 +27,10 @@ export interface BuiltInBanksPayload {
 function normQuestionKey(text: string): string {
   return String(text || '')
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    /* Same bug as engine.js qNormKey(): stripping non-Latin letters made every
+       CJK question's key empty, and an empty key is dropped below — so a
+       non-English pack added to the built-in banks would arrive empty. */
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
