@@ -1,5 +1,7 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'path';
 import {defineConfig, type Plugin} from 'vite';
 import adminHandler from './api/admin';
@@ -202,13 +204,13 @@ function readerGuardPlugin(): Plugin {
  * callers treat an empty key as "duplicate":
  *
  *   1. the importer's `isNearDuplicate()` returns true, so the whole file is
- *      reported as duplicates and NOTHING is added — which is why the upload
+ *      reported as duplicates and NOTHING is added - which is why the upload
  *      appeared to do nothing and the built-in English bank kept playing;
  *   2. `rebuildQuizBanks()` keys questions the same way, so a pack that did
  *      get through would collapse to a single question.
  *
  * `validateQuestion()` also required eight characters, which rejects short
- * but complete CJK questions (四个字就是一句话).
+ * but complete CJK questions (four CJK characters already make a sentence).
  *
  * engine.js is the one file this project treats as read-only, so both fixes
  * are applied at build time the same way the clip-order and reader-guard
@@ -283,9 +285,9 @@ function packLanguagePlugin(): Plugin {
  * resolves against the wrong host and the card renders with no picture.
  *
  * The URL is resolved at build time, in this order:
- *   1. VITE_SITE_URL            — set this on Vercel to your custom domain
- *   2. VERCEL_PROJECT_PRODUCTION_URL — Vercel's own production host
- *   3. VERCEL_URL               — the deployment host
+ *   1. VITE_SITE_URL            - set this on Vercel to your custom domain
+ *   2. VERCEL_PROJECT_PRODUCTION_URL - Vercel's own production host
+ *   3. VERCEL_URL               - the deployment host
  *   4. the known production host
  *
  * Every `__SITE_URL__` in index.html is replaced, so the tags can never drift
@@ -313,6 +315,72 @@ function siteUrlPlugin(): Plugin {
   };
 }
 
+/*
+ * Build-stamped service worker version.
+ *
+ * The installed PWA only picks up a new deploy when the worker's CACHE_VERSION
+ * changes: a new worker installs, the old caches are deleted and the page is
+ * reloaded once. That number used to be bumped by hand, which is exactly the
+ * kind of step that gets forgotten - and a forgotten bump is invisible, because
+ * the site looks fine in a browser while every installed copy keeps serving the
+ * previous build.
+ *
+ * This plugin stamps it at build time from a hash of the finished bundle. Two
+ * builds that differ in any shipped byte produce different versions, so an
+ * installed app cannot be stale after a deploy, and an unchanged version is
+ * proof that the app is current. The same value is what the settings page shows
+ * as "Build:", and what a stale worker is asked for over postMessage.
+ *
+ * The anchor must match exactly once: if public/sw.js ever stops carrying the
+ * line, the build fails instead of shipping an app that can never update.
+ */
+function swVersionPlugin(): Plugin {
+  let outDir = path.resolve(import.meta.dirname, 'dist');
+
+  return {
+    name: 'lnr-sw-version',
+    apply: 'build',
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir || 'dist');
+    },
+    closeBundle() {
+      const swPath = path.join(outDir, 'sw.js');
+      if (!existsSync(swPath)) {
+        this.error('sw version: dist/sw.js is missing, so an installed app could never see this build');
+      }
+
+      const hash = createHash('sha256');
+      const indexPath = path.join(outDir, 'index.html');
+      if (existsSync(indexPath)) hash.update(readFileSync(indexPath));
+
+      /* Asset names are content hashes, so listing them would be nearly enough;
+         hashing their bytes too means a same-length edit can never reuse a
+         version and leave an installed app on the old build. */
+      const assetsDir = path.join(outDir, 'assets');
+      if (existsSync(assetsDir)) {
+        readdirSync(assetsDir)
+          .sort()
+          .forEach((name) => {
+            const full = path.join(assetsDir, name);
+            if (!statSync(full).isFile()) return;
+            hash.update(name).update(readFileSync(full));
+          });
+      }
+
+      const version = hash.digest('hex').slice(0, 12);
+      const source = readFileSync(swPath, 'utf8');
+      const anchor = /const CACHE_VERSION = '[^']*';/;
+      const found = source.match(new RegExp(anchor.source, 'g')) || [];
+      if (found.length !== 1) {
+        this.error(`sw version: expected exactly one CACHE_VERSION line in public/sw.js, found ${found.length}`);
+      }
+
+      writeFileSync(swPath, source.replace(anchor, `const CACHE_VERSION = '${version}';`), 'utf8');
+      console.log(`[lnr-sw] cache version ${version}`);
+    }
+  };
+}
+
 function localApiPlugin(): Plugin {
   return {
     name: 'lnr-local-api',
@@ -329,7 +397,7 @@ function localApiPlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
-    plugins: [siteUrlPlugin(), clipOrderPlugin(), readerGuardPlugin(), packLanguagePlugin(), react(), tailwindcss(), localApiPlugin()],
+    plugins: [siteUrlPlugin(), clipOrderPlugin(), readerGuardPlugin(), packLanguagePlugin(), swVersionPlugin(), react(), tailwindcss(), localApiPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
@@ -340,7 +408,7 @@ export default defineConfig(() => {
       port: 3000,
       allowedHosts: true as const,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
+      // Do not modify-file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
