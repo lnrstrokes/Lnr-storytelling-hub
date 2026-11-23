@@ -194,6 +194,88 @@ function readerGuardPlugin(): Plugin {
 }
 
 /*
+ * Non-Latin quiz packs.
+ *
+ * A Chinese pack imported fine and then vanished: `qNormKey()` stripped
+ * everything that was not `[a-z0-9 ]` before using the question as a
+ * duplicate key, so every CJK question normalised to an empty string. Two
+ * callers treat an empty key as "duplicate":
+ *
+ *   1. the importer's `isNearDuplicate()` returns true, so the whole file is
+ *      reported as duplicates and NOTHING is added — which is why the upload
+ *      appeared to do nothing and the built-in English bank kept playing;
+ *   2. `rebuildQuizBanks()` keys questions the same way, so a pack that did
+ *      get through would collapse to a single question.
+ *
+ * `validateQuestion()` also required eight characters, which rejects short
+ * but complete CJK questions (四个字就是一句话).
+ *
+ * engine.js is the one file this project treats as read-only, so both fixes
+ * are applied at build time the same way the clip-order and reader-guard
+ * patches are. Anchors must match exactly once, so drift fails the build
+ * instead of shipping a pack importer that silently drops non-English files.
+ */
+function packLanguagePlugin(): Plugin {
+  const edits: Array<{ name: string; find: string; replace: string }> = [
+    {
+      name: 'unicode-question-key',
+      find: [
+        '  function qNormKey(text) {',
+        "    return String(text || '').toLowerCase().replace(/[^a-z0-9\\s]/g, ' ').replace(/\\s+/g, ' ').trim();",
+        '  }'
+      ].join('\n'),
+      replace: [
+        '  /* Unicode-aware question key. The original kept only [a-z0-9 ] , so',
+        "     every CJK question normalised to '' and was treated as a duplicate of",
+        '     every other question: imports added nothing and a rebuilt bank kept',
+        '     one item. Letters and digits of every script are kept now. */',
+        '  function qNormKey(text) {',
+        "    return String(text || '').toLowerCase().replace(/[^\\p{L}\\p{N}\\s]/gu, ' ').replace(/\\s+/g, ' ').trim();",
+        '  }'
+      ].join('\n')
+    },
+    {
+      name: 'cjk-question-length',
+      find: [
+        '    var text = firstDefined(raw, Q_TEXT_KEYS);',
+        "    if (typeof text !== 'string' || text.trim().length < 8) {",
+        "      errs.push(where + ': \"question\" must be at least 8 meaningful characters');",
+        '    }'
+      ].join('\n'),
+      replace: [
+        '    var text = firstDefined(raw, Q_TEXT_KEYS);',
+        '    /* Four CJK characters already make a complete question, so the same',
+        '       eight-character floor rejected short but valid Chinese items. */',
+        "    var minChars = (typeof text === 'string' && /[\\u3040-\\u30ff\\u3400-\\u4dbf\\u4e00-\\u9fff\\uac00-\\ud7af]/.test(text)) ? 4 : 8;",
+        "    if (typeof text !== 'string' || text.trim().length < minChars) {",
+        "      errs.push(where + ': \"question\" must be at least ' + minChars + ' meaningful characters');",
+        '    }'
+      ].join('\n')
+    }
+  ];
+
+  return {
+    name: 'lnr-pack-language',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/[\\/]src[\\/]timer[\\/]engine\.js$/.test(id)) return null;
+
+      let out = code;
+      for (const edit of edits) {
+        const parts = out.split(edit.find);
+        if (parts.length !== 2) {
+          this.error(
+            `engine.js: pack language "${edit.name}" matched ${parts.length - 1} time(s), expected exactly 1`
+          );
+        }
+        out = parts.join(edit.replace);
+      }
+      return { code: out, map: null };
+    }
+  };
+}
+
+/*
  * Absolute site URL for link previews.
  *
  * Open Graph and Twitter card images MUST be absolute and publicly reachable:
@@ -247,7 +329,7 @@ function localApiPlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
-    plugins: [siteUrlPlugin(), clipOrderPlugin(), readerGuardPlugin(), react(), tailwindcss(), localApiPlugin()],
+    plugins: [siteUrlPlugin(), clipOrderPlugin(), readerGuardPlugin(), packLanguagePlugin(), react(), tailwindcss(), localApiPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
