@@ -28,6 +28,9 @@ import { installAirtimeLimit } from './airtime-limit.ts';
 // deleting these two lines removes every trace of it.
 import { initInstallNotice } from './install-notice.ts';
 import { initReachOut } from './reach-out.ts';
+// Pro: lets a creator replace the pack name read on the stage with their own
+// niche. Applied at the DOM layer, so the engine is untouched.
+import { installSegmentLabels } from './segment-label.ts';
 
 declare global {
   interface Window {
@@ -115,6 +118,7 @@ export default function TimerApp() {
     installAirtimeLimit(host);
     initInstallNotice();
     initReachOut();
+    installSegmentLabels(host);
 
     let cancelled = false;
     void Promise.all([

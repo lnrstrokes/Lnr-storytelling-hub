@@ -39,8 +39,8 @@ const NOTICE_ID = 'home-free-packs';
 
 const BODY_HTML = `
   <div class="qs-head">
-    <h2>New in this version: your own content, on Free</h2>
-    <p>Import your own question pack as JSON, or narrate with your own MP3 &mdash; both already work on Free, no Pro key needed.
+    <h2>New in this version</h2>
+    <p>Free: your own question packs (JSON) and your own MP3 narration &mdash; no Pro key needed. Pro: rename the stage category to your niche.
     Question, concern or something broken? <a href="${X_URL}" target="_blank" rel="noopener noreferrer">${X_HANDLE} on X</a> &middot;
     <a href="${YOUTUBE_URL}" target="_blank" rel="noopener noreferrer">YouTube ${YOUTUBE_HANDLE}</a>.</p>
   </div>

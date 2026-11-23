@@ -24,6 +24,7 @@ import {
   dismissNotice,
   isNoticeDismissed
 } from '../social';
+import { LABEL_DEFAULTS, LABEL_MAX_LENGTH, readLabelOverrides, writeLabelOverride } from '../stage-labels';
 import './pro.css';
 
 /** Shown once per NOTICE_VERSION, then remembered as dismissed. */
@@ -41,6 +42,65 @@ function expiryLabel(state: ProState): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * Pro: rename the category printed on the stage.
+ *
+ * Uncontrolled inputs on purpose — the value is written straight to storage on
+ * each keystroke, so the stage updates live and this panel re-renders nothing.
+ * Clearing a field restores the shipped pack name.
+ */
+function StageLabelFields() {
+  const stored = readLabelOverrides();
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        paddingTop: 10,
+        borderTop: '1px solid rgba(217,171,99,0.2)'
+      }}
+    >
+      <p className="lnr-pro-line" style={{ margin: '0 0 6px' }}>
+        <span>Stage category</span>
+        <b>Pro</b>
+      </p>
+
+      {LABEL_DEFAULTS.map((shipped) => (
+        <label
+          key={shipped}
+          className="lnr-pro-field"
+          style={{ textTransform: 'none', letterSpacing: 0, marginBottom: 8 }}
+        >
+          <span>{shipped}</span>
+          <input
+            type="text"
+            maxLength={LABEL_MAX_LENGTH}
+            defaultValue={stored[shipped] || ''}
+            placeholder="Your niche, e.g. Donghua / Renegade Immortal"
+            onChange={(e) => writeLabelOverride(shipped, e.target.value)}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '7px 9px',
+              borderRadius: 9,
+              border: '1px solid rgba(255,255,255,0.14)',
+              background: '#070c12',
+              color: '#e8e3d8',
+              fontSize: 11,
+              letterSpacing: 0,
+              fontFamily: 'ui-sans-serif, system-ui, sans-serif'
+            }}
+          />
+        </label>
+      ))}
+
+      <p className="lnr-pro-note" style={{ margin: '2px 0 0' }}>
+        Replaces the pack name on the stage. Leave blank to restore it.
+      </p>
+    </div>
+  );
 }
 
 /**
@@ -302,6 +362,8 @@ export default function ProDock() {
               {state.error ? <p className="lnr-pro-error">{state.error}</p> : null}
             </>
           )}
+
+          {active ? <StageLabelFields /> : null}
 
           {message ? <p className="lnr-pro-message">{message}</p> : null}
         </div>
