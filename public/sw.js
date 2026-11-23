@@ -18,7 +18,7 @@
        reload once and show the new build immediately.
    ============================================================ */
 
-const CACHE_VERSION = 'v30';
+const CACHE_VERSION = 'v31';
 const CACHE_NAME = `lnr-studio-${CACHE_VERSION}`;
 
 /* Only the shell is precached. Build assets are hashed and picked up
