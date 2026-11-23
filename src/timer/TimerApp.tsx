@@ -31,6 +31,9 @@ import { initReachOut } from './reach-out.ts';
 // Pro: lets a creator replace the pack name read on the stage with their own
 // niche. Applied at the DOM layer, so the engine is untouched.
 import { installSegmentLabels } from './segment-label.ts';
+// Language: the reader uses the phone's own TTS voice by default and offers
+// every installed voice, so a Chinese pack is not read in an English accent.
+import { installVoiceLanguages } from './voice-language.ts';
 
 declare global {
   interface Window {
@@ -119,12 +122,13 @@ export default function TimerApp() {
     initInstallNotice();
     initReachOut();
     installSegmentLabels(host);
+    installVoiceLanguages(host);
 
     let cancelled = false;
     void Promise.all([
       initLibrary().catch(() => {}),
       loadBuiltInBanks().catch(() => {}),
-      loadStoryLibrary().catch(() => {}),
+      loadStoryLibrary().catch(() => {})
     ])
       .then(() => {
         if (cancelled) return;
