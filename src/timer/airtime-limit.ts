@@ -43,7 +43,7 @@
    and never locks a paying creator out mid-broadcast.
    ========================================================================== */
 
-import { getProState, PRO_CHECKOUT_URL } from '../pro/license';
+import { getProLicenseKey, getProState, PRO_CHECKOUT_URL } from '../pro/license';
 
 /** Free plan: 2 hours of airtime per calendar day. */
 export const FREE_DAILY_LIMIT_MS = 2 * 60 * 60 * 1000;
@@ -138,8 +138,10 @@ let serverReachable = true;
 
 function licenseKey(): string {
   try {
-    const state = getProState() as unknown as { key?: string; licenseKey?: string };
-    return String(state.key || state.licenseKey || '');
+    /* The key itself lives in the stored record, not on ProState — reading
+       ProState.key always yielded '' and the server therefore never saw a
+       licence, capping paying customers at 2 hours. */
+    return getProLicenseKey();
   } catch {
     return '';
   }

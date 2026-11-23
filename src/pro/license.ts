@@ -202,6 +202,27 @@ export function getProState(): ProState {
   return ownerProActive() ? ownerState() : state;
 }
 
+/**
+ * The raw licence key this device holds, or '' when there is none.
+ *
+ * WHY THIS EXISTS
+ *
+ * /api/airtime verifies Pro SERVER-SIDE, so the client has to send the key
+ * with every call. The first version of that client read `getProState().key`,
+ * but ProState carries only the decoded licence — the key itself lives in the
+ * stored record. The result was that the server never received a key, always
+ * answered pro:false, and a paying customer was capped at 2 hours like a free
+ * one. This is the accessor that closes that gap.
+ *
+ * The owner-device switch is not a signed key, so it returns '' here; the
+ * server cannot verify it and the client-side Pro check covers that case.
+ */
+export function getProLicenseKey(): string {
+  if (ownerProActive()) return '';
+  const rec = readRecord();
+  return rec && typeof rec.key === 'string' ? rec.key : '';
+}
+
 export function isPro(): boolean {
   return getProState().active;
 }

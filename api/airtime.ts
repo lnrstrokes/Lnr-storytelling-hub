@@ -140,9 +140,15 @@ async function identitySecret(): Promise<Uint8Array> {
 }
 
 async function signId(id: string): Promise<string> {
+  /* crypto.subtle wants a real ArrayBuffer, not a view onto a shared pool:
+     passing the Uint8Array directly fails typecheck under TS 5.7+ because
+     Uint8Array<ArrayBufferLike> may be backed by a SharedArrayBuffer. */
+  const secret = await identitySecret();
+  const raw = new Uint8Array(secret.length);
+  raw.set(secret);
   const key = await crypto.subtle.importKey(
     'raw',
-    await identitySecret(),
+    raw.buffer,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
