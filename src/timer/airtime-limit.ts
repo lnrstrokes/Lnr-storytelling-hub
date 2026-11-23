@@ -431,9 +431,20 @@ export function installAirtimeLimit(root: HTMLElement): void {
   /* The click is intercepted in the capture phase, BEFORE the engine's own
      handler, and the server is asked for a final verdict. A stale cache can
      never let a spent day go live. */
+  /* The allowed click has to be replayed, because this listener already
+     stopped the original one. Without this flag the replay is caught by THIS
+     listener again, which replayes again: an endless loop of /api/airtime
+     calls in which the engine's Start handler is never reached. */
+  let replayingStart = false;
+
   document.addEventListener('click', (event) => {
     const target = event.target as HTMLElement | null;
     if (!target || target.id !== 'startBtn') return;
+    /* Our own replay: let it through to the engine untouched. */
+    if (replayingStart) {
+      replayingStart = false;
+      return;
+    }
     if (isPro()) return;
 
     /* Optimistic local block: instant, and correct in the common case. */
@@ -456,7 +467,10 @@ export function installAirtimeLimit(root: HTMLElement): void {
       /* Allowed (or the server is unreachable and the cache says there is
          time left): replay the click so the engine starts normally. */
       const btn = document.getElementById('startBtn') as HTMLButtonElement | null;
-      if (btn) btn.click();
+      if (btn) {
+        replayingStart = true;
+        btn.click();
+      }
     });
   }, true);
 
