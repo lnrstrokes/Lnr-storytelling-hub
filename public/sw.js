@@ -146,6 +146,6 @@ self.addEventListener('fetch', (event) => {
           if (cached) return cached;
           return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
         })
-      );
+      )
   );
 });
