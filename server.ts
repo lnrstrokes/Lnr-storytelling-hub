@@ -2,6 +2,7 @@ import 'dotenv/config';
 import path from 'node:path';
 import express from 'express';
 import adminHandler from './api/admin';
+import airtimeHandler from './api/airtime';
 import verifyLicenseHandler from './api/verify-license';
 import { forwardApi } from './local-api';
 
@@ -15,6 +16,10 @@ async function startServer() {
 
   app.all('/api/verify-license', (req, res, next) => {
     void forwardApi(verifyLicenseHandler, req, res).catch(next);
+  });
+
+  app.all('/api/airtime', (req, res, next) => {
+    void forwardApi(airtimeHandler, req, res).catch(next);
   });
 
   if (process.env.NODE_ENV === 'production') {

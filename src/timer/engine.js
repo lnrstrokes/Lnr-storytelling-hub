@@ -3882,10 +3882,15 @@
     }
 
     var opts = firstDefined(raw, Q_OPT_KEYS);
-    if (!Array.isArray(opts) || opts.length < 2) {
+    /* A missing or null option list used to leave `opts` undefined, and the
+       answer check below then read opts.length and threw a TypeError. That
+       aborted the whole import loop, so ONE malformed question silently
+       killed the entire file. Normalise to an array first. */
+    if (!Array.isArray(opts)) opts = [];
+    if (opts.length < 2) {
       errs.push(
         where + ': "options" must be an array of at least 2 answer choices' +
-        (Array.isArray(opts) ? ' (found ' + opts.length + ')' : ' (none found)')
+        (opts.length ? ' (found ' + opts.length + ')' : ' (none found)')
       );
     } else {
       opts = opts.map(function (o) {
@@ -3937,8 +3942,8 @@
     }
     if (correct < 0) {
       errs.push(
-        where + ': "answer" must be an index (0-' + (opts.length - 1) + '), ' +
-        'a letter (A-' + optionLetter(opts.length - 1) + '), or the exact text of one option'
+        where + ': "answer" must be an index (0-' + Math.max(0, opts.length - 1) + '), ' +
+        'a letter (A-' + optionLetter(Math.max(0, opts.length - 1)) + '), or the exact text of one option'
       );
     }
 
@@ -4061,7 +4066,14 @@
 
       var good = [], errs = [];
       list.forEach(function (raw, i) {
-        errs = errs.concat(validateQuestion(raw, i, good, segGuess));
+        /* One malformed question must never abort the whole file. Before this
+           guard, a single item with no "options" threw inside validateQuestion
+           and the entire import died with no message at all. */
+        try {
+          errs = errs.concat(validateQuestion(raw, i, good, segGuess));
+        } catch (e) {
+          errs.push('Question ' + (i + 1) + ': could not be read (' + String(e && e.message ? e.message : e) + ')');
+        }
       });
 
       if (!good.length) {

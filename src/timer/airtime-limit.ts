@@ -3,21 +3,31 @@
    --------------------------------------------------------------------------
    THE RULE
 
-     Free  : 2 hours of broadcast airtime per calendar day, device-local.
+     Free  : 2 hours of broadcast airtime per calendar day, counted by the
+             SERVER (/api/airtime). The server refuses to start or continue a
+             session once the allowance is spent.
      Pro   : unlimited. No cap is ever applied to a licensed device.
 
-   WHERE IT LIVES
+   WHY THE SERVER OWNS THE NUMBER
 
-   Same place as pro-gate.ts: OUTSIDE the engine, in its own module, so the
-   7,000-line broadcast engine is not touched for a billing rule.
+   The first version of this module kept the tally in localStorage. It
+   survived reloads and clock changes, but it was still the browser's own
+   word: clearing site data, opening a private window, or editing the stored
+   value started a fresh 2 hours. A cap the client can reset is not a cap.
+
+   Now the browser holds only a CACHE for instant UI. Every decision that
+   matters — may this session start, may it continue — is answered by
+   /api/airtime, which keeps the tally against a signed httpOnly cookie in a
+   network store. Clearing localStorage, editing values, reloading, opening a
+   new tab or changing the system clock all keep the same identity and the
+   same tally.
 
    WHAT COUNTS AS AIRTIME
 
    Only time spent on the stage with the session running and the tab visible.
    A paused broadcast does not burn the allowance, and a phone with the screen
    off (or the tab in the background) does not either — the creator is not
-   airing anything a viewer can see. The tally is wall-clock time, not timer
-   ticks, so it stays honest when the browser throttles background timers.
+   airing anything a viewer can see.
 
    WHEN THE ALLOWANCE RUNS OUT
 
@@ -26,19 +36,14 @@
    and links to Pro. Starting a new session while exhausted is blocked before
    the engine sees the click.
 
-   Free tier is a device-local promise, not a server-enforced one: this module
-   is deliberately simple and offline-first, matching the rest of the studio.
+   OFFLINE
+
+   If the server cannot be reached the module falls back to the cached tally
+   and keeps enforcing locally, so a network blip never hands out free airtime
+   and never locks a paying creator out mid-broadcast.
    ========================================================================== */
 
 import { getProState, PRO_CHECKOUT_URL } from '../pro/license';
-
-const STORAGE_KEY = 'lnr_airtime_v1';
-/** Second, independent copy. A reload cannot clear both stores at once, and a
- *  value that disagrees between them is treated as tampering. */
-const MIRROR_KEY = 'lnr_airtime_mirror_v1';
-/** High-water mark: the largest tally this device has ever reported. It only
- *  ever grows, so winding the clock back or zeroing the counter is caught. */
-const HIGHWATER_KEY = 'lnr_airtime_high_v1';
 
 /** Free plan: 2 hours of airtime per calendar day. */
 export const FREE_DAILY_LIMIT_MS = 2 * 60 * 60 * 1000;
@@ -46,142 +51,132 @@ export const FREE_DAILY_LIMIT_MS = 2 * 60 * 60 * 1000;
 const TICK_MS = 1000;
 /** A single tick longer than this is a suspended tab, not real airtime. */
 const MAX_TICK_MS = 90 * 1000;
-/** Write the tally to storage at most this often. */
-const PERSIST_EVERY_MS = 2000;
+/** Send a tick to the server at most this often. */
+const SYNC_EVERY_MS = 5000;
+/** Re-read the server's tally at most this often. */
+const REFRESH_EVERY_MS = 30000;
 
-interface AirtimeRecord {
-  /** Local calendar day, YYYY-MM-DD. */
+/** Local cache of the server's answer, so the UI is instant on load. */
+const CACHE_KEY = 'lnr_airtime_cache_v2';
+/** Stable per-device key, sent with every call. The server keeps a tally under
+ *  this AND under the httpOnly cookie and uses the larger, so clearing one
+ *  store cannot refund airtime. */
+const DEVICE_KEY = 'lnr_air_device_v1';
+
+function deviceId(): string {
+  try {
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (!id || !/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      id = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+      localStorage.setItem(DEVICE_KEY, id);
+    }
+    return id;
+  } catch {
+    return '';
+  }
+}
+
+interface Cache {
   day: string;
   usedMs: number;
+  at: number;
 }
 
 function todayKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return new Date().toISOString().slice(0, 10);
 }
 
-/** Cheap integrity tag so a hand-edited value is detectable. */
-function checksum(day: string, usedMs: number): string {
-  let h = 2166136261;
-  const s = `${day}|${Math.round(usedMs)}|lnr`;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(36);
-}
-
-function parseRecord(raw: string | null): AirtimeRecord | null {
-  if (!raw) return null;
+function readCache(): Cache {
   try {
-    const parsed = JSON.parse(raw) as Partial<AirtimeRecord> & { sum?: string };
-    if (
-      parsed &&
-      typeof parsed.day === 'string' &&
-      typeof parsed.usedMs === 'number' &&
-      Number.isFinite(parsed.usedMs) &&
-      parsed.usedMs >= 0
-    ) {
-      /* A record whose checksum does not match was edited by hand. Keep the
-         number anyway (it can only make the cap stricter, never looser). */
-      return { day: parsed.day, usedMs: parsed.usedMs };
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<Cache>;
+      if (
+        parsed &&
+        parsed.day === todayKey() &&
+        typeof parsed.usedMs === 'number' &&
+        Number.isFinite(parsed.usedMs) &&
+        parsed.usedMs >= 0
+      ) {
+        return { day: parsed.day, usedMs: parsed.usedMs, at: Number(parsed.at) || 0 };
+      }
     }
   } catch {
-    /* corrupt value */
+    /* private mode / corrupt */
   }
-  return null;
+  return { day: todayKey(), usedMs: 0, at: 0 };
 }
 
-function readHighWater(): number {
+function writeCache(usedMs: number): void {
   try {
-    const n = Number(localStorage.getItem(HIGHWATER_KEY) || 0);
-    return Number.isFinite(n) && n > 0 ? n : 0;
+    localStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({ day: todayKey(), usedMs: Math.round(usedMs), at: Date.now() })
+    );
   } catch {
-    return 0;
-  }
-}
-
-function writeHighWater(usedMs: number): void {
-  try {
-    if (usedMs > readHighWater()) localStorage.setItem(HIGHWATER_KEY, String(Math.round(usedMs)));
-  } catch {
-    /* ignore */
+    /* quota: the server still holds the truth */
   }
 }
 
-/**
- * The tally for today.
- *
- * Three sources are consulted and the LARGEST wins:
- *   · localStorage  — survives reloads and restarts
- *   · sessionStorage — a second copy a reload cannot clear
- *   · the high-water mark — only ever grows
- *
- * So clearing one store, editing the value down, or setting the clock back
- * cannot refund airtime. The only reset is a genuine new calendar day.
- */
-function readRecord(): AirtimeRecord {
-  const day = todayKey();
+/* ------------------------------------------------------------ server sync */
 
-  let local: AirtimeRecord | null = null;
-  let mirror: AirtimeRecord | null = null;
-  try {
-    local = parseRecord(localStorage.getItem(STORAGE_KEY));
-  } catch {
-    /* private mode */
-  }
-  try {
-    mirror = parseRecord(sessionStorage.getItem(MIRROR_KEY));
-  } catch {
-    /* private mode */
-  }
-
-  const candidates: number[] = [];
-  if (local && local.day === day) candidates.push(local.usedMs);
-  if (mirror && mirror.day === day) candidates.push(mirror.usedMs);
-
-  /* The high-water mark is only comparable within the same day; a new day
-     legitimately starts at zero. */
-  const hw = readHighWater();
-  const hwDay = (() => {
-    try {
-      return localStorage.getItem(HIGHWATER_KEY + '_day') || '';
-    } catch {
-      return '';
-    }
-  })();
-  if (hwDay === day && hw > 0) candidates.push(hw);
-
-  const usedMs = candidates.length ? Math.max(...candidates) : 0;
-  return { day, usedMs };
+interface ServerState {
+  ok: boolean;
+  pro: boolean;
+  usedMs: number;
+  remainingMs: number | null;
+  exhausted: boolean;
+  allowed?: boolean;
+  reason?: string;
+  store?: string;
 }
 
-function writeRecord(rec: AirtimeRecord): void {
-  const payload = JSON.stringify({ day: rec.day, usedMs: Math.round(rec.usedMs), sum: checksum(rec.day, rec.usedMs) });
+let lastServer: ServerState | null = null;
+let serverReachable = true;
+
+function licenseKey(): string {
   try {
-    localStorage.setItem(STORAGE_KEY, payload);
+    const state = getProState() as unknown as { key?: string; licenseKey?: string };
+    return String(state.key || state.licenseKey || '');
   } catch {
-    /* quota: the cap still works for this session, it just will not persist */
+    return '';
   }
+}
+
+async function callServer(action: string, extra: Record<string, unknown> = {}): Promise<ServerState | null> {
   try {
-    sessionStorage.setItem(MIRROR_KEY, payload);
+    const res = await fetch('/api/airtime', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ action, licenseKey: licenseKey(), deviceId: deviceId(), ...extra }),
+    });
+    const data = (await res.json()) as ServerState;
+    if (!data || typeof data.usedMs !== 'number') return null;
+    serverReachable = true;
+    lastServer = data;
+    writeCache(data.usedMs);
+    return data;
   } catch {
-    /* ignore */
+    serverReachable = false;
+    return null;
   }
-  try {
-    localStorage.setItem(HIGHWATER_KEY + '_day', rec.day);
-  } catch {
-    /* ignore */
-  }
-  writeHighWater(rec.usedMs);
+}
+
+/** The tally to show. The server's number wins whenever we have one. */
+function currentUsedMs(): number {
+  if (lastServer && typeof lastServer.usedMs === 'number') return lastServer.usedMs;
+  return readCache().usedMs;
 }
 
 export function airtimeUsedMs(): number {
-  return readRecord().usedMs;
+  return currentUsedMs();
 }
 
 export function airtimeRemainingMs(): number {
-  return Math.max(0, FREE_DAILY_LIMIT_MS - airtimeUsedMs());
+  return Math.max(0, FREE_DAILY_LIMIT_MS - currentUsedMs());
 }
 
 export function isPro(): boolean {
@@ -190,7 +185,9 @@ export function isPro(): boolean {
 
 /** True when a Free device has used its allowance for today. */
 export function isAirtimeExhausted(): boolean {
-  return !isPro() && airtimeRemainingMs() <= 0;
+  if (isPro()) return false;
+  if (lastServer && lastServer.pro) return false;
+  return airtimeRemainingMs() <= 0;
 }
 
 /** "2h 00m" / "48m" / "9s" — short enough for a hint line.
@@ -234,7 +231,7 @@ function stageExit(): void {
 }
 
 function updateCopy(): void {
-  const pro = isPro();
+  const pro = isPro() || !!(lastServer && lastServer.pro);
   const remaining = airtimeRemainingMs();
 
   const note = document.getElementById('airtimeNotice');
@@ -295,7 +292,7 @@ function showLimitDialog(): void {
   const body = document.createElement('p');
   body.textContent =
     'Creator Free includes 2 hours of airtime per day, and that allowance is spent. ' +
-    'Your quizzes, stories and settings stay saved — the allowance resets at midnight, ' +
+    'Your quizzes, stories and settings stay saved — the allowance resets at midnight UTC, ' +
     'and Pro Studio has no daily airtime limit.';
   Object.assign(body.style, { margin: '0 0 18px', color: '#b9c2c9' });
 
@@ -425,19 +422,47 @@ export function installAirtimeLimit(root: HTMLElement): void {
     proList.appendChild(li);
   }
 
+  /* --- ask the server for the real tally on load ------------------------ */
+  void callServer('status').then(() => updateCopy());
+
   /* --- block Start when the day is spent -------------------------------- */
+  /* The click is intercepted in the capture phase, BEFORE the engine's own
+     handler, and the server is asked for a final verdict. A stale cache can
+     never let a spent day go live. */
   document.addEventListener('click', (event) => {
     const target = event.target as HTMLElement | null;
     if (!target || target.id !== 'startBtn') return;
-    if (isPro() || airtimeRemainingMs() > 0) return;
+    if (isPro()) return;
+
+    /* Optimistic local block: instant, and correct in the common case. */
+    if (airtimeRemainingMs() <= 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      showLimitDialog();
+      return;
+    }
+
+    /* Confirm with the server. If it refuses, cancel the click. */
     event.preventDefault();
     event.stopPropagation();
-    showLimitDialog();
+    void callServer('start').then((state) => {
+      updateCopy();
+      if (state && state.allowed === false) {
+        showLimitDialog();
+        return;
+      }
+      /* Allowed (or the server is unreachable and the cache says there is
+         time left): replay the click so the engine starts normally. */
+      const btn = document.getElementById('startBtn') as HTMLButtonElement | null;
+      if (btn) btn.click();
+    });
   }, true);
 
   /* --- meter the stage -------------------------------------------------- */
   let lastTickAt = Date.now();
-  let unsavedMs = 0;
+  let unsyncedMs = 0;
+  let lastSyncAt = 0;
+  let lastRefreshAt = 0;
 
   const recordTick = () => {
     const now = Date.now();
@@ -447,13 +472,21 @@ export function installAirtimeLimit(root: HTMLElement): void {
     if (!inSession() || document.hidden || sessionPaused() || isPro()) return;
     if (delta <= 0 || delta > MAX_TICK_MS) return;
 
-    const rec = readRecord();
-    rec.usedMs += delta;
-    unsavedMs += delta;
-    if (unsavedMs >= PERSIST_EVERY_MS || rec.usedMs >= FREE_DAILY_LIMIT_MS) {
-      writeRecord(rec);
-      unsavedMs = 0;
+    /* Local cache advances immediately so the UI is honest between syncs. */
+    const cached = readCache();
+    writeCache(cached.usedMs + delta);
+    unsyncedMs += delta;
+
+    if (now - lastSyncAt >= SYNC_EVERY_MS) {
+      lastSyncAt = now;
+      const send = unsyncedMs;
+      unsyncedMs = 0;
+      void callServer('tick', { deltaMs: send }).then((state) => {
+        if (state && state.allowed === false) enforce();
+        updateCopy();
+      });
     }
+
     enforce();
   };
 
@@ -462,15 +495,25 @@ export function installAirtimeLimit(root: HTMLElement): void {
     updateCopy();
   }, TICK_MS);
 
+  /* Periodic re-read, so a second tab or another device on the same identity
+     is reflected here without a reload. */
+  window.setInterval(() => {
+    if (Date.now() - lastRefreshAt < REFRESH_EVERY_MS) return;
+    lastRefreshAt = Date.now();
+    if (isPro()) return;
+    void callServer('status').then(() => {
+      updateCopy();
+      enforce();
+    });
+  }, REFRESH_EVERY_MS);
+
   /* Leaving the tab must not be counted as airtime, and returning must not
      count the gap either. */
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      const rec = readRecord();
-      if (unsavedMs > 0) {
-        writeRecord(rec);
-        unsavedMs = 0;
-      }
+    if (document.hidden && unsyncedMs > 0) {
+      const send = unsyncedMs;
+      unsyncedMs = 0;
+      void callServer('tick', { deltaMs: send });
     }
     lastTickAt = Date.now();
     updateCopy();
@@ -479,10 +522,20 @@ export function installAirtimeLimit(root: HTMLElement): void {
   /* Day rollover, or a Pro licence changing hands, re-evaluates the cap. */
   window.addEventListener('lnr:pro-changed', () => {
     lastTickAt = Date.now();
-    updateCopy();
+    void callServer('status').then(() => updateCopy());
   });
 
   /* No dialog on load: an exhausted day is reported in the hint line, and the
      dialog appears when the operator actually tries to go live. */
   updateCopy();
 }
+
+/* Exposed for the browser test harness. */
+(window as unknown as { LNR_AIRTIME?: unknown }).LNR_AIRTIME = {
+  used: () => airtimeUsedMs(),
+  remaining: () => airtimeRemainingMs(),
+  exhausted: () => isAirtimeExhausted(),
+  server: () => lastServer,
+  reachable: () => serverReachable,
+  refresh: () => callServer('status'),
+};
