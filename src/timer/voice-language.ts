@@ -85,6 +85,39 @@ function chosenVoice(): SpeechSynthesisVoice | null {
 /* ------------------------------------------------------------------ speaking */
 
 /**
+ * The script a line is written in, as a language prefix, or '' for Latin.
+ *
+ * A stored voice choice can be right for one pack and wrong for the other: an
+ * English voice picked before a Chinese pack existed would otherwise read
+ * every Chinese question in English, because the choice is applied to every
+ * utterance unconditionally. Matching the choice against the script of the
+ * text keeps that setting from fighting the pack.
+ */
+function scriptLang(text: string): string {
+  if (/[\u3040-\u30ff]/.test(text)) return 'ja';
+  if (/[\uac00-\ud7af\u1100-\u11ff]/.test(text)) return 'ko';
+  if (/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(text)) return 'zh';
+  return '';
+}
+
+/**
+ * The voice for one utterance: the stored choice when it can speak this
+ * script, otherwise the first installed voice that can, otherwise the phone's
+ * own default (null). Latin text is left to the stored choice exactly as
+ * before, so nothing changes for an English pack.
+ */
+function voiceForText(text: string): SpeechSynthesisVoice | null {
+  const want = scriptLang(text);
+  const chosen = chosenVoice();
+  if (!want) return chosen;
+  if (chosen && String(chosen.lang || '').toLowerCase().indexOf(want) === 0) return chosen;
+  const match = allVoices().find(
+    (v) => String(v.lang || '').toLowerCase().indexOf(want) === 0
+  );
+  return match || null;
+}
+
+/**
  * Decide the voice on the utterance itself, right before it is spoken.
  *
  * With no saved choice the engine's inherited `u.voice` is cleared: an
@@ -103,7 +136,7 @@ function patchSpeak(): void {
   const original = s.speak.bind(s);
   s.speak = function patchedSpeak(u: SpeechSynthesisUtterance): void {
     try {
-      const voice = chosenVoice();
+      const voice = voiceForText(String(u.text || ''));
       if (voice) {
         u.voice = voice;
         if (voice.lang) u.lang = voice.lang;
