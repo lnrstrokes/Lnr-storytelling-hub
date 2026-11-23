@@ -31,8 +31,8 @@ import { initReachOut } from './reach-out.ts';
 // Pro: lets a creator replace the pack name read on the stage with their own
 // niche. Applied at the DOM layer, so the engine is untouched.
 import { installSegmentLabels } from './segment-label.ts';
-// Language: the reader uses the phone's own TTS voice by default and offers
-// every installed voice, so a Chinese pack is not read in an English accent.
+// Voice: the reader uses this device's own choice and keeps it, whatever the
+// text says. No screen content can switch the voice or its language.
 import { installVoiceLanguages } from './voice-language.ts';
 // Text-to-speech is optional: uploaded narration and prerecorded clips need no
 // voice at all, and the panels now say so. Words only, no engine state.
