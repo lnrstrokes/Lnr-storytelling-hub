@@ -128,7 +128,7 @@ export default function TimerApp() {
     void Promise.all([
       initLibrary().catch(() => {}),
       loadBuiltInBanks().catch(() => {}),
-      loadStoryLibrary().catch(() => {})
+      loadStoryLibrary().catch(() => {}),
     ])
       .then(() => {
         if (cancelled) return;
