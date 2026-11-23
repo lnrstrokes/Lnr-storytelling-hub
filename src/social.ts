@@ -29,7 +29,7 @@ export const YOUTUBE_HANDLE = '@lnrlivestreamhub';
 export const YOUTUBE_URL = 'https://youtube.com/@lnrlivestreamhub';
 
 /** Shows the notice once per added or changed line of copy. */
-export const NOTICE_VERSION = 'v1';
+export const NOTICE_VERSION = 'v2';
 
 const PREFIX = 'lnr_notice_';
 
