@@ -18,7 +18,7 @@
        reload once and show the new build immediately.
    ============================================================ */
 
-const CACHE_VERSION = 'v32';
+const CACHE_VERSION = 'v33';
 const CACHE_NAME = `lnr-studio-${CACHE_VERSION}`;
 
 /* Only the shell is precached. Build assets are hashed and picked up
@@ -146,6 +146,5 @@ self.addEventListener('fetch', (event) => {
           if (cached) return cached;
           return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
         })
-      )
-  );
+      );
 });
