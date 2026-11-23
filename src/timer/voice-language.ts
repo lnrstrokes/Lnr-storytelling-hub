@@ -1,38 +1,40 @@
 /**
- * voice-language.ts — read the pack in the language the phone speaks.
+ * voice-language.ts - one voice per device, chosen by the operator, never
+ * decided from the words on screen.
  *
- * WHAT WAS WRONG
- * --------------
- * Two small decisions inside `engine.js` combined into one loud bug for anyone
- * whose phone is not set to English:
+ * WHAT WAS WRONG (and why the guessing is gone)
+ * ---------------------------------------------
+ * An earlier version of this module inspected the script of every line just
+ * before it was spoken and switched to a matching voice: any CJK character in
+ * the text pulled the reader onto a Chinese voice, and the announcement around
+ * a question ("Next question.", the answer line) was rewritten in Chinese to
+ * match. One Chinese character inside an English question - a name, a quoted
+ * word, a borrowed phrase - was therefore enough to change the language of a
+ * live service mid-stream and never change back.
  *
- *   1. `curatedVoices()` filtered the dropdown to `/^en/` voices and capped it
- *      at ten, so a Chinese phone could not SEE a Chinese voice to choose.
- *   2. `pickVoice()` returned `voiceList[0]` whenever the operator had not
- *      chosen one — and that first entry was always an English voice. So a
- *      Chinese JSON pack was read out by an English voice, on every device
- *      that had never touched the picker.
+ * Language must not be inferred. It is a decision, and the only place it is
+ * allowed to come from is this device.
  *
- * The right place to fix that is the engine, but the engine is a 324 KB
- * single-file broadcast controller: re-uploading it whole to change two
- * functions risks the live stream for a settings default. This module does it
- * from the outside instead, the same pattern `pro-gate.ts` and
- * `segment-label.ts` already use:
+ * WHAT REMAINS
+ * ------------
+ *   - both pickers list every installed voice, English first, so a Chinese
+ *     voice can actually be chosen on a Chinese phone;
+ *   - the chosen voice is applied to every utterance, unchanged, whatever the
+ *     text says - no per-line decisions, no rewriting of the spoken words;
+ *   - with nothing chosen ("Phone default voice"), the utterance is left to
+ *     the phone's own text-to-speech, which is a device setting too.
  *
- *   · every installed voice is offered in both pickers, English first;
- *   · "Phone default voice" is the first entry and what an untouched device
- *     uses, so the phone's own TTS language wins (Chinese phone -> Chinese
- *     voice, English phone -> English voice);
- *   · at the moment of speaking, the stored choice is applied to the
- *     utterance — or cleared, so the phone decides.
- *
- * Delete the import and the call in `TimerApp.tsx` to remove it entirely.
+ * Nothing here reads text, sets a language, or reacts to a pack. Delete the
+ * import and the call in TimerApp.tsx to remove it entirely.
  */
 
 /** Same settings blob the engine writes (`STORE` in engine.js). */
 const STORE = 'lnr_timer_v2';
 const SELECT_IDS = ['voiceSelect', 'stVoiceSelect'];
 const DEFAULT_LABEL = 'Phone default voice';
+
+/** Storage key owned by ReaderDock (the studio reader), which saves a voiceURI. */
+const READER_VOICE = 'lnr_reader_voice';
 
 function synth(): SpeechSynthesis | null {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
@@ -47,7 +49,7 @@ function allVoices(): SpeechSynthesisVoice[] {
   }
 }
 
-/** The voice the operator picked, or '' for "let the phone decide". */
+/** The voice this device remembers, or '' for "let the phone decide". */
 function savedVoiceName(): string {
   try {
     const raw = localStorage.getItem(STORE);
@@ -58,9 +60,6 @@ function savedVoiceName(): string {
     return '';
   }
 }
-
-/** Storage key owned by ReaderDock (the studio reader), which saves a voiceURI. */
-const READER_VOICE = 'lnr_reader_voice';
 
 /**
  * The one voice this device should speak with, or null for the phone default.
@@ -85,46 +84,12 @@ function chosenVoice(): SpeechSynthesisVoice | null {
 /* ------------------------------------------------------------------ speaking */
 
 /**
- * The script a line is written in, as a language prefix, or '' for Latin.
+ * Apply the device's choice to every utterance.
  *
- * A stored voice choice can be right for one pack and wrong for the other: an
- * English voice picked before a Chinese pack existed would otherwise read
- * every Chinese question in English, because the choice is applied to every
- * utterance unconditionally. Matching the choice against the script of the
- * text keeps that setting from fighting the pack.
- */
-function scriptLang(text: string): string {
-  if (/[\u3040-\u30ff]/.test(text)) return 'ja';
-  if (/[\uac00-\ud7af\u1100-\u11ff]/.test(text)) return 'ko';
-  if (/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(text)) return 'zh';
-  return '';
-}
-
-/**
- * The voice for one utterance: the stored choice when it can speak this
- * script, otherwise the first installed voice that can, otherwise the phone's
- * own default (null). Latin text is left to the stored choice exactly as
- * before, so nothing changes for an English pack.
- */
-function voiceForText(text: string): SpeechSynthesisVoice | null {
-  const want = scriptLang(text);
-  const chosen = chosenVoice();
-  if (!want) return chosen;
-  if (chosen && String(chosen.lang || '').toLowerCase().indexOf(want) === 0) return chosen;
-  const match = allVoices().find(
-    (v) => String(v.lang || '').toLowerCase().indexOf(want) === 0
-  );
-  return match || null;
-}
-
-/**
- * Decide the voice on the utterance itself, right before it is spoken.
- *
- * With no saved choice the engine's inherited `u.voice` is cleared: an
- * utterance with no voice and no lang uses the phone's default TTS voice and
- * language, which is exactly the behaviour a Chinese phone needs for a
- * Chinese pack. With a saved choice, that exact voice is applied — matching by
- * name across every installed voice, not just the English ones.
+ * No text is inspected and no `lang` is assigned: the voice is the same for
+ * every line of every pack, so the reader cannot change language part-way
+ * through a service. With no choice stored the utterance keeps no voice at
+ * all, which leaves it to the phone's own text-to-speech setting.
  */
 function patchSpeak(): void {
   const s = synth();
@@ -136,14 +101,7 @@ function patchSpeak(): void {
   const original = s.speak.bind(s);
   s.speak = function patchedSpeak(u: SpeechSynthesisUtterance): void {
     try {
-      const voice = voiceForText(String(u.text || ''));
-      if (voice) {
-        u.voice = voice;
-        if (voice.lang) u.lang = voice.lang;
-      } else {
-        u.voice = null;
-        u.lang = '';
-      }
+      u.voice = chosenVoice();
     } catch {
       /* a failed override must never stop the narration */
     }
@@ -163,7 +121,7 @@ interface Option {
  *
  * The list is de-duplicated by name+lang because Chrome often reports the same
  * voice twice (local and network). Nothing is filtered out: a phone with 40
- * voices shows 40 plus the default, which is a dropdown you scroll — far
+ * voices shows 40 plus the default, which is a dropdown you scroll - far
  * better than a list that hides the language you are broadcasting in.
  */
 function desiredOptions(): Option[] {
@@ -191,7 +149,7 @@ function desiredOptions(): Option[] {
 
   return [
     { value: '', label: DEFAULT_LABEL },
-    ...english.concat(rest).map((v) => ({ value: v.name, label: `${v.name} · ${v.lang}` }))
+    ...english.concat(rest).map((v) => ({ value: v.name, label: `${v.name} \u00b7 ${v.lang}` }))
   ];
 }
 
@@ -243,84 +201,11 @@ function watchPickers(): void {
   [300, 1200, 3000].forEach((ms) => window.setTimeout(fillPickers, ms));
 }
 
-/* ---------------------------------------------------------------- spoken text */
-
-/** Any CJK character means the pack is not English. */
-const CJK = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/;
-
-interface QuizLike {
-  q?: string;
-  opts?: string[];
-  correct?: number;
-  ref?: string;
-  insight?: string;
-}
-
-const LETTER = ['A', 'B', 'C', 'D'];
-
-/** "Next question." / "The answer is B." — in the language of the question. */
-function cjkQuestionParts(q: QuizLike, opts?: { announceNext?: boolean }): string[] {
-  const announce = !opts || opts.announceNext !== false;
-  const parts: string[] = [];
-  if (announce) parts.push('\u4e0b\u4e00\u9898\u3002');
-  if (q.q) parts.push(q.q);
-  (q.opts || []).forEach((o, i) => {
-    const letter = LETTER[i] || String(i + 1);
-    parts.push(`${letter}\u3001${o}`);
-  });
-  return parts.filter((p) => p.trim());
-}
-
-function cjkRevealParts(q: QuizLike): string[] {
-  const parts: string[] = [];
-  const letter = LETTER[q.correct ?? -1] || '';
-  const answer = (q.opts || [])[q.correct ?? -1] || '';
-  parts.push(`\u6b63\u786e\u7b54\u6848\u662f ${letter}\u3002${answer}`);
-  if (q.ref) parts.push(`\u51fa\u5904\uff1a${q.ref}`);
-  if (q.insight) parts.push(q.insight);
-  return parts.filter((p) => p.trim());
-}
-
-/**
- * Leave a Chinese script alone when building the spoken text.
- *
- * `speech.js` deliberately speaks digits, years and verse references as English
- * words ("1851" -> "eighteen fifty-one") and prefixes questions with "Next
- * question." — correct for an English pack, and the reason a Chinese pack was
- * still partly read in English even once the voice was right. The module is
- * captured by the engine at boot, so replacing the two entry points on that
- * same object changes what the narrator says without touching the engine. The
- * English path is passed straight through to the original functions.
- */
-function patchSpeechApi(): void {
-  const api = (window as unknown as { LNR_SPEECH?: Record<string, unknown> }).LNR_SPEECH;
-  if (!api || api.__lnrCjk === true) return;
-  api.__lnrCjk = true;
-
-  const originalQuestion = api.questionParts as (q: QuizLike, o?: unknown) => string[];
-  const originalReveal = api.revealParts as (q: QuizLike) => string[];
-
-  if (typeof originalQuestion === 'function') {
-    api.questionParts = (q: QuizLike, o?: unknown): string[] =>
-      q && CJK.test(String(q.q || ''))
-        ? cjkQuestionParts(q, o as { announceNext?: boolean })
-        : originalQuestion.call(api, q, o);
-  }
-
-  if (typeof originalReveal === 'function') {
-    api.revealParts = (q: QuizLike): string[] => {
-      const stem = q ? String(q.q || '') + String((q.opts || []).join(' ')) + String(q.ref || '') : '';
-      return q && CJK.test(stem) ? cjkRevealParts(q) : originalReveal.call(api, q);
-    };
-  }
-}
-
 /* ----------------------------------------------------------------------- note */
 
 /**
  * The onboarding note under the picker still told people to download English
- * voices. One sentence above it explains the new default instead of shipping a
- * 65 KB HTML file again.
+ * voices. One sentence above it explains what the setting means now.
  */
 function annotateGuide(): void {
   const notes = Array.from(document.querySelectorAll<HTMLElement>('.schema-note'));
@@ -331,8 +216,8 @@ function annotateGuide(): void {
     const lead = document.createElement('span');
     lead.innerHTML =
       '<strong>Phone default voice</strong> uses whatever language your phone\u2019s ' +
-      'text-to-speech is set to \u2014 a Chinese pack reads in Chinese on a Chinese phone. ' +
-      'Pick a named voice only to force a language or accent. ';
+      'text-to-speech is set to. Pick a named voice to force a language or accent; ' +
+      'the reader keeps that voice for the whole session and never changes it by itself. ';
     note.insertBefore(lead, note.firstChild);
   });
 }
@@ -340,7 +225,6 @@ function annotateGuide(): void {
 /* --------------------------------------------------------------------- install */
 
 export function installVoiceLanguages(_host?: HTMLElement): void {
-  patchSpeechApi();
   patchSpeak();
   fillPickers();
   watchPickers();
