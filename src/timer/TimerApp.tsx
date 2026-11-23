@@ -27,6 +27,7 @@ import { installAirtimeLimit } from './airtime-limit.ts';
 // Install + streaming-route notice. Additive: injects its own markup, so
 // deleting these two lines removes every trace of it.
 import { initInstallNotice } from './install-notice.ts';
+import { initReachOut } from './reach-out.ts';
 
 declare global {
   interface Window {
@@ -113,6 +114,7 @@ export default function TimerApp() {
     installAdminKeys(host);
     installAirtimeLimit(host);
     initInstallNotice();
+    initReachOut();
 
     let cancelled = false;
     void Promise.all([

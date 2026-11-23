@@ -16,7 +16,18 @@ import {
   setOwnerMode,
   type OwnerMode
 } from './owner';
+import {
+  X_HANDLE,
+  X_URL,
+  YOUTUBE_HANDLE,
+  YOUTUBE_URL,
+  dismissNotice,
+  isNoticeDismissed
+} from '../social';
 import './pro.css';
+
+/** Shown once per NOTICE_VERSION, then remembered as dismissed. */
+const PACKS_NOTICE_ID = 'pro-free-packs';
 
 function expiryLabel(state: ProState): string {
   const exp = state.license?.exp;
@@ -47,6 +58,7 @@ export default function ProDock() {
   const [message, setMessage] = useState('');
   const [owner, setOwner] = useState(() => isOwnerDevice());
   const [mode, setMode] = useState<OwnerMode>(() => getOwnerMode());
+  const [packsNote, setPacksNote] = useState(() => !isNoticeDismissed(PACKS_NOTICE_ID));
 
   useEffect(() => {
     const sync = () => setState(getProState());
@@ -191,6 +203,71 @@ export default function ProDock() {
                 <li>Promo rotation sequence &amp; layout controls</li>
                 <li>Brand strap locked to your licence</li>
               </ul>
+
+              {/* Read before the price, dismissed forever after: two things people
+                  assume are paid for, and a way to ask instead of buying blind. */}
+              {packsNote ? (
+                <div
+                  style={{
+                    position: 'relative',
+                    margin: '0 0 12px',
+                    padding: '10px 30px 10px 11px',
+                    borderRadius: 10,
+                    border: '1px solid rgba(217,171,99,0.28)',
+                    background: 'rgba(217,171,99,0.07)',
+                    fontSize: 11,
+                    lineHeight: 1.55,
+                    color: '#cbd2d9'
+                  }}
+                >
+                  <button
+                    type="button"
+                    aria-label="Dismiss this note"
+                    onClick={() => {
+                      dismissNotice(PACKS_NOTICE_ID);
+                      setPacksNote(false);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: 2,
+                      right: 2,
+                      border: 0,
+                      background: 'transparent',
+                      color: '#9aa3ad',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      padding: '4px 6px'
+                    }}
+                  >
+                    ✕
+                  </button>
+                  <p style={{ margin: 0 }}>
+                    Before you upgrade: your own question packs (JSON) and your own MP3 narration
+                    already work on Free — no key needed.
+                  </p>
+                  <p style={{ margin: '5px 0 0' }}>
+                    Questions first?{' '}
+                    <a
+                      href={X_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#d9ab63' }}
+                    >
+                      {X_HANDLE}
+                    </a>{' '}
+                    ·{' '}
+                    <a
+                      href={YOUTUBE_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#d9ab63' }}
+                    >
+                      {YOUTUBE_HANDLE}
+                    </a>
+                  </p>
+                </div>
+              ) : null}
+
               <a
                 className="lnr-pro-btn"
                 href={PRO_CHECKOUT_URL}
