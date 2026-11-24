@@ -60,16 +60,26 @@ function onDeckTime(v: HTMLVideoElement): void {
 
   trackDeck(v);
 
-  if (!getProState().active) return;
+  // Debug: log why breaks might not trigger
+  if (!getProState().active) {
+    // Silent: break requires Pro. The panel already shows the locked notice.
+    return;
+  }
 
   const record = readRecord(clipId);
-  if (!record.on) return;
+  if (!record.on) {
+    // Silent: break toggle is off. The panel shows the toggle state.
+    return;
+  }
 
   const state = engineState();
   if (!state || state.phase !== 'video' || state.paused) return;
 
   const clipBreaks = breaksFor(clipId);
-  if (!clipBreaks || !clipBreaks.items.length) return;
+  if (!clipBreaks || !clipBreaks.items.length) {
+    // Silent: no break items for this clip. The panel shows the upload status.
+    return;
+  }
 
   const time = v.currentTime;
   let shown = shownSets.get(clipId);

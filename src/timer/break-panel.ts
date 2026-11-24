@@ -188,6 +188,25 @@ export function renderPanel(): void {
 
   renderAttached(record);
   if (statusEl) renderStatus();
+
+  // Update the video stage break indicator
+  const clipBreaks = record.on ? buildClipBreaks(record, clipNameFor(selectedClipId)) : null;
+  const breakItemsCount = clipBreaks ? clipBreaks.items.length : 0;
+  updateBreakIndicator(pro, record.on, clips.length > 0, breakItemsCount);
+}
+
+function updateBreakIndicator(pro: boolean, breaksOn: boolean, hasClips: boolean, breakItemsCount: number): void {
+  const indicator = document.getElementById('vbreakStageIndicator');
+  if (!indicator) return;
+
+  if (!pro || !hasClips || breakItemsCount === 0) {
+    indicator.hidden = true;
+    return;
+  }
+
+  indicator.hidden = false;
+  indicator.textContent = breaksOn ? `Breaks ready · ${breakItemsCount} scheduled` : 'Breaks off';
+  indicator.classList.toggle('is-on', breaksOn);
 }
 
 export function buildPanel(root: HTMLElement): void {
