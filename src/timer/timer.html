@@ -399,6 +399,23 @@
             To add quiz and anecdote breaks: upload a clip above, then use the <strong>Quiz and anecdote breaks</strong> panel below to upload a quiz file
             (and optionally an anecdote file) and toggle breaks on. Breaks are a Pro feature.
           </p>
+          <div class="video-ownership-row">
+            <div class="dsec-head" style="margin-bottom:8px;">
+              <h3>Video ownership &amp; disclaimer</h3>
+              <span class="dsec-tag" id="videoOwnershipTag">Reference / source video</span>
+            </div>
+            <p class="video-ownership-help">Choose whether the video you uploaded is your own content or a reference clip. Reference clips show a short on-screen disclaimer with voice narration before playback starts. Own the video or use it for reference at your discretion, and attribute reference material in your stream description.</p>
+            <div class="seg-inline" role="radiogroup" aria-label="Video ownership">
+              <button class="seg-pill" type="button" data-ownership="own" id="ownVideoBtn">
+                <span class="dsec-tag">I own this video</span>
+                <span class="seg-pill-sub">No disclaimer &middot; plays straight away</span>
+              </button>
+              <button class="seg-pill is-selected" type="button" data-ownership="reference" id="refVideoBtn">
+                <span class="dsec-tag">Reference / source video</span>
+                <span class="seg-pill-sub">Short disclaimer with voice before playback</span>
+              </button>
+            </div>
+          </div>
           <div class="demo-video-bar">
             <button class="btn btn-quiet btn-sm" type="button" id="loadDemoVideoBtn">Preview 15s Built-in Video Demo</button>
             <span class="block-note" id="demoVideoStatus" style="margin:0">Try Engine 03 right now without uploading an MP4.</span>
@@ -1067,6 +1084,20 @@
               <span class="ve-glyph" aria-hidden="true">&#9654;</span>
               <h2 id="videoEmptyTitle">Video break</h2>
               <p id="videoEmptyNote">No clip loaded yet. Add one in the studio settings &mdash; the timer keeps running either way.</p>
+            </div>
+            <div class="video-preroll" id="videoPreroll" hidden>
+              <div class="video-preroll-card">
+                <div class="video-preroll-pill" id="videoPrerollPill">REFERENCE</div>
+                <h3 class="video-preroll-title" id="videoPrerollTitle">Video used as reference</h3>
+                <p class="video-preroll-body" id="videoPrerollBody">
+                  This clip is being used as reference material to generate quiz and anecdote breaks.
+                  The clip is attributed as reference material. Own the video or use it for reference at your discretion.
+                </p>
+                <div class="video-preroll-progress">
+                  <div class="video-preroll-bar" id="videoPrerollBar"></div>
+                </div>
+                <p class="video-preroll-timer" id="videoPrerollTimer">10s</p>
+              </div>
             </div>
             <div class="studio-break-card" id="promoAdOverlay" hidden>
               <div class="studio-break-card-top">

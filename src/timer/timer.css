@@ -2092,6 +2092,27 @@ body.safe .screen-stage { gap: 0; }
   color: var(--cream-soft);
 }
 .clip-list .clip-size { color: var(--muted-dim); font-size: 12.5px; white-space: nowrap; }
+.clip-ownership {
+  flex: 0 0 auto;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.clip-ownership[data-ownership="own"] {
+  color: #7bb095;
+  background: rgba(123, 176, 149, 0.12);
+  border: 1px solid rgba(123, 176, 149, 0.25);
+}
+.clip-ownership[data-ownership="reference"] {
+  color: #e2bf88;
+  background: rgba(217, 171, 99, 0.1);
+  border: 1px solid rgba(217, 171, 99, 0.2);
+}
 .clip-remove {
   border: 0;
   background: transparent;

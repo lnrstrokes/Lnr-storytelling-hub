@@ -450,6 +450,8 @@
     'plStatus', 'plSearchInput', 'plSearchResults',
     /* video engine */
     'videoDrop', 'videoInput', 'videoTierLimitNote', 'loadDemoVideoBtn', 'demoVideoStatus',
+    'ownVideoBtn', 'refVideoBtn', 'videoOwnershipTag',
+    'videoPreroll', 'videoPrerollBar', 'videoPrerollTimer',
     'clipList', 'clipCount', 'loopCalc', 'loopMath',
     'lmDuration', 'lmLoops', 'lmTotal', 'loopPresets', 'loopHours', 'loopNote', 'loopClipInfo',
     /* promo / breaks */
@@ -2071,6 +2073,40 @@
     refreshLoopMath();
     refreshPromoText();
     refreshStats();
+    refreshOwnershipUI();
+  }
+
+  function refreshOwnershipUI() {
+    var tag = el.videoOwnershipTag;
+    var ownBtn = el.ownVideoBtn;
+    var refBtn = el.refVideoBtn;
+    if (!tag || !ownBtn || !refBtn) return;
+    var hasClips = clips.length > 0;
+    if (!hasClips) {
+      tag.textContent = 'No clips uploaded';
+      ownBtn.classList.remove('is-selected');
+      refBtn.classList.remove('is-selected');
+      ownBtn.disabled = true;
+      refBtn.disabled = true;
+      return;
+    }
+    var allOwn = clips.every(function (c) { return c.ownership === 'own'; });
+    var allRef = clips.every(function (c) { return c.ownership !== 'own'; });
+    if (allOwn) {
+      tag.textContent = 'I own this video';
+      ownBtn.classList.add('is-selected');
+      refBtn.classList.remove('is-selected');
+    } else if (allRef) {
+      tag.textContent = 'Reference / source video';
+      refBtn.classList.add('is-selected');
+      ownBtn.classList.remove('is-selected');
+    } else {
+      tag.textContent = clips.length + ' clips \u00b7 mixed';
+      ownBtn.classList.remove('is-selected');
+      refBtn.classList.remove('is-selected');
+    }
+    ownBtn.disabled = false;
+    refBtn.disabled = false;
   }
 
   function listFor(kind) { return kind === 'promo' ? el.promoList : el.clipList; }
@@ -2091,6 +2127,12 @@
       var size = document.createElement('span');
       size.className = 'clip-size';
       size.textContent = (cc.duration ? clock(cc.duration * 1000) + ' \u00b7 ' : '') + humanSize(cc.size);
+      var ownership = cc.ownership || 'reference';
+      var badge = document.createElement('span');
+      badge.className = 'clip-ownership';
+      badge.setAttribute('data-ownership', ownership);
+      badge.textContent = ownership === 'own' ? 'Owned' : 'Reference';
+      badge.title = ownership === 'own' ? 'You own this video — no disclaimer' : 'Reference clip — disclaimer plays before video';
       var btn = document.createElement('button');
       btn.className = 'clip-remove';
       btn.type = 'button';
@@ -2114,7 +2156,7 @@
           toast((kind === 'promo' ? 'Break clip' : 'Clip') + ' removed');
         });
       });
-      li.appendChild(name); li.appendChild(size); li.appendChild(btn);
+      li.appendChild(name); li.appendChild(size); li.appendChild(badge); li.appendChild(btn);
       host.appendChild(li);
     });
     var ce = countElFor(kind);
@@ -2190,13 +2232,13 @@
       }
       return persistableMediaBlob(f).then(function (ownedBlob) {
         storedBlobRef = ownedBlob || f;
-        return idbPut({ id: id, name: f.name, size: f.size, blob: storedBlobRef, kind: kind, duration: d, enabled: true }).then(function () { return d; });
+        return idbPut({ id: id, name: f.name, size: f.size, blob: storedBlobRef, kind: kind, duration: d, enabled: true, ownership: 'reference' }).then(function () { return d; });
       });
     }).then(function (d) {
       if (kind === 'promo' && pendingPromoUploads > 0) pendingPromoUploads--;
       if (kind === 'clip' && pendingClipUploads > 0) pendingClipUploads--;
       if (d === null) return;
-      var rec = { id: id, name: f.name, size: f.size, duration: d || 0, enabled: true };
+      var rec = { id: id, name: f.name, size: f.size, duration: d || 0, enabled: true, ownership: 'reference' };
       if (!clipURLs[id]) clipURLs[id] = URL.createObjectURL(storedBlobRef);
       if (kind === 'admin_promo') adminPromos.push(rec);
       else if (kind === 'promo') {
@@ -2250,6 +2292,16 @@
     }
     refreshStats();
     toast(demoVideoMode ? '15s Video Engine demo enabled' : 'Video Engine demo disabled');
+  });
+  on(el.ownVideoBtn, 'click', function () {
+    applyOwnershipToAll('own');
+    if (el.videoOwnershipTag) el.videoOwnershipTag.textContent = 'I own this video';
+    toast('Disclaimer off — videos play straight away');
+  });
+  on(el.refVideoBtn, 'click', function () {
+    applyOwnershipToAll('reference');
+    if (el.videoOwnershipTag) el.videoOwnershipTag.textContent = 'Reference / source video';
+    toast('Disclaimer on — reference notice plays before video starts');
   });
   on(el.promoInput, 'change', function () {
     handleClipFiles(el.promoInput.files, 'promo');
@@ -2428,6 +2480,10 @@
   var standbyPrepared = { deckIdx: -1, id: '', url: '', index: -1 };
   var CROSSFADE_LEAD_SEC = 0.48;
   var CROSSFADE_MS = 460;
+  var prerollActive = false;
+  var prerollTimer = 0;
+  var PREROLL_MS = 10000;
+  var PREROLL_VOICE = 'Video used as reference. This clip is the reference used to generate the quiz and anecdote breaks. The clip is attributed as reference material. Own the video or use it for reference at your discretion.';
 
   function activeVideo() {
     return videoDecks[activeDeckIdx] || el.stageVideo;
@@ -2527,6 +2583,113 @@
     });
   }
 
+  function clipOwnership(id) {
+    if (!id) return 'reference';
+    var rec = findMediaRecordById(id);
+    if (rec && rec.ownership) return rec.ownership;
+    for (var i = 0; i < clips.length; i++) {
+      if (clips[i].id === id && clips[i].ownership) return clips[i].ownership;
+    }
+    return 'reference';
+  }
+
+  function setClipOwnership(id, ownership) {
+    if (!id || !ownership) return;
+    ownership = ownership === 'own' ? 'own' : 'reference';
+    for (var i = 0; i < clips.length; i++) {
+      if (clips[i].id === id) { clips[i].ownership = ownership; break; }
+    }
+    /* Read the full DB record so we do not wipe blob/kind/enabled when
+       writing back the ownership change. */
+    idbGetStore('clips', id).then(function (full) {
+      if (full) {
+        full.ownership = ownership;
+        return idbPut(full).catch(function () {});
+      }
+    });
+    renderClips();
+    refreshStats();
+  }
+
+  function applyOwnershipToAll(ownership) {
+    ownership = ownership === 'own' ? 'own' : 'reference';
+    var updated = false;
+    clips.forEach(function (c) {
+      if (c.ownership !== ownership) {
+        c.ownership = ownership;
+        updated = true;
+      }
+    });
+    if (updated) {
+      clips.forEach(function (c) {
+        idbGetStore('clips', c.id).then(function (full) {
+          if (full) { full.ownership = ownership; return idbPut(full).catch(function () {}); }
+        });
+      });
+      renderClips();
+      refreshStats();
+    }
+  }
+
+  function startPreroll() {
+    if (prerollActive) return;
+    var overlay = el.videoPreroll;
+    if (!overlay) return;
+    prerollActive = true;
+    overlay.hidden = false;
+    var bar = el.videoPrerollBar;
+    var timer = el.videoPrerollTimer;
+    if (bar) bar.style.width = '0%';
+    if (timer) timer.textContent = (PREROLL_MS / 1000) + 's';
+    var started = now();
+    if (prerollTimer) window.clearInterval(prerollTimer);
+    prerollTimer = window.setInterval(function () {
+      if (!live.inSession || live.phase !== 'video' || !prerollActive) {
+        window.clearInterval(prerollTimer);
+        prerollTimer = 0;
+        return;
+      }
+      var elapsed = now() - started;
+      var left = Math.max(0, PREROLL_MS - elapsed);
+      if (bar) bar.style.width = Math.min(100, (elapsed / PREROLL_MS) * 100).toFixed(1) + '%';
+      if (timer) timer.textContent = Math.max(1, Math.ceil(left / 1000)) + 's';
+      if (left <= 0) dismissPreroll();
+    }, 100);
+    var voiceText = PREROLL_VOICE;
+    var spoken = null;
+    if (window.LNR_SPEECH && typeof window.LNR_SPEECH.speak === 'function') {
+      try {
+        spoken = window.LNR_SPEECH.speak(voiceText, { wait: false });
+      } catch (e) {}
+    } else if (window.speechSynthesis) {
+      try {
+        var u = new SpeechSynthesisUtterance(voiceText);
+        u.rate = 0.92;
+      u.volume = 1;
+        window.speechSynthesis.speak(u);
+        spoken = { stop: function () { try { window.speechSynthesis.cancel(); } catch (e) {} } };
+      } catch (e) {}
+    }
+    overlay._prerollVoice = spoken;
+  }
+
+  function dismissPreroll() {
+    if (!prerollActive) return;
+    prerollActive = false;
+    if (prerollTimer) { window.clearInterval(prerollTimer); prerollTimer = 0; }
+    var overlay = el.videoPreroll;
+    if (overlay) overlay.hidden = true;
+    if (overlay._prerollVoice && overlay._prerollVoice.stop) overlay._prerollVoice.stop();
+    overlay._prerollVoice = null;
+    if (live.inSession && live.phase === 'video' && !live.paused) {
+      var av = activeVideo();
+      if (av) {
+        var p = av.play();
+        if (p && p.catch) p.catch(function () {});
+      }
+    }
+  }
+
   function transitionToClip(index) {
     var list = activeList();
     if (!list.length) { showVideoEmpty(); return; }
@@ -2585,7 +2748,7 @@
         deck.className = 'is-active';
         if (el.videoEmpty) el.videoEmpty.hidden = true;
         live.clipIndex = index;
-        if (!live.paused) {
+        if (!live.paused && !prerollActive) {
           var p = deck.play();
           if (p && p.catch) {
             p.catch(function () {
@@ -2636,7 +2799,7 @@
       if (el.videoEmpty) el.videoEmpty.hidden = true;
       standbyPrepared = { deckIdx: -1, id: '', url: '', index: -1 };
 
-      if (!live.paused) {
+      if (!live.paused && !prerollActive) {
         var pIn = inV.play();
         if (pIn && pIn.catch) {
           pIn.catch(function () {
@@ -2875,6 +3038,7 @@
     if (el.promoFunnel) el.promoFunnel.hidden = true;
     if (el.promoUnmuteBtn) el.promoUnmuteBtn.hidden = true;
     if (el.videoEmpty) el.videoEmpty.hidden = true;
+    dismissPreroll();
   }
 
   function syncActivePromoDuration(v) {
@@ -6168,6 +6332,14 @@
       }
       el.videoStage.hidden = false;
       stopSpeech();
+      if (phase === 'video' && clips.length > 0) {
+        var firstClip = clips[0];
+        if (firstClip && clipOwnership(firstClip.id) === 'reference') {
+          startPreroll();
+          playClip(0);
+          return;
+        }
+      }
       playClip(phase === 'promo' ? live.clipIndex : 0);
       updatePromoBrand();
       updatePromoOverlay();
@@ -7924,7 +8096,7 @@
 
     idbList().then(function (rows) {
       clips = rows.filter(function (r) { return r.kind !== 'promo' && r.kind !== 'admin_promo'; })
-        .map(function (r) { return { id: r.id, name: r.name, size: r.size, duration: r.duration || 0 }; });
+        .map(function (r) { return { id: r.id, name: r.name, size: r.size, duration: r.duration || 0, ownership: r.ownership || 'reference' }; });
       promos = rows.filter(function (r) { return r.kind === 'promo'; })
         .map(function (r) { return { id: r.id, name: r.name, size: r.size, duration: r.duration || 0 }; });
       adminPromos = rows.filter(function (r) { return r.kind === 'admin_promo'; })
@@ -8076,4 +8248,9 @@
       };
     }
   };
+
+  /* Defer ownership UI init until the DOM is ready and clips may have loaded. */
+  if (el.ownVideoBtn && el.refVideoBtn && el.videoOwnershipTag) {
+    refreshOwnershipUI();
+  }
 })();
