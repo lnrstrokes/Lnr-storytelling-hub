@@ -1643,12 +1643,15 @@ body.screen-stage .screen-stage {
 /* ---------------- video engine: clean picture ----------------
    The prerecorded video engine must show the footage and a countdown timer
    and nothing else: no segment label, no counter, no watermark, no site
-   line, no loop badge, no stage chrome. The promo break is NOT clean — it
-   keeps its brand strap and its own overlay, which is deliberate branding
-   rather than a counter. */
+   line, no loop badge, no stage chrome, and no "Breaks ready" pill.
+   The promo break is NOT clean — it keeps its brand strap and its own
+   overlay, which is deliberate branding rather than a counter. */
 .frame.is-video-clean .frame-bottom,
 .frame.is-video-clean .loop-badge,
-.frame.is-video-clean .vbreak-stage-indicator {
+.frame.is-video-clean .vbreak-stage-indicator,
+.frame.is-video-clean .frame-site,
+.frame.is-video-clean .frame-seg,
+.frame.is-video-clean .frame-meta {
   display: none;
 }
 /* During a promo break the overlay has its own clock, so drop the frame
@@ -1662,7 +1665,8 @@ body.screen-stage .screen-stage {
   border-bottom: none;
 }
 .frame.is-video-clean-video .frame-seg,
-.frame.is-video-clean-video .frame-meta {
+.frame.is-video-clean-video .frame-meta,
+.frame.is-video-clean-video .frame-site {
   display: none;
 }
 .frame.is-video-clean-video .frame-timer {
@@ -1671,6 +1675,35 @@ body.screen-stage .screen-stage {
   font-size: max(14px, 1.9cqw);
   color: rgba(240, 232, 212, 0.82);
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.92);
+}
+/* On-tape video-title HUD: the name of the clip currently playing, shown
+   top-left on the tape during clean video playback so the screen reads as
+   footage + title + countdown only. */
+.frame-video-title {
+  position: absolute;
+  top: max(8px, 1.6cqw);
+  left: max(8px, 1.6cqw);
+  z-index: 11;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: max(11.5px, 1.3cqw);
+  letter-spacing: .01em;
+  color: rgba(240, 232, 212, 0.86);
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.92);
+  pointer-events: none;
+  line-height: 1.35;
+}
+.frame-video-title::before {
+  content: "";
+  display: inline-block;
+  width: 5px; height: 5px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--sage);
+  opacity: .9;
+  vertical-align: middle;
 }
 .frame.is-video-clean .video-stage {
   position: absolute;

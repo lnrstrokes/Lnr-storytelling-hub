@@ -477,6 +477,7 @@
     'storyStage', 'storyActPill', 'storyEpTitle', 'storyDisclaimerTag', 'storyPhaseCountdown', 'storyActRail',
     'storyCanvas', 'storyVisualHost', 'storyNarrationBox', 'storyNarrationText',
     'videoStage', 'stageVideo', 'stageVideoB', 'demoVideoCanvas', 'videoEmpty', 'videoEmptyTitle', 'videoEmptyNote',
+    'frameVideoTitle',
     'promoAdOverlay', 'promoAdBadge', 'promoAdTitle', 'promoAdClock', 'promoAdReturn', 'promoUnmuteBtn',
     'promoFunnel', 'promoFunnelImg', 'promoFunnelKicker', 'promoFunnelTitle', 'promoFunnelCopy',
     'promoFunnelUrl', 'promoFunnelClock',
@@ -2775,6 +2776,11 @@
         if (live.phase === 'video' && listNow.length > 1) {
           preloadStandbyClip((index + 1) % listNow.length);
         }
+        if (live.phase === 'video' && el.frameVideoTitle) {
+          var titleClip = listNow[live.clipIndex % listNow.length];
+          el.frameVideoTitle.textContent = (titleClip && titleClip.name ? titleClip.name : ('Video engine \u00b7 ' + effectiveLoopHours() + 'h loop'));
+          el.frameVideoTitle.hidden = false;
+        }
         return;
       }
 
@@ -3001,6 +3007,7 @@
     if (!el.videoEmpty) return;
     el.videoEmpty.hidden = false;
     if (el.loopBadge) el.loopBadge.hidden = true;
+    if (el.frameVideoTitle) { el.frameVideoTitle.hidden = true; }
     var activePromos = live.phase === 'promo' ? effectivePromoList() : [];
     var nextRound = live.promoReturnPhase === 'players' ? plLive.roundNum : live.quizRoundNum;
     if (el.videoEmptyTitle) {
@@ -6439,6 +6446,27 @@
           ? 'Break 1 of 1 (' + ((live.clipIndex % activePromos.length) + 1) + '/' + activePromos.length + ')'
           : ('Partner break (' + formatShortSec(effectivePromoAdSec()) + ' slot)');
       }
+    }
+
+    /* Clean video screen: blank the segment / category tag and the question
+       counter on the tape, and drive the on-tape clip-title HUD from the
+       currently playing clip. During a promo break the overlay has its own
+       clock, so the frame-top strip is fully hidden by CSS. */
+    if (phase === 'video' || phase === 'promo') {
+      if (el.segLabel) el.segLabel.textContent = '';
+      if (el.counter) el.counter.textContent = '';
+      if (el.frameVideoTitle) {
+        el.frameVideoTitle.hidden = (phase !== 'video');
+        if (phase === 'video') {
+          var activeList = activeList;
+          var list = (activeList && activeList()) || clips;
+          var cc = list && list[live.clipIndex % list.length];
+          var title = cc && cc.name ? cc.name : ('Video engine \u00b7 ' + effectiveLoopHours() + 'h loop');
+          el.frameVideoTitle.textContent = title;
+        }
+      }
+    } else if (el.frameVideoTitle) {
+      el.frameVideoTitle.hidden = true;
     }
 
     if (el.frame) {
