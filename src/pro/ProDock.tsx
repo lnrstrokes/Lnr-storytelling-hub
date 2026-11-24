@@ -24,7 +24,7 @@ import {
   dismissNotice,
   isNoticeDismissed
 } from '../social';
-import { LABEL_DEFAULTS, LABEL_MAX_LENGTH, readLabelOverrides, writeLabelOverride } from '../stage-labels';
+import { LABEL_MAX_LENGTH, STAGE_LABEL_FIELDS, readLabelValues, writeLabelOverride } from '../stage-labels';
 import './pro.css';
 
 /** Shown once per NOTICE_VERSION, then remembered as dismissed. */
@@ -47,12 +47,16 @@ function expiryLabel(state: ProState): string {
 /**
  * Pro: rename the category printed on the stage.
  *
+ * One field per engine category — the two quiz packs, the player quiz, the
+ * video engine and the storytelling archetypes — because the rotation can
+ * hand the stage to any of them and the creator's niche does not change.
+ *
  * Uncontrolled inputs on purpose — the value is written straight to storage on
  * each keystroke, so the stage updates live and this panel re-renders nothing.
- * Clearing a field restores the shipped pack name.
+ * Clearing a field restores the shipped category.
  */
 function StageLabelFields() {
-  const stored = readLabelOverrides();
+  const stored = readLabelValues();
 
   return (
     <div
@@ -67,19 +71,19 @@ function StageLabelFields() {
         <b>Pro</b>
       </p>
 
-      {LABEL_DEFAULTS.map((shipped) => (
+      {STAGE_LABEL_FIELDS.map((field) => (
         <label
-          key={shipped}
+          key={field.id}
           className="lnr-pro-field"
           style={{ textTransform: 'none', letterSpacing: 0, marginBottom: 8 }}
         >
-          <span>{shipped}</span>
+          <span>{field.label}</span>
           <input
             type="text"
             maxLength={LABEL_MAX_LENGTH}
-            defaultValue={stored[shipped] || ''}
+            defaultValue={stored[field.id] || ''}
             placeholder="Your niche, e.g. Donghua / Renegade Immortal"
-            onChange={(e) => writeLabelOverride(shipped, e.target.value)}
+            onChange={(e) => writeLabelOverride(field.id, e.target.value)}
             style={{
               width: '100%',
               boxSizing: 'border-box',
@@ -97,7 +101,7 @@ function StageLabelFields() {
       ))}
 
       <p className="lnr-pro-note" style={{ margin: '2px 0 0' }}>
-        Replaces the pack name on the stage. Leave blank to restore it.
+        Replaces the category on the stage for every engine. Leave blank to restore the shipped name.
       </p>
     </div>
   );
