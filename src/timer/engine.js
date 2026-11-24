@@ -6146,12 +6146,59 @@
 
   function renderAdAnalytics() {
     var totalDur = 0;
-    adLogs.forEach(function (item) { totalDur += (Number(item.durationSec) || 0); });
-    if (el.alTotalCount) el.alTotalCount.textContent = String(adLogs.length);
+    var totalPlays = adLogs.length;
+    var freePlays = 0, proPlays = 0;
+    var freeDur = 0, proDur = 0;
+    var enginePlays = {};
+    var engineDur = {};
+    adLogs.forEach(function (item) {
+      var d = Number(item.durationSec) || 0;
+      totalDur += d;
+      var tier = item.tier || 'free';
+      if (tier === 'pro') { proPlays++; proDur += d; } else { freePlays++; freeDur += d; }
+      var eng = item.engine || 'quiz';
+      enginePlays[eng] = (enginePlays[eng] || 0) + 1;
+      engineDur[eng] = (engineDur[eng] || 0) + d;
+    });
+
+    if (el.alTotalCount) el.alTotalCount.textContent = String(totalPlays);
     if (el.alTotalDuration) el.alTotalDuration.textContent = formatTotalAdDuration(totalDur);
+
+    // Extra breakdown metrics — render into the analytics summary block if the
+    // elements exist (timer.html includes sponsorAnalyticsSection).
+    var summaryBlock = el.sponsorAnalyticsSection;
+    if (summaryBlock) {
+      var existingBreakdown = summaryBlock.querySelector('.al-breakdown');
+      if (!existingBreakdown) {
+        var bd = document.createElement('div');
+        bd.className = 'al-breakdown';
+        bd.innerHTML =
+          '<div class="al-breakdown-row">' +
+            '<span class="al-b-label">Free-tier breaks</span>' +
+            '<span class="al-b-val" id="alFreePlays">0</span>' +
+            '<span class="al-b-val" id="alFreeDur">0m 00s</span>' +
+          '</div>' +
+          '<div class="al-breakdown-row">' +
+            '<span class="al-b-label">Pro-tier breaks</span>' +
+            '<span class="al-b-val" id="alProPlays">0</span>' +
+            '<span class="al-b-val" id="alProDur">0m 00s</span>' +
+          '</div>';
+        summaryBlock.appendChild(bd);
+        existingBreakdown = bd;
+      }
+      var fp = existingBreakdown.querySelector('#alFreePlays');
+      var fd = existingBreakdown.querySelector('#alFreeDur');
+      var pp = existingBreakdown.querySelector('#alProPlays');
+      var pd = existingBreakdown.querySelector('#alProDur');
+      if (fp) fp.textContent = String(freePlays);
+      if (fd) fd.textContent = formatTotalAdDuration(freeDur);
+      if (pp) pp.textContent = String(proPlays);
+      if (pd) pd.textContent = formatTotalAdDuration(proDur);
+    }
+
     if (!el.alLogList) return;
     el.alLogList.innerHTML = '';
-    if (!adLogs.length) {
+    if (!totalPlays) {
       var liEmpty = document.createElement('li');
       liEmpty.innerHTML = '<div class="al-main"><b>No channel breaks logged yet</b><span>Break clips played during livestreams are recorded here automatically.</span></div>';
       el.alLogList.appendChild(liEmpty);
@@ -6170,12 +6217,20 @@
       main.appendChild(b);
       main.appendChild(sp);
 
+      var rowRight = document.createElement('div');
+      rowRight.style.cssText = 'display:flex;gap:8px;align-items:center';
+      var tierChip = document.createElement('span');
+      tierChip.className = 'al-tier al-tier-' + (item.tier || 'free');
+      tierChip.textContent = (item.tier || 'free') === 'pro' ? 'PRO' : 'FREE';
+      rowRight.appendChild(tierChip);
+
       var dur = document.createElement('span');
       dur.className = 'al-dur';
       dur.textContent = formatShortSec(item.durationSec || 30);
+      rowRight.appendChild(dur);
 
       li.appendChild(main);
-      li.appendChild(dur);
+      li.appendChild(rowRight);
       el.alLogList.appendChild(li);
     });
   }
@@ -6191,6 +6246,7 @@
       engine: returnPhase || S.engine,
       roundNum: roundNum || 1,
       plannedSec: Math.round(plannedSec || effectivePromoAdSec()),
+      tier: S.isPro ? 'pro' : 'free',
       watermark: branding.watermark,
       brand: branding.brand
     };
@@ -6210,6 +6266,7 @@
       engine: rec.engine,
       roundNum: rec.roundNum,
       durationSec: actualSec,
+      tier: rec.tier || (S.isPro ? 'pro' : 'free'),
       watermark: rec.watermark,
       brand: rec.brand
     };
@@ -6222,7 +6279,7 @@
         clip_name: entry.clipName,
         duration_sec: entry.durationSec,
         engine: entry.engine,
-        tier: 'studio'
+        tier: rec.tier || 'free'
       });
     }
   }
@@ -7450,7 +7507,7 @@
       toast('No channel breaks recorded yet');
       return;
     }
-    var lines = ['Timestamp (ISO UTC),Local Date/Time,Clip / Slot,Engine,Round,Duration (sec),Watermark,Brand'];
+    var lines = ['Timestamp (ISO UTC),Local Date/Time,Clip / Slot,Engine,Round,Duration (sec),Tier,Watermark,Brand'];
     adLogs.forEach(function (item) {
       var localStr = '';
       try { localStr = new Date(item.startedAt).toLocaleString(); } catch (e) { localStr = ''; }
@@ -7461,6 +7518,7 @@
         csvCell(item.engine || ''),
         csvCell(item.roundNum || 1),
         csvCell(item.durationSec || 0),
+        csvCell(item.tier || 'free'),
         csvCell(item.watermark || ''),
         csvCell(item.brand || '')
       ].join(','));

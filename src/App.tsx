@@ -54,6 +54,7 @@ import {
   stopAntiDebuggingGuard,
   toggleAntiInspectionListeners
 } from './utils/securityProtection';
+import { PRO_CHECKOUT_URL } from './pro/license';
 
 interface QuizQuestion {
   id: string;
@@ -1846,7 +1847,7 @@ Output ONLY raw valid JSON with no markdown backticks.`;
       )}
 
       {/* ================================================================== */}
-      {/* 1. GATEWAY / HUB VIEW (Matching the video reference architecture)  */}
+      {/* 1. GATEWAY / HUB VIEW                                       */}
       {/* ================================================================== */}
       {view === 'gateway' && (
         <main className="gateway-container">
@@ -1859,7 +1860,7 @@ Output ONLY raw valid JSON with no markdown backticks.`;
               {church} <span>Live Gateway</span>
             </h1>
             <p className="gateway-sub">
-              Transform your content into high-stakes live challenges and 24/7 automated streams. Select an engine below to broadcast seamlessly to YouTube.
+              One phone. Four broadcast engines. Your content running 24/7 on YouTube with zero server bill &mdash; quiz, guesswork, storytelling documentary, or video loop, all from this app.
             </p>
           </header>
 
@@ -1871,9 +1872,9 @@ Output ONLY raw valid JSON with no markdown backticks.`;
               <div className="engine-icon-wrap">
                 <Brain size={26} />
               </div>
-              <h2 className="engine-card-name">The Universal Quiz Engine for Creators</h2>
+              <h2 className="engine-card-name">Turn Any Niche Into a Live Game Show</h2>
               <p className="engine-card-desc">
-                Transform your content into high-stakes, 4-choice interactive challenges. Perfect for gaming trivia, history deep-dives, anime lore, educational recaps, or biblical study. Driven by simple, lightweight JSON data.
+                Drop your topic into a 4-choice interactive quiz and watch a YouTube chat turn into a room full of voters. Built-in packs cover Bible, world history, gaming lore and anime; bring your own JSON and the studio runs your exact content. Every answer reveals with a sourced reference and a short insight, so the round teaches as it plays.
               </p>
 
               {/* Pack Selector UI (BACS Freemium Hook & Premium Anchor) */}
@@ -1924,15 +1925,19 @@ Output ONLY raw valid JSON with no markdown backticks.`;
               <div className="engine-features-list">
                 <div className="engine-feature-item">
                   <CheckCircle2 size={14} />
-                  <span>Custom image artwork &amp; video illustration support</span>
+                  <span>Custom image artwork &amp; video illustration per question</span>
                 </div>
                 <div className="engine-feature-item">
                   <CheckCircle2 size={14} />
-                  <span>Verified reference answers &amp; context insights</span>
+                  <span>Verified answers with source reference &amp; insight</span>
                 </div>
                 <div className="engine-feature-item">
                   <CheckCircle2 size={14} />
-                  <span>Zero-latency rendering for seamless live streaming</span>
+                  <span>1,500-question repeat memory keeps long streams fresh</span>
+                </div>
+                <div className="engine-feature-item">
+                  <CheckCircle2 size={14} />
+                  <span>Every 10 questions: a milestone recap card on stream</span>
                 </div>
               </div>
 
@@ -1973,24 +1978,28 @@ Output ONLY raw valid JSON with no markdown backticks.`;
               <div className="engine-icon-wrap">
                 <Video size={26} />
               </div>
-              <h2 className="engine-card-name">Automated 24/7 Media Broadcasting</h2>
+              <h2 className="engine-card-name">Your Content, On Air 24/7</h2>
               <p className="engine-card-desc">
-                Broadcast pre-recorded footage, gameplay, or educational content continuously. Features customizable lower-third title cards, scrolling text tickers, and seamless screen-casting to YouTube.
+                Upload a video and the studio loops it seamlessly for hours &mdash; even days &mdash; while you screen-cast to YouTube. Custom lower-third title cards, a scrolling ticker, and a clean Hide Panel mode keep the broadcast looking deliberate instead of a stuck phone screen.
               </p>
 
               {/* Feature Bullets */}
               <div className="engine-features-list">
                 <div className="engine-feature-item">
                   <CheckCircle2 size={14} />
-                  <span>Seamless continuous video looping in-browser</span>
+                  <span>Seamless in-browser video looping, no server involved</span>
                 </div>
                 <div className="engine-feature-item">
                   <CheckCircle2 size={14} />
-                  <span>Plays 24/7 on the app while you screen-cast to YouTube</span>
+                  <span>Plays unattended while you cast to YouTube from the phone</span>
                 </div>
                 <div className="engine-feature-item">
                   <CheckCircle2 size={14} />
-                  <span>&ldquo;Hide Panel&rdquo; mode for a clean, professional mobile broadcast</span>
+                  <span>Hide Panel mode for a clean, professional mobile feed</span>
+                </div>
+                <div className="engine-feature-item">
+                  <CheckCircle2 size={14} />
+                  <span>Partner break clips slot in between loops on Pro</span>
                 </div>
               </div>
 
@@ -2015,6 +2024,21 @@ Output ONLY raw valid JSON with no markdown backticks.`;
               </div>
             </article>
           </div>
+
+          {/* PREMIUM ANCHOR STRIP */}
+          <section className="gateway-anchor">
+            <p className="gateway-anchor-copy">
+              Everything above runs free on this phone. Upgrade to Pro when you want partner break clips, unlimited video uploads, and a signed Pro licence key that locks your branding to your channel.
+            </p>
+            <div className="gateway-anchor-actions">
+              <a className="btn btn-primary btn-lg" href={PRO_CHECKOUT_URL} target="_blank" rel="noopener noreferrer">
+                Upgrade to Pro &mdash; $19/month
+              </a>
+              <button className="btn btn-quiet btn-lg" onClick={() => setModal('help')}>
+                See what changes with Pro
+              </button>
+            </div>
+          </section>
         </main>
       )}
 
