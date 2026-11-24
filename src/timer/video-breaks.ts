@@ -1084,7 +1084,6 @@ let runSeq = 0;
 let breakRunning = false;
 let overlay: HTMLDivElement | null = null;
 let overlayBody: HTMLDivElement | null = null;
-let skipHold: (() => void) | null = null;
 
 const deckSeen = new WeakMap<HTMLVideoElement, { id: string; time: number }>();
 
@@ -1216,14 +1215,6 @@ function ensureOverlay(): HTMLDivElement {
   overlayBody.className = 'vbreak-card vbreak-style-1';
 
   overlay.appendChild(overlayBody);
-  overlay.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement | null;
-    if (target && target.closest('[data-vbreak-skip]') && skipHold) {
-      const skip = skipHold;
-      skipHold = null;
-      skip();
-    }
-  });
 
   const stage = document.getElementById('videoStage') || document.body;
   stage.appendChild(overlay);
@@ -1233,7 +1224,6 @@ function ensureOverlay(): HTMLDivElement {
 function hideOverlay(): void {
   if (overlay) overlay.hidden = true;
   if (overlayBody) overlayBody.innerHTML = '';
-  skipHold = null;
 }
 
 function flashCard(styleIndex: number): HTMLDivElement {
@@ -1241,7 +1231,6 @@ function flashCard(styleIndex: number): HTMLDivElement {
   if (overlay) overlay.hidden = false;
   card.className = `vbreak-card vbreak-style-${(styleIndex % 3) + 1}`;
   card.innerHTML = '';
-  skipHold = null;
   return card;
 }
 
@@ -1256,6 +1245,14 @@ function elm<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+/* What the card calls the file it came from. The uploaded file name used to be
+   printed here ("81367.mp4"), which means nothing to a viewer watching a
+   stream and read as a broken label. The title from the file wins when the
+   creator wrote one; otherwise the card names the source plainly. */
+function sourceLabel(kicker: string): string {
+  return kicker.indexOf('ANECDOTE') === 0 ? 'Anecdote Source' : 'Quiz Source';
+}
+
 function cardMeta(card: HTMLDivElement, clipBreaks: ClipBreaks, kicker: string, counter: string): void {
   const head = elm('div', 'vbreak-card-head');
   head.appendChild(elm('span', 'vbreak-kicker', kicker));
@@ -1263,12 +1260,12 @@ function cardMeta(card: HTMLDivElement, clipBreaks: ClipBreaks, kicker: string, 
   card.appendChild(head);
 
   const meta = elm('div', 'vbreak-meta');
-  meta.appendChild(elm('strong', 'vbreak-meta-title', clipBreaks.title || clipBreaks.clipName));
+  meta.appendChild(elm('strong', 'vbreak-meta-title', clipBreaks.title || sourceLabel(kicker)));
   if (clipBreaks.church) meta.appendChild(elm('span', 'vbreak-meta-church', clipBreaks.church));
   card.appendChild(meta);
 }
 
-function sleep(ms: number, alive: () => boolean, onSkip?: (skip: () => void) => void): Promise<void> {
+function sleep(ms: number, alive: () => boolean): Promise<void> {
   return new Promise((resolve) => {
     const started = performance.now();
     let settled = false;
@@ -1281,7 +1278,6 @@ function sleep(ms: number, alive: () => boolean, onSkip?: (skip: () => void) => 
     const timer = window.setInterval(() => {
       if (!alive() || performance.now() - started >= ms) finish();
     }, 200);
-    if (onSkip) onSkip(finish);
   });
 }
 
@@ -1487,21 +1483,12 @@ function revealQuestion(
   if (question.explanation) reveal.appendChild(elm('p', 'vbreak-explain', question.explanation));
   card.appendChild(reveal);
 
-  const footer = elm('div', 'vbreak-footer-row');
-  const skip = elm('button', 'vbreak-btn vbreak-btn-quiet', 'Skip');
-  skip.type = 'button';
-  skip.setAttribute('data-vbreak-skip', '1');
-  footer.appendChild(skip);
-  card.appendChild(footer);
-
   void index;
   void total;
   void item;
   void clipBreaks;
 
-  return sleep(12000, alive, (finish) => {
-    skipHold = finish;
-  }).then(() => alive());
+  return sleep(12000, alive).then(() => alive());
 }
 
 async function showAnecdote(item: BreakItem, clipBreaks: ClipBreaks, alive: () => boolean): Promise<void> {
@@ -1511,24 +1498,58 @@ async function showAnecdote(item: BreakItem, clipBreaks: ClipBreaks, alive: () =
   const card = flashCard(item.key + 2);
   cardMeta(card, clipBreaks, 'ANECDOTE', `${item.key + 1}`);
 
+  /* A long anecdote used to run past the bottom of the stage, and a viewer
+     watching a livestream cannot scroll: the rest of the story was simply
+     lost. The text now sits in its own window that glides down by itself at
+     reading speed, so the whole story is shown, and it stops moving the
+     moment the host touches it or scrolls it by hand. */
+  card.classList.add('vbreak-anecdote-card');
+
   if (anecdote.title) card.appendChild(elm('h4', 'vbreak-anecdote-title', anecdote.title));
-  card.appendChild(elm('p', 'vbreak-anecdote-text', anecdote.text));
+
+  const scroller = elm('div', 'vbreak-anecdote-scroll');
+  scroller.appendChild(elm('p', 'vbreak-anecdote-text', anecdote.text));
+  card.appendChild(scroller);
 
   if (item.hostNote) card.appendChild(elm('p', 'vbreak-host-note', item.hostNote));
-
-  const footer = elm('div', 'vbreak-footer-row');
-  const skip = elm('button', 'vbreak-btn vbreak-btn-quiet', 'Skip');
-  skip.type = 'button';
-  skip.setAttribute('data-vbreak-skip', '1');
-  footer.appendChild(skip);
-  card.appendChild(footer);
 
   const words = anecdote.text.split(/\s+/).filter(Boolean).length;
   const holdMs = Math.min(25, Math.max(12, words * 0.3 + 4)) * 1000;
 
-  await sleep(holdMs, alive, (finish) => {
-    skipHold = finish;
-  });
+  /* Layout first: the overflow is only known once the card is on screen. */
+  window.requestAnimationFrame(() => autoScroll(scroller, holdMs));
+
+  await sleep(holdMs, alive);
+}
+
+/* Slow, steady read-along scroll for text taller than the card. The travel
+   time is derived from the overflow so a short story holds still and a long
+   one still reaches its last line before the card closes. */
+function autoScroll(box: HTMLElement, holdMs: number): void {
+  if (!box.isConnected) return;
+  const overflow = box.scrollHeight - box.clientHeight;
+  if (overflow <= 4) return;
+
+  const travelMs = Math.max(4000, Math.min(holdMs - 3000, overflow * 45));
+  if (travelMs <= 0) return;
+
+  let stopped = false;
+  const stop = () => {
+    stopped = true;
+  };
+  box.addEventListener('pointerdown', stop, { passive: true });
+  box.addEventListener('wheel', stop, { passive: true });
+  box.addEventListener('touchstart', stop, { passive: true });
+  box.addEventListener('keydown', stop);
+
+  const started = performance.now();
+  const step = () => {
+    if (stopped || !box.isConnected) return;
+    const progress = Math.min(1, (performance.now() - started) / travelMs);
+    box.scrollTop = overflow * progress;
+    if (progress < 1) window.requestAnimationFrame(step);
+  };
+  window.requestAnimationFrame(step);
 }
 
 function attachDeck(v: HTMLVideoElement): void {
