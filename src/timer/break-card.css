@@ -1,16 +1,31 @@
 /* ==========================================================================
-   break-card.css - long anecdote text on the break card
+   break-card.css - the anecdote card
    --------------------------------------------------------------------------
    A long anecdote used to run past the bottom of the stage. A viewer watching
    a livestream cannot scroll, so the rest of the story was simply lost.
 
-   The card now keeps its height and the story gets its own window that
-   scrolls itself (see autoScroll in video-breaks.ts), with the text sliding
-   in when the card opens so the movement reads as intentional.
+   The card is now a square in the middle of the stage - the same shape on a
+   phone, a laptop or a big screen - and the story gets the inside of that
+   square as its own window. The window glides down in step with the reading
+   (followReading in video-breaks.ts), so the line being heard is the line on
+   screen and a long story can never overflow the frame.
    ========================================================================== */
 
 .vbreak-anecdote-card {
   overflow: hidden;
+  aspect-ratio: 1 / 1;
+  width: min(100%, 78vh, 620px);
+  height: auto;
+  max-height: 100%;
+  margin: auto;
+  justify-content: flex-start;
+  align-items: center;
+  text-align: center;
+}
+
+.vbreak-anecdote-card .vbreak-card-head,
+.vbreak-anecdote-card .vbreak-meta {
+  justify-content: center;
 }
 
 .vbreak-anecdote-title {
@@ -20,6 +35,7 @@
 .vbreak-anecdote-scroll {
   position: relative;
   flex: 1 1 auto;
+  width: 100%;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -41,6 +57,8 @@
 }
 
 .vbreak-anecdote-text {
+  margin: 0;
+  text-align: center;
   animation: vbreak-anecdote-in 620ms ease 80ms both;
 }
 

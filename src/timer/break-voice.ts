@@ -33,7 +33,7 @@ export function sleep(ms: number, alive: () => boolean): Promise<void> {
    A viewer watching a stream cannot lean in and read a small card, so the
    card is read out by this device's reader: the question and its options, the
    answer, and the anecdote. The card then follows that voice instead of a
-   fixed timer, which is what makes the break feel live rather than slide.
+   fixed timer, which is what makes a break feel live rather than slide.
 
    The voice is the one the device already uses (voice-language.ts applies the
    operator's choice to every utterance), so nothing here picks a language
@@ -45,6 +45,7 @@ export function sleep(ms: number, alive: () => boolean): Promise<void> {
 export interface Narration {
   done: Promise<void>;
   started: () => boolean;
+  speaking: () => boolean;
   stop: () => void;
 }
 
@@ -76,16 +77,28 @@ export function narrate(parts: string[], onProgress?: (fraction: number) => void
   const timers: number[] = [];
   let live = false;
   let settled = false;
+  let spokeAt = 0;
+  let quietMs = 0;
+  let poll = 0;
   let resolveDone: () => void = () => {};
 
   const done = new Promise<void>((resolve) => {
     resolveDone = resolve;
   });
 
+  const busy = (): boolean => {
+    try {
+      return synth.speaking || synth.pending;
+    } catch {
+      return false;
+    }
+  };
+
   const finish = (): void => {
     if (settled) return;
     settled = true;
     timers.forEach((id) => window.clearTimeout(id));
+    if (poll) window.clearInterval(poll);
     resolveDone();
   };
 
@@ -99,18 +112,50 @@ export function narrate(parts: string[], onProgress?: (fraction: number) => void
   utterance.onend = finish;
   utterance.onerror = finish;
 
-  /* A phone that silently refuses to start (no tap yet) must not hold the card
-     open forever, and some engines never fire onend at all. */
-  timers.push(
-    window.setTimeout(() => {
-      if (!live) finish();
-    }, 3000)
-  );
-  timers.push(window.setTimeout(finish, Math.min(120000, 5000 + text.length * 110)));
+  /* "Has the reader finished?" is asked of the synthesiser itself, not only of
+     the utterance events. Some devices never fire `onstart`, and some end the
+     speech without ever firing `onend`; believing either one cut the card
+     short while the voice was still on the last option. Two quiet polls in a
+     row (nothing speaking, nothing queued) is the real end of the reading. */
+  poll = window.setInterval(() => {
+    if (settled) {
+      window.clearInterval(poll);
+      return;
+    }
+    if (busy()) {
+      live = true;
+      quietMs = 0;
+      return;
+    }
+    if (!live) {
+      /* Nothing has started: a phone that needs a tap first never will. */
+      if (spokeAt && performance.now() - spokeAt > 3000) finish();
+      return;
+    }
+    quietMs += 200;
+    if (quietMs >= 600) finish();
+  }, 200);
+
+  /* An absolute backstop for a synthesiser that never goes quiet again. It is
+     deliberately slow: this is not a reading-length estimate, because a slow
+     voice legitimately takes longer than one. */
+  timers.push(window.setTimeout(finish, Math.min(300000, 10000 + text.length * 400)));
 
   try {
     synth.cancel();
-    synth.speak(utterance);
+    /* Chrome drops an utterance queued in the same tick as cancel(), so the
+       request goes out once the cancel has been applied. */
+    timers.push(
+      window.setTimeout(() => {
+        if (settled) return;
+        spokeAt = performance.now();
+        try {
+          synth.speak(utterance);
+        } catch {
+          finish();
+        }
+      }, 80)
+    );
   } catch {
     finish();
   }
@@ -118,6 +163,7 @@ export function narrate(parts: string[], onProgress?: (fraction: number) => void
   return {
     done,
     started: () => live,
+    speaking: () => !settled && busy(),
     stop: () => {
       try {
         synth.cancel();

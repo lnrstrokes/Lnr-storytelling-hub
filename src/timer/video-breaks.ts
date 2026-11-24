@@ -379,11 +379,14 @@ function askQuestion(
        voice was still on the last option, so the answer appeared before the
        question had been heard. The think timer now starts once the reading
        finishes; a phone that refuses to speak resolves its own timeout and
-       the countdown proceeds as before. */
+       the countdown proceeds as before. The synthesiser is asked directly as
+       well, because an utterance event can report "done" a moment early. */
     let reading = !!spoken;
+    let readDoneAt = 0;
     if (spoken) {
       void spoken.done.then(() => {
         reading = false;
+        readDoneAt = performance.now();
       });
     }
 
@@ -411,6 +414,10 @@ function askQuestion(
         return;
       }
       if (reading) return;
+      /* Still audibly talking after the events said it was over: give it a
+         short grace, then move on so a stuck synthesiser cannot hold the
+         clip forever. */
+      if (spoken && spoken.speaking() && performance.now() - readDoneAt < 3000) return;
       remaining -= 0.2;
       clock.textContent = `${Math.max(0, Math.ceil(remaining))}s`;
       if (remaining <= 0) finish(null);
@@ -463,10 +470,10 @@ function revealQuestion(
   void item;
   void clipBreaks;
 
-  /* The cap is generous: the reader may take half a minute on a long
-     explanation, and cutting it off is exactly the race this card exists to
-     avoid. The narration itself still has its own length-based ceiling. */
-  return waitForNarration(spoken, 6000, 60000, alive).then(() => alive());
+  /* The cap is generous: the reader may take a minute on a long explanation,
+     and cutting it off is exactly the race this card exists to avoid. The
+     narration ends on its own when the voice goes quiet. */
+  return waitForNarration(spoken, 6000, 90000, alive).then(() => alive());
 }
 
 async function showAnecdote(item: BreakItem, clipBreaks: ClipBreaks, alive: () => boolean): Promise<void> {
