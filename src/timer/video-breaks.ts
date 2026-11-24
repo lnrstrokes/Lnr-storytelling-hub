@@ -311,7 +311,7 @@ function showVideoReferenceDisclaimer(alive: () => boolean): Promise<boolean> {
   copy.appendChild(elm('span', '', 'This clip is the reference used to generate the quiz and anecdote.'));
   row.appendChild(copy);
 
-  const timer = elm('span', 'studio-break-notice-timer', '60s');
+  const timer = elm('span', 'studio-break-notice-timer', '13s');
   row.appendChild(timer);
   notice.appendChild(row);
 
@@ -333,7 +333,7 @@ function showVideoReferenceDisclaimer(alive: () => boolean): Promise<boolean> {
   card.appendChild(notice);
 
   const started = performance.now();
-  const REFERENCE_MS = 60000;
+  const REFERENCE_MS = 13000;
   return new Promise<boolean>((resolve) => {
     let settled = false;
     const finish = (ok: boolean) => {

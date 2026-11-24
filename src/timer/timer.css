@@ -1647,7 +1647,8 @@ body.screen-stage .screen-stage {
    brand strap, which is deliberate branding rather than a counter. */
 .frame.is-video-clean .frame-top,
 .frame.is-video-clean .frame-bottom,
-.frame.is-video-clean .loop-badge {
+.frame.is-video-clean .loop-badge,
+.frame.is-video-clean .vbreak-stage-indicator {
   display: none;
 }
 .frame.is-video-clean .video-stage {
