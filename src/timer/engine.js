@@ -59,6 +59,7 @@
      and no trailing slash, so the whole host fits the one-line stage slot. */
   var DEFAULT_SITE = 'lnr-storytelling-hub.vercel.app';
   var DEFAULT_BRAND = 'LNR STUDIO';
+  var DEFAULT_SITECTA = 'Run your own stream';
   /* Where a customer buys Pro. The pricing button opens this and nothing else. */
   var PRO_CHECKOUT_URL = 'https://selar.com/399774111a';
 
@@ -101,6 +102,7 @@
     voiceRate: 0.96,
     watermark: DEFAULT_WATERMARK,
     site: DEFAULT_SITE,
+    siteCta: DEFAULT_SITECTA,
     safeDefault: false,
     /* Which question bank the timer reads from:
        'builtin'  — the shipped Bible / World History packs
@@ -450,6 +452,8 @@
     'plStatus', 'plSearchInput', 'plSearchResults',
     /* video engine */
     'videoDrop', 'videoInput', 'videoTierLimitNote', 'loadDemoVideoBtn', 'demoVideoStatus',
+    'ownVideoBtn', 'refVideoBtn', 'videoOwnershipTag',
+    'videoPreroll', 'videoPrerollBar', 'videoPrerollTimer',
     'clipList', 'clipCount', 'loopCalc', 'loopMath',
     'lmDuration', 'lmLoops', 'lmTotal', 'loopPresets', 'loopHours', 'loopNote', 'loopClipInfo',
     /* promo / breaks */
@@ -473,12 +477,14 @@
     'storyStage', 'storyActPill', 'storyEpTitle', 'storyDisclaimerTag', 'storyPhaseCountdown', 'storyActRail',
     'storyCanvas', 'storyVisualHost', 'storyNarrationBox', 'storyNarrationText',
     'videoStage', 'stageVideo', 'stageVideoB', 'demoVideoCanvas', 'videoEmpty', 'videoEmptyTitle', 'videoEmptyNote',
+    'frameVideoTitle',
     'promoAdOverlay', 'promoAdBadge', 'promoAdTitle', 'promoAdClock', 'promoAdReturn', 'promoUnmuteBtn',
     'promoFunnel', 'promoFunnelImg', 'promoFunnelKicker', 'promoFunnelTitle', 'promoFunnelCopy',
     'promoFunnelUrl', 'promoFunnelClock',
     'adNotice', 'adNoticeBadge', 'adNoticeTitle', 'adNoticeSub', 'adNoticeTimer', 'adNoticeFill',
     'promoBrand', 'promoBrandText', 'loopBadge', 'loopBadgeText',
-    'progFill', 'watermark', 'frameSite', 'curtain', 'safePeek',
+    'progFill', 'watermark', 'frameSite', 'frameCtaLead', 'curtain', 'safePeek',
+    'stSiteCtaInput',
     'prevBtn', 'playBtn', 'playGlyph', 'revealToggleBtn', 'nextBtn',
     'voiceBtn', 'musicBtn', 'kbdHint',
     /* dev panel */
@@ -497,7 +503,7 @@
     'voiceRateLabel',
     'drawerPlayerTag', 'playerBlockMin', 'clueSec', 'guessSec', 'playerRevealSec',
     'milestoneSec', 'drawerChatSafe', 'drawerChatGuide',
-    'watermarkInput', 'siteInput', 'safeDefault',
+    'watermarkInput', 'siteInput', 'siteCtaInput', 'safeDefault',
     'sponsorAnalyticsSection', 'alTotalCount', 'alTotalDuration',
     'alLogList', 'alExportCsvBtn', 'alClearBtn',
     /* studio operator modal */
@@ -543,6 +549,13 @@
     } catch (e) {
       toast('Subscribe at ' + PRO_CHECKOUT_URL + ', then activate your Pro key.');
     }
+    // Existing Selar checkout surface.
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('selar_open');
+        window.LNR_TRACK('upgrade_click', { location: 'pro_checkout_button' });
+      }
+    } catch (e) {}
   }
 
   function toast(msg, bad) {
@@ -778,7 +791,22 @@
     });
     on(el.homeGoStudioBtn, 'click', function () { setPage('studio'); setWizardStep(1); });
     on(el.topbarStartBtn, 'click', function () { setPage('studio'); setWizardStep(1); });
-    on(el.pricingProBtn, 'click', openProCheckout);
+    on(el.pricingProBtn, 'click', function () {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        try { window.LNR_TRACK('upgrade_click', { location: 'pricing_pro_btn' }); } catch (e) {}
+      }
+      openProCheckout();
+    });
+    on(el.pricingFreeBtn, 'click', function () {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        try { window.LNR_TRACK('upgrade_click', { location: 'pricing_free_btn' }); } catch (e) {}
+      }
+    });
+    on(el.homeGoStudioBtn, 'click', function () {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        try { window.LNR_TRACK('upgrade_click', { location: 'home_start_studio' }); } catch (e) {}
+      }
+    });
     /* A licence activated (or removed) in the dock re-evaluates the tier. */
     window.addEventListener('lnr:pro-changed', function () {
       S.isPro = currentProTier();
@@ -1053,6 +1081,26 @@
         toast(S.storyInterleave ? '2 rapid trivia Qs will follow each story' : 'Continuous story-only rotation');
       });
     });
+    // Existing quiz-and-anecdote toggle surface (#sermonAnecdoteToggle).
+    // This is the only quiz-loop toggle in the app; track its changes as quiz_loop_toggle.
+    var sermonAnecdoteToggle = el.sermonAnecdoteToggle;
+    if (sermonAnecdoteToggle) {
+      (function () {
+        var initialOn = !!sermonAnecdoteToggle.checked;
+        try {
+          if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+            window.LNR_TRACK('quiz_loop_toggle', { on: initialOn ? 'on' : 'off' });
+          }
+        } catch (e) {}
+        sermonAnecdoteToggle.addEventListener('change', function () {
+          try {
+            if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+              window.LNR_TRACK('quiz_loop_toggle', { on: sermonAnecdoteToggle.checked ? 'on' : 'off' });
+            }
+          } catch (e) {}
+        });
+      })();
+    }
     [el.setupStoryVaryCadence, el.drawerStoryVaryCadence].forEach(function (chk) {
       on(chk, 'change', function () {
         S.storyVaryCadence = !!chk.checked;
@@ -1091,6 +1139,7 @@
     var b = effectiveBranding();
     if (el.watermark) el.watermark.textContent = b.watermark;
     if (el.frameSite) el.frameSite.textContent = b.site;
+    if (el.frameCtaLead) el.frameCtaLead.textContent = S.siteCta || DEFAULT_SITECTA;
     if (el.promoBrandText) el.promoBrandText.textContent = b.brand;
 
     [
@@ -1127,6 +1176,12 @@
   [el.siteInput, el.stSiteInput].forEach(function (inp) {
     on(inp, 'input', function () {
       S.site = normalizeSite(inp.value) || DEFAULT_SITE;
+      applyBranding(); save();
+    });
+  });
+  [el.siteCtaInput, el.stSiteCtaInput].forEach(function (inp) {
+    on(inp, 'input', function () {
+      S.siteCta = inp.value.slice(0, 42) || DEFAULT_SITECTA;
       applyBranding(); save();
     });
   });
@@ -1904,6 +1959,19 @@
   var promos = [];       /* custom channel / partner break clips: up to 5 uploaded */
   var defaultFolderPromos = []; /* /promos/manifest.json default folder */
 
+  function isEditableName(name) {
+    if (!name) return false;
+    var n = name.trim();
+    if (!n) return false;
+    if (/^\d+\.[a-zA-Z0-9]+$/.test(n)) return false;
+    if (/^[a-zA-Z0-9._-]+/i.test(n) && /\.(mp4|webm|mov|m4v|ogv|mkv|avi|wmv|flv)$/i.test(n)) return false;
+    return true;
+  }
+  function fName(name) {
+    if (!name) return '';
+    return String(name).replace(/^\s*\d+\.\s*/, '').trim();
+  }
+
   /* The compulsory studio promo shown to FREE viewers only.
      It is a built-in file, not an upload, so it cannot be deleted from the
      playlist, and effectivePromoList() only ever adds it when the device is
@@ -2029,6 +2097,40 @@
     refreshLoopMath();
     refreshPromoText();
     refreshStats();
+    refreshOwnershipUI();
+  }
+
+  function refreshOwnershipUI() {
+    var tag = el.videoOwnershipTag;
+    var ownBtn = el.ownVideoBtn;
+    var refBtn = el.refVideoBtn;
+    if (!tag || !ownBtn || !refBtn) return;
+    var hasClips = clips.length > 0;
+    if (!hasClips) {
+      tag.textContent = 'No clips uploaded';
+      ownBtn.classList.remove('is-selected');
+      refBtn.classList.remove('is-selected');
+      ownBtn.disabled = true;
+      refBtn.disabled = true;
+      return;
+    }
+    var allOwn = clips.every(function (c) { return c.ownership === 'own'; });
+    var allRef = clips.every(function (c) { return c.ownership !== 'own'; });
+    if (allOwn) {
+      tag.textContent = 'I own this video';
+      ownBtn.classList.add('is-selected');
+      refBtn.classList.remove('is-selected');
+    } else if (allRef) {
+      tag.textContent = 'Reference / source video';
+      refBtn.classList.add('is-selected');
+      ownBtn.classList.remove('is-selected');
+    } else {
+      tag.textContent = clips.length + ' clips \u00b7 mixed';
+      ownBtn.classList.remove('is-selected');
+      refBtn.classList.remove('is-selected');
+    }
+    ownBtn.disabled = false;
+    refBtn.disabled = false;
   }
 
   function listFor(kind) { return kind === 'promo' ? el.promoList : el.clipList; }
@@ -2045,10 +2147,42 @@
       if (cc.id) li.setAttribute('data-clip-id', cc.id);
       var name = document.createElement('span');
       name.className = 'clip-name';
-      name.textContent = (i + 1) + '. ' + cc.name;
+      var displayText = (i + 1) + '. ' + cc.name;
+      name.textContent = displayText;
+      name.title = cc.name;
+      if (cc.id && cc.name !== fName(cc.name) && isEditableName(cc.name)) {
+        name.style.cursor = 'text';
+        name.addEventListener('click', function () {
+          var edited = window.prompt('Rename clip', cc.name);
+          if (!edited || edited.trim() === cc.name) return;
+          var trimmed = edited.trim();
+          if (!trimmed) return;
+          cc.name = trimmed;
+          var existing = clips.some(function (x) { return x !== cc && x.name === trimmed; });
+          if (existing) {
+            toast('A clip already uses that name', true);
+            cc.name = cc.name;
+            return;
+          }
+          renderMedia('clip');
+          refreshStats();
+          if (live.phase === 'video' && el.frameVideoTitle) {
+            var tc = activeList() && activeList().length ? activeList()[live.clipIndex % activeList().length] : null;
+            el.frameVideoTitle.textContent = tc && tc.name ? tc.name : 'Video engine';
+          }
+          if (typeof refreshClipSelect === 'function') refreshClipSelect();
+          toast('Clip renamed');
+        });
+      }
       var size = document.createElement('span');
       size.className = 'clip-size';
       size.textContent = (cc.duration ? clock(cc.duration * 1000) + ' \u00b7 ' : '') + humanSize(cc.size);
+      var ownership = cc.ownership || 'reference';
+      var badge = document.createElement('span');
+      badge.className = 'clip-ownership';
+      badge.setAttribute('data-ownership', ownership);
+      badge.textContent = ownership === 'own' ? 'Owned' : 'Reference';
+      badge.title = ownership === 'own' ? 'You own this video — no disclaimer' : 'Reference clip — disclaimer plays before video';
       var btn = document.createElement('button');
       btn.className = 'clip-remove';
       btn.type = 'button';
@@ -2072,7 +2206,7 @@
           toast((kind === 'promo' ? 'Break clip' : 'Clip') + ' removed');
         });
       });
-      li.appendChild(name); li.appendChild(size); li.appendChild(btn);
+      li.appendChild(name); li.appendChild(size); li.appendChild(badge); li.appendChild(btn);
       host.appendChild(li);
     });
     var ce = countElFor(kind);
@@ -2148,13 +2282,13 @@
       }
       return persistableMediaBlob(f).then(function (ownedBlob) {
         storedBlobRef = ownedBlob || f;
-        return idbPut({ id: id, name: f.name, size: f.size, blob: storedBlobRef, kind: kind, duration: d, enabled: true }).then(function () { return d; });
+        return idbPut({ id: id, name: f.name, size: f.size, blob: storedBlobRef, kind: kind, duration: d, enabled: true, ownership: 'reference' }).then(function () { return d; });
       });
     }).then(function (d) {
       if (kind === 'promo' && pendingPromoUploads > 0) pendingPromoUploads--;
       if (kind === 'clip' && pendingClipUploads > 0) pendingClipUploads--;
       if (d === null) return;
-      var rec = { id: id, name: f.name, size: f.size, duration: d || 0, enabled: true };
+      var rec = { id: id, name: f.name, size: f.size, duration: d || 0, enabled: true, ownership: 'reference' };
       if (!clipURLs[id]) clipURLs[id] = URL.createObjectURL(storedBlobRef);
       if (kind === 'admin_promo') adminPromos.push(rec);
       else if (kind === 'promo') {
@@ -2189,6 +2323,35 @@
   on(el.videoInput, 'change', function () {
     handleClipFiles(el.videoInput.files, 'clip');
     el.videoInput.value = '';
+    // Existing video-upload success surface: a clip was stored.
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('video_upload', { user_type: S.isPro ? 'pro' : 'free' });
+      }
+    } catch (e) {}
+  });
+  on(el.loadDemoVideoBtn, 'click', function () {
+    demoVideoMode = !demoVideoMode;
+    if (el.demoVideoStatus) {
+      el.demoVideoStatus.textContent = demoVideoMode
+        ? 'Built-in 15s demo ready — press Start video session below to preview.'
+        : 'Try Engine 03 right now without uploading an MP4.';
+    }
+    if (el.loadDemoVideoBtn) {
+      el.loadDemoVideoBtn.textContent = demoVideoMode ? 'Demo Video Ready (Tap to Disable)' : 'Preview 15s Built-in Video Demo';
+    }
+    refreshStats();
+    toast(demoVideoMode ? '15s Video Engine demo enabled' : 'Video Engine demo disabled');
+  });
+  on(el.ownVideoBtn, 'click', function () {
+    applyOwnershipToAll('own');
+    if (el.videoOwnershipTag) el.videoOwnershipTag.textContent = 'I own this video';
+    toast('Disclaimer off — videos play straight away');
+  });
+  on(el.refVideoBtn, 'click', function () {
+    applyOwnershipToAll('reference');
+    if (el.videoOwnershipTag) el.videoOwnershipTag.textContent = 'Reference / source video';
+    toast('Disclaimer on — reference notice plays before video starts');
   });
   on(el.promoInput, 'change', function () {
     handleClipFiles(el.promoInput.files, 'promo');
@@ -2367,6 +2530,10 @@
   var standbyPrepared = { deckIdx: -1, id: '', url: '', index: -1 };
   var CROSSFADE_LEAD_SEC = 0.48;
   var CROSSFADE_MS = 460;
+  var prerollActive = false;
+  var prerollTimer = 0;
+  var PREROLL_MS = 10000;
+  var PREROLL_VOICE = 'Video used as reference. This clip is the reference used to generate the quiz and anecdote breaks. The clip is attributed as reference material. Own the video or use it for reference at your discretion.';
 
   function activeVideo() {
     return videoDecks[activeDeckIdx] || el.stageVideo;
@@ -2466,6 +2633,113 @@
     });
   }
 
+  function clipOwnership(id) {
+    if (!id) return 'reference';
+    var rec = findMediaRecordById(id);
+    if (rec && rec.ownership) return rec.ownership;
+    for (var i = 0; i < clips.length; i++) {
+      if (clips[i].id === id && clips[i].ownership) return clips[i].ownership;
+    }
+    return 'reference';
+  }
+
+  function setClipOwnership(id, ownership) {
+    if (!id || !ownership) return;
+    ownership = ownership === 'own' ? 'own' : 'reference';
+    for (var i = 0; i < clips.length; i++) {
+      if (clips[i].id === id) { clips[i].ownership = ownership; break; }
+    }
+    /* Read the full DB record so we do not wipe blob/kind/enabled when
+       writing back the ownership change. */
+    idbGetStore('clips', id).then(function (full) {
+      if (full) {
+        full.ownership = ownership;
+        return idbPut(full).catch(function () {});
+      }
+    });
+    renderClips();
+    refreshStats();
+  }
+
+  function applyOwnershipToAll(ownership) {
+    ownership = ownership === 'own' ? 'own' : 'reference';
+    var updated = false;
+    clips.forEach(function (c) {
+      if (c.ownership !== ownership) {
+        c.ownership = ownership;
+        updated = true;
+      }
+    });
+    if (updated) {
+      clips.forEach(function (c) {
+        idbGetStore('clips', c.id).then(function (full) {
+          if (full) { full.ownership = ownership; return idbPut(full).catch(function () {}); }
+        });
+      });
+      renderClips();
+      refreshStats();
+    }
+  }
+
+  function startPreroll() {
+    if (prerollActive) return;
+    var overlay = el.videoPreroll;
+    if (!overlay) return;
+    prerollActive = true;
+    overlay.hidden = false;
+    var bar = el.videoPrerollBar;
+    var timer = el.videoPrerollTimer;
+    if (bar) bar.style.width = '0%';
+    if (timer) timer.textContent = (PREROLL_MS / 1000) + 's';
+    var started = now();
+    if (prerollTimer) window.clearInterval(prerollTimer);
+    prerollTimer = window.setInterval(function () {
+      if (!live.inSession || live.phase !== 'video' || !prerollActive) {
+        window.clearInterval(prerollTimer);
+        prerollTimer = 0;
+        return;
+      }
+      var elapsed = now() - started;
+      var left = Math.max(0, PREROLL_MS - elapsed);
+      if (bar) bar.style.width = Math.min(100, (elapsed / PREROLL_MS) * 100).toFixed(1) + '%';
+      if (timer) timer.textContent = Math.max(1, Math.ceil(left / 1000)) + 's';
+      if (left <= 0) dismissPreroll();
+    }, 100);
+    var voiceText = PREROLL_VOICE;
+    var spoken = null;
+    if (window.LNR_SPEECH && typeof window.LNR_SPEECH.speak === 'function') {
+      try {
+        spoken = window.LNR_SPEECH.speak(voiceText, { wait: false });
+      } catch (e) {}
+    } else if (window.speechSynthesis) {
+      try {
+        var u = new SpeechSynthesisUtterance(voiceText);
+        u.rate = 0.92;
+      u.volume = 1;
+        window.speechSynthesis.speak(u);
+        spoken = { stop: function () { try { window.speechSynthesis.cancel(); } catch (e) {} } };
+      } catch (e) {}
+    }
+    overlay._prerollVoice = spoken;
+  }
+
+  function dismissPreroll() {
+    if (!prerollActive) return;
+    prerollActive = false;
+    if (prerollTimer) { window.clearInterval(prerollTimer); prerollTimer = 0; }
+    var overlay = el.videoPreroll;
+    if (overlay) overlay.hidden = true;
+    if (overlay._prerollVoice && overlay._prerollVoice.stop) overlay._prerollVoice.stop();
+    overlay._prerollVoice = null;
+    if (live.inSession && live.phase === 'video' && !live.paused) {
+      var av = activeVideo();
+      if (av) {
+        var p = av.play();
+        if (p && p.catch) p.catch(function () {});
+      }
+    }
+  }
+
   function transitionToClip(index) {
     var list = activeList();
     if (!list.length) { showVideoEmpty(); return; }
@@ -2524,7 +2798,7 @@
         deck.className = 'is-active';
         if (el.videoEmpty) el.videoEmpty.hidden = true;
         live.clipIndex = index;
-        if (!live.paused) {
+        if (!live.paused && !prerollActive) {
           var p = deck.play();
           if (p && p.catch) {
             p.catch(function () {
@@ -2540,6 +2814,15 @@
         updatePromoOverlay();
         if (live.phase === 'video' && listNow.length > 1) {
           preloadStandbyClip((index + 1) % listNow.length);
+        }
+        if (live.phase === 'video' && el.frameVideoTitle) {
+          var titleClip = listNow[live.clipIndex % listNow.length];
+          if (titleClip && titleClip.name) {
+            el.frameVideoTitle.textContent = titleClip.name;
+          } else {
+            el.frameVideoTitle.textContent = 'Video engine';
+          }
+          el.frameVideoTitle.hidden = false;
         }
         return;
       }
@@ -2575,7 +2858,7 @@
       if (el.videoEmpty) el.videoEmpty.hidden = true;
       standbyPrepared = { deckIdx: -1, id: '', url: '', index: -1 };
 
-      if (!live.paused) {
+      if (!live.paused && !prerollActive) {
         var pIn = inV.play();
         if (pIn && pIn.catch) {
           pIn.catch(function () {
@@ -2767,6 +3050,7 @@
     if (!el.videoEmpty) return;
     el.videoEmpty.hidden = false;
     if (el.loopBadge) el.loopBadge.hidden = true;
+    if (el.frameVideoTitle) { el.frameVideoTitle.hidden = true; }
     var activePromos = live.phase === 'promo' ? effectivePromoList() : [];
     var nextRound = live.promoReturnPhase === 'players' ? plLive.roundNum : live.quizRoundNum;
     if (el.videoEmptyTitle) {
@@ -2814,6 +3098,7 @@
     if (el.promoFunnel) el.promoFunnel.hidden = true;
     if (el.promoUnmuteBtn) el.promoUnmuteBtn.hidden = true;
     if (el.videoEmpty) el.videoEmpty.hidden = true;
+    dismissPreroll();
   }
 
   function syncActivePromoDuration(v) {
@@ -4386,7 +4671,7 @@
       el.options.innerHTML = '';
       return;
     }
-    el.qKicker.textContent = SEGMENTS[seg] + ' \u00b7 ' + q.level;
+    el.qKicker.textContent = (seg === 'bible' ? 'Faith' : 'History') + ' \u00b7 ' + q.level;
     el.qText.textContent = q.q;
 
     el.options.innerHTML = '';
@@ -4428,6 +4713,20 @@
       if (el.segLabel) el.segLabel.textContent = SEGMENTS[seg];
     }
     playSceneChime();
+    if (videoStageActive()) {
+      if (el.qKicker) el.qKicker.textContent = '';
+      if (el.qText) el.qText.textContent = '';
+      if (el.options) el.options.innerHTML = '';
+      if (el.reveal) el.reveal.hidden = true;
+      el.frameVideoTitle.hidden = false;
+      var list = activeList && activeList() || clips;
+      var cc = list && list[live.clipIndex % list.length];
+      if (cc && cc.name) {
+        el.frameVideoTitle.textContent = cc.name;
+      } else {
+        el.frameVideoTitle.textContent = 'Video engine';
+      }
+    }
   }
 
   function revealAnswer() {
@@ -4728,6 +5027,20 @@
       live.qRemaining = S.qSec * 1000;
     }
     renderQuestion();
+    if (videoStageActive()) {
+      if (el.qKicker) el.qKicker.textContent = '';
+      if (el.qText) el.qText.textContent = '';
+      if (el.options) el.options.innerHTML = '';
+      if (el.reveal) el.reveal.hidden = true;
+      var list = activeList && activeList() || clips;
+      var cc = list && list[live.clipIndex % list.length];
+      if (cc && cc.name) {
+        el.frameVideoTitle.textContent = cc.name;
+      } else {
+        el.frameVideoTitle.textContent = 'Video engine';
+      }
+      el.frameVideoTitle.hidden = false;
+    }
     if (S.voiceOn) speakCurrent(live.served > 1);
   }
 
@@ -4752,6 +5065,19 @@
       live.waitingForSpeech = false;
       live.qEndsAt = now() + S.qSec * 1000;
       live.qRemaining = S.qSec * 1000;
+    }
+    if (videoStageActive()) {
+      var list = activeList && activeList() || clips;
+      var cc = list && list[live.clipIndex % list.length];
+      var title = cc && cc.name ? cc.name : 'Video engine';
+      if (el.frameVideoTitle) {
+        el.frameVideoTitle.textContent = title;
+        el.frameVideoTitle.hidden = false;
+      }
+      if (el.qKicker) el.qKicker.textContent = '';
+      if (el.qText) el.qText.textContent = '';
+      if (el.options) el.options.innerHTML = '';
+      if (el.reveal) el.reveal.hidden = true;
     }
   }
 
@@ -5745,7 +6071,10 @@
     storyLive.stepStartedAt = now();
     if (S.voiceOn && (synth || storySpeechTracks.length)) {
       storyLive.waitingForSpeech = true;
-      storyLive.stepEndsAt = storyLive.stepStartedAt + holdMs + 35000;
+      /* Wait until the on-screen reader finishes this step's narration before
+         the scene transitions. The fixed hold is only a floor / timeout, not
+         the gate that advances the step. */
+      storyLive.stepEndsAt = storyLive.stepStartedAt + Math.max(holdMs, S.voiceOn ? 60000 : 0);
     } else {
       storyLive.waitingForSpeech = false;
       storyLive.stepEndsAt = storyLive.stepStartedAt + holdMs;
@@ -5921,12 +6250,59 @@
 
   function renderAdAnalytics() {
     var totalDur = 0;
-    adLogs.forEach(function (item) { totalDur += (Number(item.durationSec) || 0); });
-    if (el.alTotalCount) el.alTotalCount.textContent = String(adLogs.length);
+    var totalPlays = adLogs.length;
+    var freePlays = 0, proPlays = 0;
+    var freeDur = 0, proDur = 0;
+    var enginePlays = {};
+    var engineDur = {};
+    adLogs.forEach(function (item) {
+      var d = Number(item.durationSec) || 0;
+      totalDur += d;
+      var tier = item.tier || 'free';
+      if (tier === 'pro') { proPlays++; proDur += d; } else { freePlays++; freeDur += d; }
+      var eng = item.engine || 'quiz';
+      enginePlays[eng] = (enginePlays[eng] || 0) + 1;
+      engineDur[eng] = (engineDur[eng] || 0) + d;
+    });
+
+    if (el.alTotalCount) el.alTotalCount.textContent = String(totalPlays);
     if (el.alTotalDuration) el.alTotalDuration.textContent = formatTotalAdDuration(totalDur);
+
+    // Extra breakdown metrics — render into the analytics summary block if the
+    // elements exist (timer.html includes sponsorAnalyticsSection).
+    var summaryBlock = el.sponsorAnalyticsSection;
+    if (summaryBlock) {
+      var existingBreakdown = summaryBlock.querySelector('.al-breakdown');
+      if (!existingBreakdown) {
+        var bd = document.createElement('div');
+        bd.className = 'al-breakdown';
+        bd.innerHTML =
+          '<div class="al-breakdown-row">' +
+            '<span class="al-b-label">Free-tier breaks</span>' +
+            '<span class="al-b-val" id="alFreePlays">0</span>' +
+            '<span class="al-b-val" id="alFreeDur">0m 00s</span>' +
+          '</div>' +
+          '<div class="al-breakdown-row">' +
+            '<span class="al-b-label">Pro-tier breaks</span>' +
+            '<span class="al-b-val" id="alProPlays">0</span>' +
+            '<span class="al-b-val" id="alProDur">0m 00s</span>' +
+          '</div>';
+        summaryBlock.appendChild(bd);
+        existingBreakdown = bd;
+      }
+      var fp = existingBreakdown.querySelector('#alFreePlays');
+      var fd = existingBreakdown.querySelector('#alFreeDur');
+      var pp = existingBreakdown.querySelector('#alProPlays');
+      var pd = existingBreakdown.querySelector('#alProDur');
+      if (fp) fp.textContent = String(freePlays);
+      if (fd) fd.textContent = formatTotalAdDuration(freeDur);
+      if (pp) pp.textContent = String(proPlays);
+      if (pd) pd.textContent = formatTotalAdDuration(proDur);
+    }
+
     if (!el.alLogList) return;
     el.alLogList.innerHTML = '';
-    if (!adLogs.length) {
+    if (!totalPlays) {
       var liEmpty = document.createElement('li');
       liEmpty.innerHTML = '<div class="al-main"><b>No channel breaks logged yet</b><span>Break clips played during livestreams are recorded here automatically.</span></div>';
       el.alLogList.appendChild(liEmpty);
@@ -5945,12 +6321,20 @@
       main.appendChild(b);
       main.appendChild(sp);
 
+      var rowRight = document.createElement('div');
+      rowRight.style.cssText = 'display:flex;gap:8px;align-items:center';
+      var tierChip = document.createElement('span');
+      tierChip.className = 'al-tier al-tier-' + (item.tier || 'free');
+      tierChip.textContent = (item.tier || 'free') === 'pro' ? 'PRO' : 'FREE';
+      rowRight.appendChild(tierChip);
+
       var dur = document.createElement('span');
       dur.className = 'al-dur';
       dur.textContent = formatShortSec(item.durationSec || 30);
+      rowRight.appendChild(dur);
 
       li.appendChild(main);
-      li.appendChild(dur);
+      li.appendChild(rowRight);
       el.alLogList.appendChild(li);
     });
   }
@@ -5966,6 +6350,7 @@
       engine: returnPhase || S.engine,
       roundNum: roundNum || 1,
       plannedSec: Math.round(plannedSec || effectivePromoAdSec()),
+      tier: S.isPro ? 'pro' : 'free',
       watermark: branding.watermark,
       brand: branding.brand
     };
@@ -5985,6 +6370,7 @@
       engine: rec.engine,
       roundNum: rec.roundNum,
       durationSec: actualSec,
+      tier: rec.tier || (S.isPro ? 'pro' : 'free'),
       watermark: rec.watermark,
       brand: rec.brand
     };
@@ -5997,7 +6383,7 @@
         clip_name: entry.clipName,
         duration_sec: entry.durationSec,
         engine: entry.engine,
-        tier: 'studio'
+        tier: rec.tier || 'free'
       });
     }
   }
@@ -6107,6 +6493,14 @@
       }
       el.videoStage.hidden = false;
       stopSpeech();
+      if (phase === 'video' && clips.length > 0) {
+        var firstClip = clips[0];
+        if (firstClip && clipOwnership(firstClip.id) === 'reference') {
+          startPreroll();
+          playClip(0);
+          return;
+        }
+      }
       playClip(phase === 'promo' ? live.clipIndex : 0);
       updatePromoBrand();
       updatePromoOverlay();
@@ -6128,20 +6522,36 @@
     el.phaseName.classList.toggle('is-video', isVideo);
     el.phaseFill.classList.toggle('is-video', isVideo);
     el.progFill.classList.toggle('is-video', isVideo);
-    if (el.segLabel && phase !== 'players' && phase !== 'story') {
-      el.segLabel.textContent = phase === 'quiz' ? SEGMENTS[S.segment] : label;
-    }
-    if (isVideo && el.counter) {
-      if (phase === 'video') {
-        el.counter.textContent = '';
-      } else {
-        el.counter.textContent = activePromos.length
-          ? 'Break 1 of 1 (' + ((live.clipIndex % activePromos.length) + 1) + '/' + activePromos.length + ')'
-          : ('Partner break (' + formatShortSec(effectivePromoAdSec()) + ' slot)');
+          if (el.segLabel) el.segLabel.textContent = '';
+      if (el.counter) el.counter.textContent = '';
+
+
+    /* Clean video screen: blank the segment / category tag and the question
+       counter on the tape, and drive the on-tape clip-title HUD from the
+       currently playing clip. During a promo break the overlay has its own
+       clock, so the frame-top strip is fully hidden by CSS. */
+    if (phase === 'video' || phase === 'promo') {
+      if (el.segLabel) el.segLabel.textContent = '';
+      if (el.counter) el.counter.textContent = '';
+      if (el.frameVideoTitle) {
+        el.frameVideoTitle.hidden = (phase !== 'video');
+        if (phase === 'video') {
+          var list = activeList && activeList() || clips;
+          var cc = list && list[live.clipIndex % list.length];
+          el.frameVideoTitle.textContent = cc && cc.name ? cc.name : 'Video engine';
+        }
       }
+    } else if (el.frameVideoTitle) {
+      el.frameVideoTitle.hidden = true;
     }
 
-    if (el.frame) el.frame.classList.toggle('is-video-clean', phase === 'video');
+    if (el.frame) {
+      var isVid = phase === 'video' || phase === 'promo';
+      el.frame.classList.toggle('is-video-clean', isVid);
+      el.frame.classList.toggle('is-video-clean-video', phase === 'video');
+      var sc = el.frame.closest('.screen-stage');
+      if (sc) sc.classList.toggle('is-video-clean', isVid);
+    }
     el.onairPill.classList.remove('is-paused');
     el.onairPill.innerHTML = '<i aria-hidden="true"></i> ' + (!isVideo ? 'On air' : 'On air \u00b7 ' + (phase === 'promo' ? 'partner break' : 'video'));
 
@@ -6416,7 +6826,7 @@
               storyLive.lastTickCueSec = 10;
             }
           }
-        } else {
+        } else if (!storyLive.waitingForSpeech) {
           if (stCur && stCur.kind === 'checkpoint' && !speechBusy()) {
             var stRemSec = Math.ceil((storyLive.stepEndsAt - t) / 1000);
             if (stRemSec >= 1 && stRemSec <= 10 && stRemSec !== storyLive.lastTickCueSec) {
@@ -7153,6 +7563,12 @@
   }
 
   on(el.copyContactTemplateBtn, 'click', function () {
+    // Existing details-form / contact surface.
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('jotform_open');
+      }
+    } catch (e) {}
     var txt = [
       'To: ' + STUDIO_EMAIL,
       'Subject: Studio Question or Custom Pack Inquiry \u2014 lnr Studio',
@@ -7163,6 +7579,30 @@
       'Question or Custom Pack Request: [Describe here]'
     ].join('\n');
     copyText(txt, 'Support email template copied');
+  });
+  on(el.contactFormBtn, 'click', function () {
+    // Existing details-form / contact surface.
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('jotform_open');
+      }
+    } catch (e) {}
+  });
+  on(el.sermonUpgradeLink, 'click', function (e) {
+    // Existing upgrade link on the sermon panel.
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('upgrade_click', { location: 'sermon_upgrade_link' });
+      }
+    } catch (e) {}
+  });
+  on(el.videoTierUpgradeLink, 'click', function (e) {
+    // Existing upgrade link on the video tier note.
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('upgrade_click', { location: 'video_tier_upgrade_link' });
+      }
+    } catch (e) {}
   });
 
   function csvCell(val) {
@@ -7187,7 +7627,7 @@
       toast('No channel breaks recorded yet');
       return;
     }
-    var lines = ['Timestamp (ISO UTC),Local Date/Time,Clip / Slot,Engine,Round,Duration (sec),Watermark,Brand'];
+    var lines = ['Timestamp (ISO UTC),Local Date/Time,Clip / Slot,Engine,Round,Duration (sec),Tier,Watermark,Brand'];
     adLogs.forEach(function (item) {
       var localStr = '';
       try { localStr = new Date(item.startedAt).toLocaleString(); } catch (e) { localStr = ''; }
@@ -7198,6 +7638,7 @@
         csvCell(item.engine || ''),
         csvCell(item.roundNum || 1),
         csvCell(item.durationSec || 0),
+        csvCell(item.tier || 'free'),
         csvCell(item.watermark || ''),
         csvCell(item.brand || '')
       ].join(','));
@@ -7833,7 +8274,7 @@
 
     idbList().then(function (rows) {
       clips = rows.filter(function (r) { return r.kind !== 'promo' && r.kind !== 'admin_promo'; })
-        .map(function (r) { return { id: r.id, name: r.name, size: r.size, duration: r.duration || 0 }; });
+        .map(function (r) { return { id: r.id, name: r.name, size: r.size, duration: r.duration || 0, ownership: r.ownership || 'reference' }; });
       promos = rows.filter(function (r) { return r.kind === 'promo'; })
         .map(function (r) { return { id: r.id, name: r.name, size: r.size, duration: r.duration || 0 }; });
       adminPromos = rows.filter(function (r) { return r.kind === 'admin_promo'; })
@@ -7985,4 +8426,9 @@
       };
     }
   };
+
+  /* Defer ownership UI init until the DOM is ready and clips may have loaded. */
+  if (el.ownVideoBtn && el.refVideoBtn && el.videoOwnershipTag) {
+    refreshOwnershipUI();
+  }
 })();

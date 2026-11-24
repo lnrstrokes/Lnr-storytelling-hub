@@ -59,6 +59,30 @@ const SEQUENCE_SETTINGS: Record<string, { key: string; fallback: string }> = {
   adminPromoDisplay: { key: 'promoDisplayMode', fallback: 'full' }
 };
 
+/*
+ * Break rhythm is part of Free.
+ *
+ * On Free the breaks are compulsory and their rhythm is not editable: the
+ * preloaded studio promo plays on every break, ten minutes of quiz after the
+ * shipped interval. Pro owns the dials. The controls stay visible with their
+ * current values so the host can see what the stage will do, but they are
+ * disabled here and normalised in storage before the engine boots.
+ */
+const FREE_BREAK_INTERVAL_MIN = 10;
+
+/** Inputs a Free account may see but not change. */
+const FREE_BREAK_INPUTS = [
+  'setupPromoEnabled',
+  'promoEnabledDrawer',
+  'setupPromoIntervalMin',
+  'promoIntervalMin',
+  'promoSec',
+  'promoAdRange'
+];
+
+const FREE_BREAK_TITLE =
+  `Free tier: breaks stay on with the preloaded promo, fixed at every ${FREE_BREAK_INTERVAL_MIN} minutes`;
+
 type Settings = Record<string, unknown>;
 
 function readSettings(): Settings {
@@ -84,6 +108,100 @@ function lockedBrand(): string | null {
   const licence = state.active ? state.license : null;
   /* The owner-device switch carries no brand: the studio keeps its own. */
   return licence && licence.lockBrand && !licence.owner ? licence.brand : null;
+}
+
+/* ------------------------------------------------------- free break rhythm */
+
+/** Every control that sets the break frequency or slot length. */
+function freeBreakTargets(): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  FREE_BREAK_INPUTS.forEach((id) => {
+    const node = document.getElementById(id);
+    if (node) out.push(node);
+  });
+  document
+    .querySelectorAll<HTMLElement>('#promoIntervalPresets button, [data-promosec]')
+    .forEach((node) => out.push(node));
+  return out;
+}
+
+/** Lock (or unlock, on Pro) every break-frequency control. */
+function lockFreeBreakControls(): void {
+  const pro = getProState().active;
+
+  freeBreakTargets().forEach((node) => {
+    const input = node as HTMLInputElement;
+    if (input.type === 'checkbox') {
+      input.disabled = !pro;
+      if (!pro) input.checked = true;
+      input.title = pro ? '' : FREE_BREAK_TITLE;
+      return;
+    }
+    input.disabled = !pro;
+    input.classList.toggle('is-locked', !pro);
+    node.title = pro ? '' : FREE_BREAK_TITLE;
+  });
+
+  const hint = document
+    .getElementById('setupPromoIntervalMin')
+    ?.closest('.dial')
+    ?.querySelector('.dial-hint');
+  if (hint) {
+    hint.textContent = pro
+      ? 'Plays after milestone once quiz hits threshold'
+      : `Free: locked to every ${FREE_BREAK_INTERVAL_MIN} minutes, with the preloaded studio promo`;
+  }
+}
+
+/** The engine re-enables its inputs on every settings sync — put it back. */
+function watchFreeBreakControls(): void {
+  if (typeof MutationObserver !== 'function') return;
+  const observer = new MutationObserver(() => {
+    if (getProState().active) return;
+    const unlocked = freeBreakTargets().some((node) => !(node as HTMLInputElement).disabled);
+    if (unlocked) lockFreeBreakControls();
+  });
+  freeBreakTargets().forEach((node) => {
+    observer.observe(node, { attributes: true, attributeFilter: ['disabled'] });
+  });
+}
+
+/** Breaks on, fixed frequency — written before the engine reads its settings. */
+function enforceFreeBreakDefaults(): void {
+  if (getProState().active) return;
+  const settings = readSettings();
+  let changed = false;
+  if (settings.promoAdsEnabled !== true) {
+    settings.promoAdsEnabled = true;
+    changed = true;
+  }
+  if (Number(settings.promoIntervalMin) !== FREE_BREAK_INTERVAL_MIN) {
+    settings.promoIntervalMin = FREE_BREAK_INTERVAL_MIN;
+    changed = true;
+  }
+  if (changed) writeSettings(settings);
+}
+
+/** A gated control was used anyway (or the engine restored one). */
+function blockFreeBreakChange(event: Event): boolean {
+  if (getProState().active) return false;
+  const id = fieldId(event);
+  if (!FREE_BREAK_INPUTS.includes(id)) return false;
+
+  event.stopPropagation();
+  enforceFreeBreakDefaults();
+
+  const control = event.target as HTMLInputElement;
+  if (control.type === 'checkbox') {
+    control.checked = true;
+  } else if (id === 'setupPromoIntervalMin' || id === 'promoIntervalMin') {
+    control.value = String(FREE_BREAK_INTERVAL_MIN);
+  } else {
+    const slot = readSettings().promoAdSec;
+    if (typeof slot === 'number') control.value = String(slot);
+  }
+  lockFreeBreakControls();
+  return true;
 }
 
 /* ------------------------------------------------------------------ toast */
@@ -194,6 +312,7 @@ function applyUiState(): void {
     input.title = licence ? '' : 'Promo break uploads are a Pro feature';
   });
 
+  lockFreeBreakControls();
   applyVideoTierUi();
 }
 
@@ -288,6 +407,7 @@ function onBeforeInput(event: Event): void {
 }
 
 function onInputCapture(event: Event): void {
+  if (blockFreeBreakChange(event)) return;
   const id = fieldId(event);
   if (!id || !BRAND_FIELDS.includes(id)) return;
   if (!lockedBrand()) return;
@@ -298,6 +418,7 @@ function onInputCapture(event: Event): void {
 function onChangeCapture(event: Event): void {
   const id = fieldId(event);
   if (!id) return;
+  if (blockFreeBreakChange(event)) return;
 
   /* --- clip / promo uploads --- */
   const upload = UPLOAD_LISTS[id];
@@ -431,8 +552,12 @@ export function installProGate(root: HTMLElement): void {
   installed = true;
 
   removeRetiredSermonUi(root);
+  /* Before the engine boots, so a Free stage always starts with the preloaded
+     promo on and the shipped ten-minute rhythm. */
+  enforceFreeBreakDefaults();
   applyUiState();
   watchBrandFields();
+  watchFreeBreakControls();
 
   document.addEventListener('beforeinput', onBeforeInput, true);
   document.addEventListener('input', onInputCapture, true);
@@ -444,6 +569,7 @@ export function installProGate(root: HTMLElement): void {
       window.location.reload();
       return;
     }
+    enforceFreeBreakDefaults();
     applyUiState();
   });
 }

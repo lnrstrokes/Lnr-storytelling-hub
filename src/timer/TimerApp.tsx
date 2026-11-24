@@ -4,6 +4,9 @@ import timerMarkup from './timer.html?raw';
 import './timer.css';
 import './offer.css';
 import './breaks.css';
+// Long anecdote text: its own scrolling window on the break card, so a story
+// that runs past the stage is still read to the end. Loaded after breaks.css.
+import './break-card.css';
 import { initLibrary } from './player-library.ts';
 import { loadBuiltInBanks } from './built-in-banks.ts';
 import { loadStoryLibrary } from './story-library.ts';
@@ -44,6 +47,9 @@ import { installSessionKeepAwake } from './session-keepawake.ts';
 import { installBuildTag } from './build-tag.ts';
 // Quiz pack: a Remove button so a fresh JSON pack can be loaded (Free and Pro).
 import { installQuizPackReset } from './quiz-pack-reset.ts';
+// Legacy addresses: a studio saved before the rename still printed the old
+// project host under "Run your own stream". Migrated before the engine boots.
+import { installLegacySiteFix } from './legacy-site.ts';
 
 declare global {
   interface Window {
@@ -117,15 +123,83 @@ export default function TimerApp() {
     const onInstalled = () => {
       window.LNR_TRACK?.('pwa_install', { source: 'appinstalled' });
     };
+
+    // Existing video-upload success surface (user_type = free/pro from current tier).
+    // We only tag the existing "upload succeeded" path; we do not add any new upload UI.
+    const trackVideoUpload = (user_type: 'free' | 'pro') => {
+      try {
+        window.LNR_TRACK?.('video_upload', { user_type });
+      } catch {}
+    };
+
+    // Existing quiz-and-anecdote toggle surface (#sermonAnecdoteToggle).
+    // This is the only existing quiz-loop toggle in the app; we track its changes.
+    const trackQuizLoopToggle = (on: boolean) => {
+      try {
+        window.LNR_TRACK?.('quiz_loop_toggle', { on: on ? 'on' : 'off' });
+      } catch {}
+    };
     window.addEventListener('appinstalled', onInstalled);
 
     host.innerHTML = timerMarkup;
-    document.title = 'lnr Studio - timer edition';
+    document.title = 'LNR Storytelling Hub - Timer';
 
     // Installed BEFORE the engine boots: the gate listens on `document` in the
     // capture phase, so it always sees a gated control's event first.
     installProGate(host);
     installVideoBreaks(host);
+
+    // Existing quiz-and-anecdote toggle: the only quiz-loop toggle in the app.
+    const anecdoteToggle = host.querySelector<HTMLInputElement>('#sermonAnecdoteToggle');
+    if (anecdoteToggle) {
+      trackQuizLoopToggle(anecdoteToggle.checked);
+      anecdoteToggle.addEventListener('change', () => {
+        trackQuizLoopToggle(anecdoteToggle.checked);
+      });
+    }
+
+    // Existing upgrade / Selar / Jotform surfaces that already live in the timer markup.
+    const trackUpgrade = (location: string) => {
+      try {
+        window.LNR_TRACK?.('upgrade_click', { location });
+      } catch {}
+    };
+    const trackSelarOpen = () => {
+      try {
+        window.LNR_TRACK?.('selar_open');
+      } catch {}
+    };
+    const trackJotformOpen = () => {
+      try {
+        window.LNR_TRACK?.('jotform_open');
+      } catch {}
+    };
+
+    const onUpgradeClick = (e: MouseEvent) => {
+      const t = e.currentTarget as HTMLElement | null;
+      if (!t) return;
+      // Pro checkout is the existing Selar checkout surface.
+      trackSelarOpen();
+      const loc = t.id === 'pricingProBtn'
+        ? 'pricing_pro_btn'
+        : t.id === 'sermonUpgradeLink' || t.id === 'videoTierUpgradeLink'
+          ? (t.id === 'sermonUpgradeLink' ? 'sermon_upgrade_link' : 'video_tier_upgrade_link')
+          : 'upgrade';
+      trackUpgrade(loc);
+    };
+    host.querySelectorAll<HTMLElement>('#pricingProBtn, #sermonUpgradeLink, #videoTierUpgradeLink').forEach((btn) => {
+      btn.addEventListener('click', onUpgradeClick);
+    });
+
+    // Existing "Send Pre-filled Email" / details-form surface opens a mailto to the
+    // studio contact address. That is the existing details-form flow; track it there.
+    const contactFormBtn = host.querySelector<HTMLElement>('#contactFormBtn');
+    if (contactFormBtn) {
+      contactFormBtn.addEventListener('click', () => {
+        trackJotformOpen();
+      });
+    }
+
     installVideoSetup(host);
     installAdminKeys(host);
     installAirtimeLimit(host);
@@ -137,6 +211,7 @@ export default function TimerApp() {
     installSessionKeepAwake(host);
     installBuildTag(host);
     installQuizPackReset(host);
+    installLegacySiteFix();
 
     let cancelled = false;
     void Promise.all([

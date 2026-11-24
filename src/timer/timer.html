@@ -25,15 +25,17 @@
     <section class="page-view" id="pageHome" data-page="home">
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Livestream control room</p>
-          <h1>Four engines.<br />One calm studio.</h1>
-          <p class="hero-sub">Run 1,800+ non-repeating trivia questions, multi-act Historical &amp; Biblical Storytelling documentaries, Guess the Player SVG rounds, or seamless looped video &mdash; with active voice narration, embedded ambient beds, and optional breaks you control.</p>
+          <p class="eyebrow">Livestream control room &mdash; on your phone, $0 server bill</p>
+          <h1>Your content, on air<br />for hours. Or days.</h1>
+          <p class="hero-sub">
+            One app runs four broadcast engines from this phone: a live interactive quiz that turns a YouTube chat into a voting room, a Guess-the-Player card round, a multi-act documentary storytelling studio, and a seamless video loop that plays unattended. Everything here ships free. Upgrade to Pro when you want partner break clips, unlimited video uploads, and a signed licence key that locks your branding to your channel.
+          </p>
           <div class="hero-cta-row">
             <button class="btn btn-primary btn-lg" id="homeGoStudioBtn" type="button">
               <span class="play-glyph" aria-hidden="true"></span>
               <span>Start Studio Setup</span>
             </button>
-            <a class="btn btn-quiet btn-lg" href="#settings" data-page-link="settings">Voice &amp; Audio Settings</a>
+            <a class="btn btn-quiet btn-lg" href="#pricing" data-page-link="pricing">See Pro pricing</a>
           </div>
         </div>
         <div class="hero-stat-card">
@@ -46,7 +48,7 @@
       <section class="quickstart" id="quickStart" aria-label="How it works">
         <div class="qs-head">
           <h2>How the studio works</h2>
-          <p>Everything is unlocked out of the box &mdash; pick an engine, customize timing, audio, and branding, and broadcast safely for hours.</p>
+          <p>Pick an engine, load content, set your timing and audio, and go. The studio is built to run a stream start to finish from one phone &mdash; no server, no signup, no monthly fee for the free tier.</p>
         </div>
         <ol class="qs-steps">
           <li class="qs-step">
@@ -59,15 +61,15 @@
           <li class="qs-step">
             <span class="qs-num" aria-hidden="true">2</span>
             <div class="qs-body">
-              <b>Multi-hour built-in banks</b>
-              <span>1,150+ Bible questions, 510+ World History questions, 8 multi-act Documentary episodes, and 150+ Player Quizzes included.</span>
+              <b>Load your content</b>
+              <span>Built-in packs are already loaded &mdash; 1,150+ Bible questions, 510+ World History questions, 8 documentary episodes, and 150+ Player Quizzes. Bring your own JSON and the studio runs your exact topic.</span>
             </div>
           </li>
           <li class="qs-step">
             <span class="qs-num" aria-hidden="true">3</span>
             <div class="qs-body">
-              <b>YouTube-safe broadcast</b>
-              <span>Active TTS narration, 1,500-item repeat prevention, an original royalty-free music bed, and clear break disclosures.</span>
+              <b>Go live from the phone</b>
+              <span>Active TTS narration, 1,500-item repeat prevention, an original royalty-free music bed, custom branding, and honest Partner Break disclosures. Screen-cast to YouTube and the engine keeps playing on the phone.</span>
             </div>
           </li>
         </ol>
@@ -75,16 +77,16 @@
 
       <section class="info-grid">
         <article class="info-card">
-          <h3>14+ hours non-repeating</h3>
-          <p>Built-in shuffle bags and cross-session memory prevent consecutive repeats so long broadcasts stay fresh and engaging.</p>
+          <h3>Built to run unattended</h3>
+          <p>Shuffle bags and cross-session memory keep repeats out of long broadcasts, so a stream can run for hours without recycling the same question twice.</p>
         </article>
         <article class="info-card">
-          <h3>YouTube-safe guardrails</h3>
-          <p>Active voice narration, an original royalty-free show bed, and honest Partner Break disclosures replace deceptive ad overlays.</p>
+          <h3>YouTube-safe by default</h3>
+          <p>Active voice narration, an original royalty-free show bed, and honest Partner Break disclosures replace deceptive ad overlays and unlicensed music.</p>
         </article>
         <article class="info-card">
-          <h3>Full channel branding</h3>
-          <p>Customize your own watermark, site URL, brand strap, and CSV playback logs freely with zero paywalls or daily limits.</p>
+          <h3>Your branding, your device</h3>
+          <p>Custom watermark, site line, brand strap, and promo play CSV logs &mdash; all stored on this phone. Pro adds a signed licence key that locks the branding to your channel.</p>
         </article>
       </section>
     </section>
@@ -381,6 +383,41 @@
             <span class="dz-title">Drop your prerecorded video here</span>
             <span class="dz-sub" id="videoTierLimitNote">Upload up to 12 prerecorded clips (MP4/WebM/MOV) &middot; dual-deck crossfade &middot; stored locally on device</span>
           </label>
+          <p class="video-tier-upgrade" id="videoTierUpgrade" hidden>
+            <span class="video-tier-upgrade-text" id="videoTierUpgradeText"></span>
+            <a class="btn btn-quiet btn-sm" id="videoTierUpgradeLink" href="#">Go Pro</a>
+          </p>
+          <p class="video-tier-explain" id="videoTierExplain" hidden>
+            <strong>Go Pro &mdash; $19/month.</strong>
+            Pro includes what already exists here: unlimited video clips, seamless dual-deck looping, and partner-break CSV playback logs.
+            After payment: open the Pro panel, fill in the details form, and the licence key is issued to this device.
+          </p>
+          <p class="video-reference-note">
+            <strong>Reference &amp; ownership:</strong> the video you load is used as the reference to generate the quiz and anecdote breaks.
+            The 13-second notice before each break tells viewers the clip is used as reference. Own the video or use it for reference at your discretion,
+            and attribute it as reference material in your stream description to respect copyright.
+          </p>
+          <p class="video-break-setup-note" id="videoBreakSetupNote">
+            To add quiz and anecdote breaks: upload a clip above, then use the <strong>Quiz and anecdote breaks</strong> panel below to upload a quiz file
+            (and optionally an anecdote file) and toggle breaks on. Breaks are a Pro feature.
+          </p>
+          <div class="video-ownership-row">
+            <div class="dsec-head" style="margin-bottom:8px;">
+              <h3>Video ownership &amp; disclaimer</h3>
+              <span class="dsec-tag" id="videoOwnershipTag">Reference / source video</span>
+            </div>
+            <p class="video-ownership-help">Choose whether the video you uploaded is your own content or a reference clip. Reference clips show a short on-screen disclaimer with voice narration before playback starts. Own the video or use it for reference at your discretion, and attribute reference material in your stream description.</p>
+            <div class="seg-inline" role="radiogroup" aria-label="Video ownership">
+              <button class="seg-pill" type="button" data-ownership="own" id="ownVideoBtn">
+                <span class="dsec-tag">I own this video</span>
+                <span class="seg-pill-sub">No disclaimer &middot; plays straight away</span>
+              </button>
+              <button class="seg-pill is-selected" type="button" data-ownership="reference" id="refVideoBtn">
+                <span class="dsec-tag">Reference / source video</span>
+                <span class="seg-pill-sub">Short disclaimer with voice before playback</span>
+              </button>
+            </div>
+          </div>
           <div class="demo-video-bar">
             <button class="btn btn-quiet btn-sm" type="button" id="loadDemoVideoBtn">Preview 15s Built-in Video Demo</button>
             <span class="block-note" id="demoVideoStatus" style="margin:0">Try Engine 03 right now without uploading an MP4.</span>
@@ -425,7 +462,12 @@
 
             <div id="sermonProLockedNotice" hidden style="background:rgba(207,163,90,0.12); border:1px solid var(--brass-dim); padding:12px; border-radius:8px; margin-bottom:12px;">
               <b style="color:var(--cream); display:block; margin-bottom:4px;">Pro License Required</b>
-              <span style="font-size:13px; color:var(--muted);">Sermon Loop mode is a Pro feature. <a href="#contact" id="sermonUpgradeLink" style="color:var(--brass); text-decoration:underline;">Upgrade to Pro &rarr;</a></span>
+              <span style="font-size:13px; color:var(--muted);">Sermon Loop mode is a Pro feature. <a href="#contact" id="sermonUpgradeLink" style="color:var(--brass); text-decoration:underline;">Go Pro &rarr;</a></span>
+              <p class="video-tier-explain" style="margin-top:10px; font-size:13px; color:var(--muted);">
+                <strong>Go Pro &mdash; $19/month.</strong>
+                Pro includes what already exists here: unlimited video clips, seamless dual-deck looping, partner-break CSV playback logs, and the sermon quiz-and-anecdote loop.
+                After payment: open the Pro panel, fill in the details form, and the licence key is issued to this device.
+              </p>
             </div>
 
             <div id="sermonLoopControlsWrap">
@@ -811,6 +853,7 @@
           <div class="field-row">
             <label class="field field-wide"><span>Watermark</span><input type="text" id="stWatermarkInput" maxlength="14" value="LNR" /></label>
             <label class="field field-wide"><span>Site line</span><input type="text" id="stSiteInput" maxlength="42" value="lnr-storytelling-hub.vercel.app" /></label>
+            <label class="field field-wide"><span>Site caption</span><input type="text" id="stSiteCtaInput" maxlength="42" value="Run your own stream" /></label>
             <label class="field field-wide"><span>Break brand strap</span><input type="text" id="stBrandOverlayInput" maxlength="28" value="LNR STUDIO" /></label>
           </div>
           <div class="analytics-actions" style="margin-top:14px">
@@ -860,7 +903,7 @@
               <span class="dsec-tag" style="background: var(--brass); color: #0b1411;">Recommended</span>
             </div>
             <div style="font-size: 32px; font-weight: 800; color: var(--cream); margin: 16px 0 8px;">$19 <span style="font-size: 14px; font-weight: 400; color: var(--muted);">/ month</span></div>
-            <p style="font-size: 14px; color: var(--muted); margin-bottom: 20px;">Advanced automation, sermon loops, caption syncing, and partner break analytics.</p>
+            <p style="font-size: 14px; color: var(--muted); margin-bottom: 20px;">Partner break clips, unlimited video uploads, signed Pro licence key, and promo play analytics &mdash; the bits that turn a free stream into a channel asset.</p>
             <ul style="list-style: none; padding: 0; margin: 0 0 24px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; color: var(--cream);">
               <li>&#10003; Everything in Free</li>
               <li>&#10003; <b>Sermon &amp; Message Quiz Loop Mode</b></li>
@@ -1036,6 +1079,8 @@
           </div>
 
           <div class="video-stage" id="videoStage" hidden>
+            <div class="vbreak-stage-indicator" id="vbreakStageIndicator" hidden></div>
+            <span class="frame-video-title" id="frameVideoTitle" hidden></span>
             <video id="stageVideo" playsinline preload="auto" class="is-active"></video>
             <video id="stageVideoB" playsinline preload="auto" class="is-standby" hidden></video>
             <canvas id="demoVideoCanvas" class="demo-video-canvas" hidden></canvas>
@@ -1043,6 +1088,20 @@
               <span class="ve-glyph" aria-hidden="true">&#9654;</span>
               <h2 id="videoEmptyTitle">Video break</h2>
               <p id="videoEmptyNote">No clip loaded yet. Add one in the studio settings &mdash; the timer keeps running either way.</p>
+            </div>
+            <div class="video-preroll" id="videoPreroll" hidden>
+              <div class="video-preroll-card">
+                <div class="video-preroll-pill" id="videoPrerollPill">REFERENCE</div>
+                <h3 class="video-preroll-title" id="videoPrerollTitle">Video used as reference</h3>
+                <p class="video-preroll-body" id="videoPrerollBody">
+                  This clip is being used as reference material to generate quiz and anecdote breaks.
+                  The clip is attributed as reference material. Own the video or use it for reference at your discretion.
+                </p>
+                <div class="video-preroll-progress">
+                  <div class="video-preroll-bar" id="videoPrerollBar"></div>
+                </div>
+                <p class="video-preroll-timer" id="videoPrerollTimer">10s</p>
+              </div>
             </div>
             <div class="studio-break-card" id="promoAdOverlay" hidden>
               <div class="studio-break-card-top">
@@ -1086,7 +1145,7 @@
             <div class="frame-foot">
               <span class="watermark" id="watermark">LNR</span>
               <span class="frame-cta">
-                <span class="frame-cta-lead">Run your own stream &rarr;</span>
+                <span class="frame-cta-lead" id="frameCtaLead">Run your own stream &rarr;</span>
                 <span class="frame-site" id="frameSite">lnr-storytelling-hub.vercel.app</span>
               </span>
             </div>
@@ -1329,6 +1388,7 @@
       <div class="field-row">
         <label class="field field-wide"><span>Watermark</span><input type="text" id="watermarkInput" maxlength="14" value="LNR" /></label>
         <label class="field field-wide"><span>Site line</span><input type="text" id="siteInput" maxlength="42" value="lnr-storytelling-hub.vercel.app" /></label>
+        <label class="field field-wide"><span>Site caption</span><input type="text" id="siteCtaInput" maxlength="42" value="Run your own stream" /></label>
       </div>
       <label class="switch-row">
         <input type="checkbox" id="safeDefault" />
@@ -1338,9 +1398,10 @@
     </section>
 
     <section class="dsec" id="sponsorAnalyticsSection">
-      <div class="dsec-head"><h3>Break Playback Log</h3><span class="dsec-tag">On-device CSV</span></div>
+      <div class="dsec-head"><h3>Promo Play Analytics</h3><span class="dsec-tag">On-device · per play</span></div>
+      <p class="dsec-note" style="margin:4px 0 10px;font-size:12.5px;color:var(--muted);">Every partner break played on this device is logged here with its tier, engine, round, and duration. Each device is one customer &mdash; sum the CSV by watermark or site to get per-customer promo play counts.</p>
       <div class="analytics-summary">
-        <div class="analytics-metric"><b id="alTotalCount">0</b><span>Breaks logged</span></div>
+        <div class="analytics-metric"><b id="alTotalCount">0</b><span>Promo plays</span></div>
         <div class="analytics-metric"><b id="alTotalDuration">0m 00s</b><span>Total break airtime</span></div>
       </div>
       <ul class="analytics-list" id="alLogList"></ul>
@@ -1348,7 +1409,7 @@
         <button class="btn btn-primary btn-sm" type="button" id="alExportCsvBtn">Export Break Log CSV</button>
         <button class="btn btn-ghost btn-sm" type="button" id="alClearBtn">Clear logs</button>
       </div>
-      <p class="dsec-note">Pair these exact UTC &amp; local playback timestamps with your YouTube Studio Real-Time Viewers chart for session records.</p>
+      <p class="dsec-note">Free aggregated signal also ships to Google Analytics 4 as <code>promo_ad_played</code> (clip, duration, engine, tier). On this $0 stack each device is its own store &mdash; for per-customer totals, export the CSV and group by watermark or site.</p>
     </section>
 
   </div>

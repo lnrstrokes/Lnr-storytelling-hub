@@ -12,6 +12,15 @@
      · a Free/Pro switch for this device, so testing the paid tier no longer
        needs a minted key that is bound to a different domain
 
+   LICENCE KEYS ARE DEVICE-TIED ON FIRST USE
+
+   A licence key is minted against the device id this browser created on first
+   use (`lnr_owner_device_v1`). Once created, that key is recognised by the same
+   device id: enrolling or checking in with the key and the device id is what makes
+   the key work here. The key does not roam on its own — it is usable on the device
+   that created it, because recognition is `deviceId === getDeviceId()` plus a fresh
+   server check.
+
    LIMITS, SAID PLAINLY
 
    This is device recognition, not remote attestation. The token lives in this

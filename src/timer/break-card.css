@@ -1,0 +1,68 @@
+/* ==========================================================================
+   break-card.css - the anecdote card
+   --------------------------------------------------------------------------
+   A long anecdote used to run past the bottom of the stage. A viewer watching
+   a livestream cannot scroll, so the rest of the story was simply lost.
+
+   The card is now a square in the middle of the stage - the same shape on a
+   phone, a laptop or a big screen - and the story gets the inside of that
+   square as its own window. The window glides down in step with the reading
+   (followReading in video-breaks.ts), so the line being heard is the line on
+   screen and a long story can never overflow the frame.
+   ========================================================================== */
+
+.vbreak-anecdote-card {
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  width: min(100%, 78vh, 620px);
+  height: auto;
+  max-height: 100%;
+  margin: auto;
+  justify-content: flex-start;
+  align-items: center;
+  text-align: center;
+}
+
+.vbreak-anecdote-card .vbreak-card-head,
+.vbreak-anecdote-card .vbreak-meta {
+  justify-content: center;
+}
+
+.vbreak-anecdote-title {
+  animation: vbreak-anecdote-in 420ms ease both;
+}
+
+.vbreak-anecdote-scroll {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(217, 171, 99, 0.55) transparent;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 22px), transparent 100%);
+}
+
+.vbreak-anecdote-scroll::-webkit-scrollbar {
+  width: 3px;
+}
+
+.vbreak-anecdote-scroll::-webkit-scrollbar-thumb {
+  background: rgba(217, 171, 99, 0.55);
+  border-radius: 3px;
+}
+
+.vbreak-anecdote-text {
+  margin: 0;
+  text-align: center;
+  animation: vbreak-anecdote-in 620ms ease 80ms both;
+}
+
+@keyframes vbreak-anecdote-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}

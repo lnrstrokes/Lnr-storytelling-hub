@@ -377,11 +377,57 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+.analytics-list .al-tier {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.analytics-list .al-tier-free {
+  background: rgba(120, 140, 150, .15);
+  color: var(--muted);
+  border: 1px solid rgba(120, 140, 150, .25);
+}
+.analytics-list .al-tier-pro {
+  background: rgba(212, 175, 55, .14);
+  color: var(--brass);
+  border: 1px solid rgba(212, 175, 55, .35);
+}
 .analytics-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
+}
+
+.al-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(212, 175, 55, .04);
+  border: 1px solid rgba(212, 175, 55, .22);
+}
+.al-breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.al-b-label {
+  color: var(--muted);
+  flex: 1;
+}
+.al-b-val {
+  font-family: var(--mono);
+  color: var(--cream);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- access & licensing modal ---- */

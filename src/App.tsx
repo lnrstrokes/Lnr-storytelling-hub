@@ -54,6 +54,7 @@ import {
   stopAntiDebuggingGuard,
   toggleAntiInspectionListeners
 } from './utils/securityProtection';
+import { PRO_CHECKOUT_URL } from './pro/license';
 
 interface QuizQuestion {
   id: string;
@@ -1846,99 +1847,37 @@ Output ONLY raw valid JSON with no markdown backticks.`;
       )}
 
       {/* ================================================================== */}
-      {/* 1. GATEWAY / HUB VIEW (Matching the video reference architecture)  */}
+      {/* 1. GATEWAY / HUB VIEW                                       */}
       {/* ================================================================== */}
-      {view === 'gateway' && (
-        <main className="gateway-container">
-          <header className="gateway-hero">
-            <div className="gateway-badge">
-              <Radio size={13} />
-              <span>UNIVERSAL BROADCASTING &amp; QUIZ STUDIO</span>
-            </div>
-            <h1 className="gateway-title">
-              {church} <span>Live Gateway</span>
-            </h1>
-            <p className="gateway-sub">
-              Transform your content into high-stakes live challenges and 24/7 automated streams. Select an engine below to broadcast seamlessly to YouTube.
-            </p>
-          </header>
-
-          {/* 2 PRIMARY ENGINES */}
-          <div className="engines-grid">
-            {/* ENGINE #1: INTERACTIVE LIVE QUIZ */}
-            <article className="engine-card featured">
-              <span className="engine-card-corner-tag">ENGINE #1 • INTERACTIVE LIVE QUIZ</span>
-              <div className="engine-icon-wrap">
-                <Brain size={26} />
+          <main className="gateway-container">
+            {/* Brand + Nav */}
+            <nav className="home-nav">
+              <div className="home-brand">
+                lnr Studio <em>Storytelling Hub</em>
               </div>
-              <h2 className="engine-card-name">The Universal Quiz Engine for Creators</h2>
-              <p className="engine-card-desc">
-                Transform your content into high-stakes, 4-choice interactive challenges. Perfect for gaming trivia, history deep-dives, anime lore, educational recaps, or biblical study. Driven by simple, lightweight JSON data.
+              <div className="home-nav-links">
+                <a href="#top">Home</a>
+                <a href="#studio" onClick={(e) => { e.preventDefault(); setView('stage'); setEngine('quiz'); setQRunning(true); setPanelHidden(false); }}>Studio</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#settings">Settings</a>
+                <a href="#contact">Contact</a>
+              </div>
+            </nav>
+
+            {/* Hero */}
+            <section className="home-hero">
+              <p className="home-eyebrow">Livestream control room &mdash; on your phone, $0 server bill</p>
+              <h1>Your content, on air<br />for <span>hours. Or days.</span></h1>
+              <p className="home-sub">
+                One app runs four broadcast engines from this phone: a live interactive quiz that turns a
+                YouTube chat into a voting room, a Guess-the-Player card round, a multi-act documentary
+                storytelling studio, and a seamless video loop that plays unattended. Everything here ships
+                free. Upgrade to Pro when you want partner break clips, unlimited video uploads, and a signed
+                licence key that locks your branding to your channel.
               </p>
-
-              {/* Pack Selector UI (BACS Freemium Hook & Premium Anchor) */}
-              <div className="pack-selector-container">
-                <div className="pack-selector-label">
-                  <span>Pack Selector &amp; Niche Presets</span>
-                  <span style={{ fontSize: 10, color: '#93c5fd' }}>
-                    Active: {questions.length} Questions
-                  </span>
-                </div>
-
-                <select
-                  className="pack-select-dropdown"
-                  value={selectedPackId}
-                  onChange={e => handleSelectPack(e.target.value)}
-                >
-                  {SAMPLE_PACKS.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} {p.isPremium ? '✨ (Premium)' : '(Free Sample)'}
-                    </option>
-                  ))}
-                </select>
-
-                <div className="pack-actions-row">
-                  <button
-                    type="button"
-                    className="btn-action-freemium"
-                    onClick={() => setModal('json')}
-                    title="Upload your own JSON questions (Free, instant)"
-                  >
-                    <Upload size={14} />
-                    <span>⬆ Upload Your Own JSON</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn-action-premium"
-                    onClick={() => handleContactPremiumPack()}
-                    title="Unlock AI-generated custom packs for any niche"
-                  >
-                    <Sparkles size={14} />
-                    <span>✨ Unlock Premium Custom Packs</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Feature Bullets */}
-              <div className="engine-features-list">
-                <div className="engine-feature-item">
-                  <CheckCircle2 size={14} />
-                  <span>Custom image artwork &amp; video illustration support</span>
-                </div>
-                <div className="engine-feature-item">
-                  <CheckCircle2 size={14} />
-                  <span>Verified reference answers &amp; context insights</span>
-                </div>
-                <div className="engine-feature-item">
-                  <CheckCircle2 size={14} />
-                  <span>Zero-latency rendering for seamless live streaming</span>
-                </div>
-              </div>
-
-              <div className="engine-actions-row">
+              <div className="home-cta-row">
                 <button
-                  className="btn-launch-engine"
+                  className="btn btn-primary btn-lg"
                   onClick={() => {
                     setEngine('quiz');
                     setView('stage');
@@ -1948,79 +1887,170 @@ Output ONLY raw valid JSON with no markdown backticks.`;
                   }}
                 >
                   <Play size={15} fill="currentColor" />
-                  <span>START LIVE QUIZ</span>
+                  Start Studio Setup
                 </button>
-                <button
-                  className="btn-engine-tool"
-                  onClick={() => setModal('quizImages')}
-                  title="Quiz Image & Background Settings"
-                >
-                  <ImageIcon size={16} />
-                </button>
-                <button
-                  className="btn-engine-tool"
-                  onClick={() => setModal('json')}
-                  title="Upload Custom Quiz JSON or Select Preset"
-                >
-                  <Upload size={16} />
-                </button>
+                <a className="btn btn-quiet btn-lg" href="#pricing">See Pro pricing</a>
               </div>
-            </article>
+            </section>
 
-            {/* ENGINE #2: 24/7 BROADCAST LOOP */}
-            <article className="engine-card">
-              <span className="engine-card-corner-tag">ENGINE #2 • 24/7 BROADCAST LOOP</span>
-              <div className="engine-icon-wrap">
-                <Video size={26} />
+            {/* Stats */}
+            <section className="home-stats">
+              <div className="home-stat">
+                <b>1,867</b>
+                <span>questions, episodes &amp; cards ready</span>
               </div>
-              <h2 className="engine-card-name">Automated 24/7 Media Broadcasting</h2>
-              <p className="engine-card-desc">
-                Broadcast pre-recorded footage, gameplay, or educational content continuously. Features customizable lower-third title cards, scrolling text tickers, and seamless screen-casting to YouTube.
+              <div className="home-stat">
+                <b>3h 28m</b>
+                <span>built-in non-repeating</span>
+              </div>
+              <div className="home-stat">
+                <b>0</b>
+                <span>repeats per cycle</span>
+              </div>
+            </section>
+
+            {/* New in this version */}
+            <section className="home-section">
+              <h2>New in this version</h2>
+              <p>
+                <span className="highlight">Free:</span> your own question packs (JSON) and your own MP3
+                narration &mdash; no Pro key needed.{' '}
+                <span className="highlight">Pro:</span> rename the stage category to your niche.
               </p>
+              <p>
+                Question, concern or something broken?{' '}
+                <a href="https://x.com/BACSBlueprint" target="_blank" rel="noopener noreferrer" style={{ color: '#93c5fd' }}>
+                  @BACSBlueprint on X
+                </a>{' '}
+                &middot;{' '}
+                <a href="https://youtube.com/@lnrlivestreamhub" target="_blank" rel="noopener noreferrer" style={{ color: '#93c5fd' }}>
+                  YouTube @lnrlivestreamhub
+                </a>
+                .
+              </p>
+            </section>
 
-              {/* Feature Bullets */}
-              <div className="engine-features-list">
-                <div className="engine-feature-item">
-                  <CheckCircle2 size={14} />
-                  <span>Seamless continuous video looping in-browser</span>
-                </div>
-                <div className="engine-feature-item">
-                  <CheckCircle2 size={14} />
-                  <span>Plays 24/7 on the app while you screen-cast to YouTube</span>
-                </div>
-                <div className="engine-feature-item">
-                  <CheckCircle2 size={14} />
-                  <span>&ldquo;Hide Panel&rdquo; mode for a clean, professional mobile broadcast</span>
+            {/* Before you go live */}
+            <section className="home-section" id="top">
+              <h2>Before you go live: install the app, then pick your streaming route</h2>
+              <p>
+                The studio works in a browser tab. Installed it is the full experience &mdash; and which way
+                your stream reaches YouTube depends on one number.
+              </p>
+              <div className="install-cta">
+                <p>Install lnr Studio for the 100% experience: installed, it opens as its own full-screen app
+                  &mdash; no address bar, no tabs and no browser bars inside your screen cast &mdash; and it
+                  keeps working if the connection drops.</p>
+                <div className="install-steps">
+                  <div className="install-step">Android / Chrome: menu (&vellip;) &rarr; Install app.</div>
+                  <div className="install-step">iPhone / Safari: Share &rarr; Add to Home Screen.</div>
+                  <div className="install-step">Desktop Chrome or Edge: the install icon in the address bar.</div>
                 </div>
               </div>
-
-              <div className="engine-actions-row">
-                <button
-                  className="btn-launch-engine"
-                  onClick={() => {
-                    setEngine('video');
-                    setView('stage');
-                    setVideoPlaying(true);
-                    setPanelHidden(false);
-                    playSfx('chime');
-                  }}
-                >
-                  <Video size={16} />
-                  <span>LAUNCH VIDEO STREAM LOOP</span>
-                </button>
-                <label className="btn-engine-tool" title="Upload Local Broadcast Video (MP4)">
-                  <Upload size={16} />
-                  <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleVideoUpload} />
-                </label>
+              <div className="youtube-route">
+                <div className="youtube-route-card skip">
+                  <h3>Over 50 subscribers? Skip PRISM and screencast</h3>
+                  <p>
+                    More than 50 YouTube subscribers? You do not need PRISM. Open the YouTube app, tap Create
+                    (+) &rarr; Go Live &rarr; Screen Cast, and pick lnr Studio.
+                  </p>
+                </div>
+                <div className="youtube-route-card use">
+                  <h3>Under 50 subscribers, or mobile live not enabled yet?</h3>
+                  <p>
+                    Install PRISM Live Studio (free) and use its Screencast mode &mdash; it streams by RTMP,
+                    where the subscriber rule does not apply &mdash; or open studio.youtube.com in your phone
+                    browser and go live from there.
+                  </p>
+                </div>
               </div>
-            </article>
-          </div>
-        </main>
-      )}
+            </section>
 
-      {/* ================================================================== */}
-      {/* 2. DEDICATED STAGE VIEW (Screen View when engine is launched)     */}
-      {/* ================================================================== */}
+            {/* How the studio works */}
+            <section className="home-section" id="studio">
+              <h2>How the studio works</h2>
+              <p>
+                Pick an engine, load content, set your timing and audio, and go. The studio is built to run a
+                stream start to finish from one phone &mdash; no server, no signup, no monthly fee for the free
+                tier.
+              </p>
+              <ol className="home-steps">
+                <li className="home-step">
+                  <span className="home-step-num">1</span>
+                  <div className="home-step-body">
+                    <b>Choose an engine</b>
+                    <span>
+                      Classic Quiz, Guess the Player with 4:5 SVG cards, Documentary Storytelling Mode, or
+                      dual-deck prerecorded Video playback.
+                    </span>
+                  </div>
+                </li>
+                <li className="home-step">
+                  <span className="home-step-num">2</span>
+                  <div className="home-step-body">
+                    <b>Load your content</b>
+                    <span>
+                      Built-in packs are already loaded &mdash; 1,150+ Bible questions, 510+ World History
+                      questions, 8 documentary episodes, and 150+ Player Quizzes. Bring your own JSON and the
+                      studio runs your exact topic.
+                    </span>
+                  </div>
+                </li>
+                <li className="home-step">
+                  <span className="home-step-num">3</span>
+                  <div className="home-step-body">
+                    <b>Go live from the phone</b>
+                    <span>
+                      Active TTS narration, 1,500-item repeat prevention, an original royalty-free music bed,
+                      custom branding, and honest Partner Break disclosures. Screen-cast to YouTube and the
+                      engine keeps playing on the phone.
+                    </span>
+                  </div>
+                </li>
+              </ol>
+            </section>
+
+            {/* Info grid */}
+            <section className="home-info-grid">
+              <article className="home-info-card">
+                <h3>Built to run unattended</h3>
+                <p>
+                  Shuffle bags and cross-session memory keep repeats out of long broadcasts, so a stream can run
+                  for hours without recycling the same question twice.
+                </p>
+              </article>
+              <article className="home-info-card">
+                <h3>YouTube-safe by default</h3>
+                <p>
+                  Active voice narration, an original royalty-free show bed, and honest Partner Break disclosures
+                  replace deceptive ad overlays and unlicensed music.
+                </p>
+              </article>
+              <article className="home-info-card">
+                <h3>Your branding, your device</h3>
+                <p>
+                  Custom watermark, site line, brand strap, and promo play CSV logs &mdash; all stored on this
+                  phone. Pro adds a signed licence key that locks the branding to your channel.
+                </p>
+              </article>
+            </section>
+
+            {/* Footer */}
+            <footer className="home-footer">
+              <div className="home-footer-brand">
+                lnr Studio &mdash; lnr-storytelling-hub.vercel.app
+              </div>
+              <div className="home-footer-links">
+                <a href="#studio">Studio</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#settings">Settings</a>
+                <a href="#contact">Contact</a>
+              </div>
+              <div className="home-footer-email">
+                <a href="mailto:lnrstrokes@gmail.com">lnrstrokes@gmail.com</a>
+              </div>
+            </footer>
+          </main>
       {view === 'stage' && (
         <main className={`stage-view-wrapper ${panelHidden ? 'panel-hidden' : ''}`}>
           {/* Stage Top Bar: Home, Title, Tools (Hidden when panelHidden is true) */}
