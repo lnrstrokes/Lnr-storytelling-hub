@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "lnr Studio \u2014 timer edition",
-  "short_name": "lnr Studio",
+  "name": "LNR Storytelling Hub",
+  "short_name": "LNR Hub",
   "description": "Two engines, one quiet studio: a Bible and World History quiz engine, a prerecorded video engine, and an automatic promo break between blocks.",
   "start_url": "/?src=pwa",
   "launch_handler": { "client_mode": "navigate-existing" },

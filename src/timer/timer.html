@@ -381,6 +381,20 @@
             <span class="dz-title">Drop your prerecorded video here</span>
             <span class="dz-sub" id="videoTierLimitNote">Upload up to 12 prerecorded clips (MP4/WebM/MOV) &middot; dual-deck crossfade &middot; stored locally on device</span>
           </label>
+          <p class="video-tier-upgrade" id="videoTierUpgrade" hidden>
+            <span class="video-tier-upgrade-text" id="videoTierUpgradeText"></span>
+            <a class="btn btn-quiet btn-sm" id="videoTierUpgradeLink" href="#">Go Pro</a>
+          </p>
+          <p class="video-tier-explain" id="videoTierExplain" hidden>
+            <strong>Go Pro &mdash; $19/month.</strong>
+            Pro includes what already exists here: unlimited video clips, seamless dual-deck looping, and partner-break CSV playback logs.
+            After payment: open the Pro panel, fill in the details form, and the licence key is issued to this device.
+          </p>
+          <p class="video-reference-note">
+            <strong>Reference &amp; ownership:</strong> the video you load is used as the reference to generate the quiz and anecdote breaks.
+            The 60-second notice before each break tells viewers the clip is used as reference. Own the video or use it for reference at your discretion,
+            and attribute it as reference material in your stream description to respect copyright.
+          </p>
           <div class="demo-video-bar">
             <button class="btn btn-quiet btn-sm" type="button" id="loadDemoVideoBtn">Preview 15s Built-in Video Demo</button>
             <span class="block-note" id="demoVideoStatus" style="margin:0">Try Engine 03 right now without uploading an MP4.</span>
@@ -425,7 +439,12 @@
 
             <div id="sermonProLockedNotice" hidden style="background:rgba(207,163,90,0.12); border:1px solid var(--brass-dim); padding:12px; border-radius:8px; margin-bottom:12px;">
               <b style="color:var(--cream); display:block; margin-bottom:4px;">Pro License Required</b>
-              <span style="font-size:13px; color:var(--muted);">Sermon Loop mode is a Pro feature. <a href="#contact" id="sermonUpgradeLink" style="color:var(--brass); text-decoration:underline;">Upgrade to Pro &rarr;</a></span>
+              <span style="font-size:13px; color:var(--muted);">Sermon Loop mode is a Pro feature. <a href="#contact" id="sermonUpgradeLink" style="color:var(--brass); text-decoration:underline;">Go Pro &rarr;</a></span>
+              <p class="video-tier-explain" style="margin-top:10px; font-size:13px; color:var(--muted);">
+                <strong>Go Pro &mdash; $19/month.</strong>
+                Pro includes what already exists here: unlimited video clips, seamless dual-deck looping, partner-break CSV playback logs, and the sermon quiz-and-anecdote loop.
+                After payment: open the Pro panel, fill in the details form, and the licence key is issued to this device.
+              </p>
             </div>
 
             <div id="sermonLoopControlsWrap">

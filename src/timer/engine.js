@@ -543,6 +543,13 @@
     } catch (e) {
       toast('Subscribe at ' + PRO_CHECKOUT_URL + ', then activate your Pro key.');
     }
+    // Existing Selar checkout surface.
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('selar_open');
+        window.LNR_TRACK('upgrade_click', { location: 'pro_checkout_button' });
+      }
+    } catch (e) {}
   }
 
   function toast(msg, bad) {
@@ -778,7 +785,22 @@
     });
     on(el.homeGoStudioBtn, 'click', function () { setPage('studio'); setWizardStep(1); });
     on(el.topbarStartBtn, 'click', function () { setPage('studio'); setWizardStep(1); });
-    on(el.pricingProBtn, 'click', openProCheckout);
+    on(el.pricingProBtn, 'click', function () {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        try { window.LNR_TRACK('upgrade_click', { location: 'pricing_pro_btn' }); } catch (e) {}
+      }
+      openProCheckout();
+    });
+    on(el.pricingFreeBtn, 'click', function () {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        try { window.LNR_TRACK('upgrade_click', { location: 'pricing_free_btn' }); } catch (e) {}
+      }
+    });
+    on(el.homeGoStudioBtn, 'click', function () {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        try { window.LNR_TRACK('upgrade_click', { location: 'home_start_studio' }); } catch (e) {}
+      }
+    });
     /* A licence activated (or removed) in the dock re-evaluates the tier. */
     window.addEventListener('lnr:pro-changed', function () {
       S.isPro = currentProTier();
@@ -1053,6 +1075,26 @@
         toast(S.storyInterleave ? '2 rapid trivia Qs will follow each story' : 'Continuous story-only rotation');
       });
     });
+    // Existing quiz-and-anecdote toggle surface (#sermonAnecdoteToggle).
+    // This is the only quiz-loop toggle in the app; track its changes as quiz_loop_toggle.
+    var sermonAnecdoteToggle = el.sermonAnecdoteToggle;
+    if (sermonAnecdoteToggle) {
+      (function () {
+        var initialOn = !!sermonAnecdoteToggle.checked;
+        try {
+          if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+            window.LNR_TRACK('quiz_loop_toggle', { on: initialOn ? 'on' : 'off' });
+          }
+        } catch (e) {}
+        sermonAnecdoteToggle.addEventListener('change', function () {
+          try {
+            if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+              window.LNR_TRACK('quiz_loop_toggle', { on: sermonAnecdoteToggle.checked ? 'on' : 'off' });
+            }
+          } catch (e) {}
+        });
+      })();
+    }
     [el.setupStoryVaryCadence, el.drawerStoryVaryCadence].forEach(function (chk) {
       on(chk, 'change', function () {
         S.storyVaryCadence = !!chk.checked;
@@ -2189,6 +2231,25 @@
   on(el.videoInput, 'change', function () {
     handleClipFiles(el.videoInput.files, 'clip');
     el.videoInput.value = '';
+    // Existing video-upload success surface: a clip was stored.
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('video_upload', { user_type: S.isPro ? 'pro' : 'free' });
+      }
+    } catch (e) {}
+  });
+  on(el.loadDemoVideoBtn, 'click', function () {
+    demoVideoMode = !demoVideoMode;
+    if (el.demoVideoStatus) {
+      el.demoVideoStatus.textContent = demoVideoMode
+        ? 'Built-in 15s demo ready — press Start video session below to preview.'
+        : 'Try Engine 03 right now without uploading an MP4.';
+    }
+    if (el.loadDemoVideoBtn) {
+      el.loadDemoVideoBtn.textContent = demoVideoMode ? 'Demo Video Ready (Tap to Disable)' : 'Preview 15s Built-in Video Demo';
+    }
+    refreshStats();
+    toast(demoVideoMode ? '15s Video Engine demo enabled' : 'Video Engine demo disabled');
   });
   on(el.promoInput, 'change', function () {
     handleClipFiles(el.promoInput.files, 'promo');
@@ -7153,6 +7214,12 @@
   }
 
   on(el.copyContactTemplateBtn, 'click', function () {
+    // Existing details-form / contact surface.
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('jotform_open');
+      }
+    } catch (e) {}
     var txt = [
       'To: ' + STUDIO_EMAIL,
       'Subject: Studio Question or Custom Pack Inquiry \u2014 lnr Studio',
@@ -7163,6 +7230,30 @@
       'Question or Custom Pack Request: [Describe here]'
     ].join('\n');
     copyText(txt, 'Support email template copied');
+  });
+  on(el.contactFormBtn, 'click', function () {
+    // Existing details-form / contact surface.
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('jotform_open');
+      }
+    } catch (e) {}
+  });
+  on(el.sermonUpgradeLink, 'click', function (e) {
+    // Existing upgrade link on the sermon panel.
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('upgrade_click', { location: 'sermon_upgrade_link' });
+      }
+    } catch (e) {}
+  });
+  on(el.videoTierUpgradeLink, 'click', function (e) {
+    // Existing upgrade link on the video tier note.
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('upgrade_click', { location: 'video_tier_upgrade_link' });
+      }
+    } catch (e) {}
   });
 
   function csvCell(val) {

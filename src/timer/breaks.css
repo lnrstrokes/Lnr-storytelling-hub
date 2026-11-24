@@ -289,6 +289,22 @@
   display: none;
 }
 
+/* ---- video reference / ownership note in the video setup panel ---- */
+.video-reference-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed rgba(217, 171, 99, 0.35);
+  background: rgba(217, 171, 99, 0.05);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #c7d0c8;
+}
+
+.video-reference-note strong {
+  color: #f0cf95;
+}
+
 /* ------------------------------------------------------- playback overlay */
 
 .vbreak-overlay {
@@ -544,4 +560,26 @@
   .vbreak-actions .vbreak-btn {
     flex: 1 1 100%;
   }
+}
+
+/* 60-second pre-break video-reference disclaimer. */
+.vbreak-notice-card .vbreak-reference-attribution {
+  margin: 8px 2px 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(217, 171, 99, 0.2);
+  font-size: clamp(11px, 1.3cqw, 13px);
+  line-height: 1.45;
+  color: #9aab9f;
+  text-align: center;
+}
+
+.vbreak-notice-card .studio-break-notice-copy b {
+  font-size: clamp(14px, 2cqw, 20px);
+}
+
+.vbreak-notice-card .studio-break-notice-copy span {
+  display: block;
+  margin-top: 4px;
+  font-size: clamp(13px, 1.8cqw, 17px);
+  color: #dcd5c5;
 }

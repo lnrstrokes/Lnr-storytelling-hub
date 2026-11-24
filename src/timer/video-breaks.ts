@@ -227,6 +227,16 @@ function cardMeta(card: HTMLDivElement, clipBreaks: ClipBreaks, kicker: string, 
 async function playBreak(item: BreakItem, clipBreaks: ClipBreaks, alive: () => boolean): Promise<void> {
   const total = item.questions.length;
 
+  /* A 60-second reference disclaimer plays before the quiz and anecdote cards.
+     The video is the reference used to generate the quiz and anecdote, so the
+     viewer is warned before the clip pauses. This sits in the same overlay as
+     the other break notices, and it never interrupts playback that is already
+     paused or no longer the active clip. */
+  {
+    const shown = await showVideoReferenceDisclaimer(alive);
+    if (!shown || !alive()) return;
+  }
+
   /* A notice before the break, in the same visual language as the promo
      notice (#adNotice): same pill, same copy rhythm, same 5s countdown bar.
      Without it the clip simply stopped and a quiz appeared with no warning,
@@ -274,6 +284,67 @@ async function playBreak(item: BreakItem, clipBreaks: ClipBreaks, alive: () => b
    identical across all three break types.
    -------------------------------------------------------------------------- */
 const NOTICE_MS = 5000;
+
+function showVideoReferenceDisclaimer(alive: () => boolean): Promise<boolean> {
+  const card = flashCard(0);
+  card.classList.add('vbreak-notice-card');
+
+  const notice = elm('div', 'studio-break-notice vbreak-notice');
+  notice.setAttribute('role', 'status');
+  notice.setAttribute('aria-live', 'polite');
+
+  const row = elm('div', 'studio-break-notice-row');
+  row.appendChild(elm('span', 'studio-break-pill', 'REFERENCE'));
+
+  const copy = elm('div', 'studio-break-notice-copy');
+  copy.appendChild(elm('b', '', 'Video used as reference'));
+  copy.appendChild(elm('span', '', 'This clip is the reference used to generate the quiz and anecdote.'));
+  row.appendChild(copy);
+
+  const timer = elm('span', 'studio-break-notice-timer', '60s');
+  row.appendChild(timer);
+  notice.appendChild(row);
+
+  const bar = elm('div', 'studio-break-bar');
+  const fill = elm('span', '');
+  bar.appendChild(fill);
+  notice.appendChild(bar);
+
+  const attribution = elm('p', 'vbreak-reference-attribution');
+  attribution.appendChild(
+    elm(
+      'span',
+      '',
+      'The clip is attributed as reference material. Own the video or use it for reference at your discretion.'
+    )
+  );
+  notice.appendChild(attribution);
+
+  card.appendChild(notice);
+
+  const started = performance.now();
+  const REFERENCE_MS = 60000;
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearInterval(tick);
+      resolve(ok);
+    };
+    const tick = window.setInterval(() => {
+      if (!alive()) {
+        finish(false);
+        return;
+      }
+      const elapsed = performance.now() - started;
+      const left = Math.max(0, REFERENCE_MS - elapsed);
+      timer.textContent = Math.max(1, Math.ceil(left / 1000)) + 's';
+      fill.style.width = Math.min(100, (elapsed / REFERENCE_MS) * 100).toFixed(1) + '%';
+      if (left <= 0) finish(true);
+    }, 100);
+  });
+}
 
 function showBreakNotice(
   pill: string,
