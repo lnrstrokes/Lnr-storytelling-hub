@@ -4,6 +4,9 @@ import timerMarkup from './timer.html?raw';
 import './timer.css';
 import './offer.css';
 import './breaks.css';
+// Long anecdote text: its own scrolling window on the break card, so a story
+// that runs past the stage is still read to the end. Loaded after breaks.css.
+import './break-card.css';
 import { initLibrary } from './player-library.ts';
 import { loadBuiltInBanks } from './built-in-banks.ts';
 import { loadStoryLibrary } from './story-library.ts';
@@ -44,6 +47,9 @@ import { installSessionKeepAwake } from './session-keepawake.ts';
 import { installBuildTag } from './build-tag.ts';
 // Quiz pack: a Remove button so a fresh JSON pack can be loaded (Free and Pro).
 import { installQuizPackReset } from './quiz-pack-reset.ts';
+// Legacy addresses: a studio saved before the rename still printed the old
+// project host under "Run your own stream". Migrated before the engine boots.
+import { installLegacySiteFix } from './legacy-site.ts';
 
 declare global {
   interface Window {
@@ -137,6 +143,7 @@ export default function TimerApp() {
     installSessionKeepAwake(host);
     installBuildTag(host);
     installQuizPackReset(host);
+    installLegacySiteFix();
 
     let cancelled = false;
     void Promise.all([
