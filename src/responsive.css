@@ -646,3 +646,478 @@ a:focus-visible,
     transform: none;
   }
 }
+
+/* ==================================================== */
+/* LNW STUDIO HOMEPAGE: PREMIUM SALES VOICE            */
+/* ==================================================== */
+
+.home-brand {
+  font: 900 clamp(18px, 3.4vw, 26px)/1.1 'Manrope', sans-serif;
+  color: #fff;
+  letter-spacing: -0.3px;
+}
+
+.home-brand em {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: #8c9ea8;
+  margin-left: 6px;
+}
+
+.home-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0 14px;
+  border-bottom: 1px solid #1a2432;
+  margin-bottom: 22px;
+}
+
+.home-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.home-nav-links a {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #c2d0df;
+  text-decoration: none;
+  padding: 7px 13px;
+  border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.home-nav-links a:hover {
+  background: #141c28;
+  color: #fff;
+}
+
+.home-hero {
+  text-align: center;
+  padding: 10px 0 6px;
+}
+
+.home-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: #d4af37;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.12);
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  margin-bottom: 14px;
+}
+
+.home-hero h1 {
+  font: 900 clamp(26px, 5.4vw, 40px)/1.1 'Manrope', sans-serif;
+  color: #ffffff;
+  margin: 0 0 12px;
+  letter-spacing: -0.5px;
+}
+
+.home-hero h1 span {
+  background: linear-gradient(135deg, #f7d896 0%, #e2b95e 55%, #b88d3e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.home-sub {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #92a2b2;
+  max-width: 680px;
+  margin: 0 auto 18px;
+}
+
+.home-cta-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.home-cta-row .btn-quiet {
+  color: #c2d0df;
+  border-color: #28374a;
+}
+
+.home-cta-row .btn-quiet:hover {
+  background: #141c28;
+  color: #fff;
+}
+
+.home-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 6px 0 22px;
+}
+
+.home-stat {
+  background: #111722;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 14px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.home-stat b {
+  font: 900 clamp(20px, 3.6vw, 26px)/1.1 'Manrope', sans-serif;
+  color: #d4af37;
+  letter-spacing: -0.3px;
+}
+
+.home-stat span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8c9ea8;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.home-section {
+  margin-bottom: 24px;
+}
+
+.home-section h2 {
+  font: 900 clamp(17px, 2.6vw, 21px)/1.2 'Manrope', sans-serif;
+  color: #ffffff;
+  margin: 0 0 8px;
+  letter-spacing: -0.2px;
+}
+
+.home-section p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #92a2b2;
+  margin: 0 0 10px;
+}
+
+.home-section p:last-child {
+  margin-bottom: 0;
+}
+
+.home-section .highlight {
+  color: #f7d896;
+  font-weight: 700;
+}
+
+.home-steps {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.home-step {
+  background: #111722;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.home-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(212, 175, 55, 0.15);
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  color: #f7d896;
+  font: 900 12px 'Manrope', sans-serif;
+  flex-shrink: 0;
+}
+
+.home-step-body b {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 3px;
+}
+
+.home-step-body span {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #92a2b2;
+}
+
+.home-info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  padding-top: 6px;
+  border-top: 1px solid #1a2432;
+}
+
+.home-info-card {
+  background: #111722;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.home-info-card h3 {
+  font: 900 14px/1.2 'Manrope', sans-serif;
+  color: #f7d896;
+  margin: 0;
+  letter-spacing: -0.1px;
+}
+
+.home-info-card p {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #92a2b2;
+  margin: 0;
+}
+
+.install-cta {
+  background: linear-gradient(135deg, #1a1408, #241a0c);
+  border: 1.5px solid rgba(212, 175, 55, 0.5);
+  border-radius: 14px;
+  padding: 16px;
+  margin: 10px 0 14px;
+}
+
+.install-cta p {
+  color: #f0e6d2;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.install-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 4px;
+}
+
+.install-step {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #c2d0df;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.install-step::before {
+  content: "\2022";
+  color: #d4af37;
+  font-weight: 900;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.youtube-route {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 8px 0 0;
+}
+
+.youtube-route-card {
+  border-radius: 10px;
+  padding: 12px;
+  border: 1px solid;
+}
+
+.youtube-route-card.skip {
+  background: rgba(34, 197, 94, 0.06);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.youtube-route-card.skip h3 {
+  color: #4ade80;
+}
+
+.youtube-route-card.use {
+  background: rgba(212, 175, 55, 0.06);
+  border-color: rgba(212, 175, 55, 0.3);
+}
+
+.youtube-route-card.use h3 {
+  color: #f7d896;
+}
+
+.youtube-route-card h3 {
+  font: 900 13px/1.2 'Manrope', sans-serif;
+  margin: 0 0 5px;
+  letter-spacing: -0.1px;
+}
+
+.youtube-route-card p {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  color: #92a2b2;
+}
+
+.home-footer {
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 1px solid #1a2432;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.home-footer-brand {
+  font: 900 14px/1.2 'Manrope', sans-serif;
+  color: #f7d896;
+  letter-spacing: -0.1px;
+}
+
+.home-footer-links {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.home-footer-links a {
+  font-size: 12px;
+  font-weight: 700;
+  color: #8c9ea8;
+  text-decoration: none;
+  padding: 5px 10px;
+  border-radius: 6px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.home-footer-links a:hover {
+  color: #fff;
+  background: #141c28;
+}
+
+.home-footer-email {
+  font-size: 12px;
+  color: #8c9ea8;
+  text-decoration: none;
+}
+
+.home-footer-email a {
+  color: #93c5fd;
+  text-decoration: none;
+}
+
+.home-footer-email a:hover {
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .home-nav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .home-nav-links {
+    justify-content: center;
+  }
+
+  .home-stats {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .home-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .home-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .youtube-route {
+    grid-template-columns: 1fr;
+  }
+
+  .home-section p {
+    font-size: 12.5px;
+  }
+}
+
+@media (min-width: 768px) {
+  .gateway-container {
+    max-width: 1060px;
+  }
+
+  .home-sub {
+    font-size: 14.5px;
+  }
+
+  .home-info-card {
+    padding: 18px;
+  }
+
+  .install-cta {
+    padding: 18px 20px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .gateway-container {
+    padding: 32px 24px 64px;
+  }
+
+  .home-hero h1 {
+    font-size: clamp(32px, 3.6vw, 44px);
+  }
+
+  .home-info-grid {
+    gap: 18px;
+  }
+}
+
+@media (pointer: coarse) {
+  .home-nav-links a,
+  .home-footer-links a {
+    padding: 9px 14px;
+    min-height: 40px;
+  }
+
+  .home-cta-row .btn-primary,
+  .home-cta-row .btn-quiet {
+    min-height: 48px;
+  }
+
+  .home-stat {
+    padding: 16px;
+  }
+
+  .home-step {
+    padding: 16px;
+  }
+
+  .home-info-card {
+    padding: 18px;
+  }
+}

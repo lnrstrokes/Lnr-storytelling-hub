@@ -59,6 +59,7 @@
      and no trailing slash, so the whole host fits the one-line stage slot. */
   var DEFAULT_SITE = 'lnr-storytelling-hub.vercel.app';
   var DEFAULT_BRAND = 'LNR STUDIO';
+  var DEFAULT_SITECTA = 'Run your own stream';
   /* Where a customer buys Pro. The pricing button opens this and nothing else. */
   var PRO_CHECKOUT_URL = 'https://selar.com/399774111a';
 
@@ -101,6 +102,7 @@
     voiceRate: 0.96,
     watermark: DEFAULT_WATERMARK,
     site: DEFAULT_SITE,
+    siteCta: DEFAULT_SITECTA,
     safeDefault: false,
     /* Which question bank the timer reads from:
        'builtin'  — the shipped Bible / World History packs
@@ -480,7 +482,8 @@
     'promoFunnelUrl', 'promoFunnelClock',
     'adNotice', 'adNoticeBadge', 'adNoticeTitle', 'adNoticeSub', 'adNoticeTimer', 'adNoticeFill',
     'promoBrand', 'promoBrandText', 'loopBadge', 'loopBadgeText',
-    'progFill', 'watermark', 'frameSite', 'curtain', 'safePeek',
+    'progFill', 'watermark', 'frameSite', 'frameCtaLead', 'curtain', 'safePeek',
+    'stSiteCtaInput',
     'prevBtn', 'playBtn', 'playGlyph', 'revealToggleBtn', 'nextBtn',
     'voiceBtn', 'musicBtn', 'kbdHint',
     /* dev panel */
@@ -499,7 +502,7 @@
     'voiceRateLabel',
     'drawerPlayerTag', 'playerBlockMin', 'clueSec', 'guessSec', 'playerRevealSec',
     'milestoneSec', 'drawerChatSafe', 'drawerChatGuide',
-    'watermarkInput', 'siteInput', 'safeDefault',
+    'watermarkInput', 'siteInput', 'siteCtaInput', 'safeDefault',
     'sponsorAnalyticsSection', 'alTotalCount', 'alTotalDuration',
     'alLogList', 'alExportCsvBtn', 'alClearBtn',
     /* studio operator modal */
@@ -1135,6 +1138,7 @@
     var b = effectiveBranding();
     if (el.watermark) el.watermark.textContent = b.watermark;
     if (el.frameSite) el.frameSite.textContent = b.site;
+    if (el.frameCtaLead) el.frameCtaLead.textContent = S.siteCta || DEFAULT_SITECTA;
     if (el.promoBrandText) el.promoBrandText.textContent = b.brand;
 
     [
@@ -1171,6 +1175,12 @@
   [el.siteInput, el.stSiteInput].forEach(function (inp) {
     on(inp, 'input', function () {
       S.site = normalizeSite(inp.value) || DEFAULT_SITE;
+      applyBranding(); save();
+    });
+  });
+  [el.siteCtaInput, el.stSiteCtaInput].forEach(function (inp) {
+    on(inp, 'input', function () {
+      S.siteCta = inp.value.slice(0, 42) || DEFAULT_SITECTA;
       applyBranding(); save();
     });
   });
@@ -6431,7 +6441,13 @@
       }
     }
 
-    if (el.frame) el.frame.classList.toggle('is-video-clean', phase === 'video');
+    if (el.frame) {
+      var isVid = phase === 'video' || phase === 'promo';
+      el.frame.classList.toggle('is-video-clean', isVid);
+      el.frame.classList.toggle('is-video-clean-video', phase === 'video');
+      var sc = el.frame.closest('.screen-stage');
+      if (sc) sc.classList.toggle('is-video-clean', isVid);
+    }
     el.onairPill.classList.remove('is-paused');
     el.onairPill.innerHTML = '<i aria-hidden="true"></i> ' + (!isVideo ? 'On air' : 'On air \u00b7 ' + (phase === 'promo' ? 'partner break' : 'video'));
 
