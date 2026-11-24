@@ -16,7 +16,7 @@
 import { breaksFor, buildPanel } from './break-panel';
 import { BreakItem, ClipBreaks, EngineDebug, QuizQ, globalQuizSeconds, readRecord } from './break-parser';
 import { getProState } from '../pro/license';
-import { startNarration, stopNarration, waitForNarration } from './break-voice';
+import { startNarration, stopNarration, waitForNarration, type Narration } from './break-voice';
 /* --- end imports --- */
 
 const shownSets = new Map<string, Set<number>>();
@@ -355,8 +355,10 @@ function askQuestion(
   card.appendChild(options);
 
   /* Read the question and its options as they appear, so the break is
-     something the viewer hears rather than a card they have to squint at. */
-  startNarration([
+     something the viewer hears rather than a card they have to squint at.
+     The narration is kept: the countdown below does not run while the
+     question is still being read. */
+  const spoken = startNarration([
     `Question ${index + 1} of ${total}.`,
     question.prompt,
     ...question.options.map((text, optIndex) => `Option ${String.fromCharCode(65 + optIndex)}. ${text}`)
@@ -372,6 +374,18 @@ function askQuestion(
   return new Promise<number | null>((resolve) => {
     let settled = false;
     let timer = 0;
+
+    /* The reader owns this card. A fixed countdown used to expire while the
+       voice was still on the last option, so the answer appeared before the
+       question had been heard. The think timer now starts once the reading
+       finishes; a phone that refuses to speak resolves its own timeout and
+       the countdown proceeds as before. */
+    let reading = !!spoken;
+    if (spoken) {
+      void spoken.done.then(() => {
+        reading = false;
+      });
+    }
 
     const finish = (value: number | null) => {
       if (settled) return;
@@ -396,6 +410,7 @@ function askQuestion(
         finish(null);
         return;
       }
+      if (reading) return;
       remaining -= 0.2;
       clock.textContent = `${Math.max(0, Math.ceil(remaining))}s`;
       if (remaining <= 0) finish(null);
@@ -448,7 +463,10 @@ function revealQuestion(
   void item;
   void clipBreaks;
 
-  return waitForNarration(spoken, 6000, 18000, alive).then(() => alive());
+  /* The cap is generous: the reader may take half a minute on a long
+     explanation, and cutting it off is exactly the race this card exists to
+     avoid. The narration itself still has its own length-based ceiling. */
+  return waitForNarration(spoken, 6000, 60000, alive).then(() => alive());
 }
 
 async function showAnecdote(item: BreakItem, clipBreaks: ClipBreaks, alive: () => boolean): Promise<void> {
@@ -478,65 +496,107 @@ async function showAnecdote(item: BreakItem, clipBreaks: ClipBreaks, alive: () =
 
   /* The story is read aloud, and the card follows the reading: every spoken
      word moves the window by the same share of the story, so the line being
-     heard is the line on screen. That is why it no longer races ahead of the
-     eye. With the reader off (or a phone that refuses to speak), it drifts
-     down on its own at a slow, steady pace instead. */
+     heard is the line on screen. Movement is eased frame by frame, so the
+     text glides instead of jumping a line per word — and when this device
+     reports no word markers at all, the window keeps drifting at the same
+     gentle pace instead of sitting still on the first paragraph. */
+  const lead = anecdote.title
+    ? (anecdote.title.length + 2) / (anecdote.title.length + 2 + anecdote.text.length)
+    : 0;
+  let voiceShare = 0;
+  let voiceAt = 0;
+
   const narration = startNarration([anecdote.title || '', anecdote.text], (fraction) => {
-    const overflow = scroller.scrollHeight - scroller.clientHeight;
-    if (overflow <= 0) return;
-    const lead = anecdote.title
-      ? (anecdote.title.length + 2) / (anecdote.title.length + 2 + anecdote.text.length)
-      : 0;
     const share = lead >= 1 ? 1 : Math.max(0, Math.min(1, (fraction - lead) / (1 - lead)));
-    scroller.scrollTop = overflow * share;
+    voiceShare = Math.max(voiceShare, share);
+    voiceAt = performance.now();
   });
 
-  /* Layout first: the overflow is only known once the card is on screen. */
-  window.requestAnimationFrame(() => {
-    if (!narration) {
-      autoScroll(scroller, holdMs);
-      return;
-    }
-    /* A voice that never starts is a blocked voice; let the text still travel. */
-    window.setTimeout(() => {
-      if (!narration.started()) autoScroll(scroller, holdMs);
-    }, 3500);
-  });
+  /* From the next frame on: the card has a height by then, so the overflow is
+     known and the window can start moving. */
+  const stopFollow = followReading(
+    scroller,
+    narration,
+    holdMs,
+    () => voiceShare,
+    () => voiceAt
+  );
 
-  await waitForNarration(narration, holdMs, 90000, alive);
+  /* Long enough for a two-minute story to be read to its last line before the
+     clip resumes; the drift pace still reaches the end by the floor hold. */
+  await waitForNarration(narration, holdMs, 150000, alive);
+  stopFollow();
   stopNarration();
 }
 
-/* Slow, steady read-along scroll for text taller than the card. The travel
-   time is derived from the overflow so a short story holds still and a long
-   one still reaches its last line before the card closes. */
-function autoScroll(box: HTMLElement, holdMs: number): void {
-  if (!box.isConnected) return;
-  const overflow = box.scrollHeight - box.clientHeight;
-  if (overflow <= 4) return;
+/* The story window follows the reader.
 
-  /* Roughly twice as slow as the first pass: at ~90ms per pixel a line sits
-     still for a few seconds, which is how long it takes to read it. */
-  const travelMs = Math.max(6000, Math.min(holdMs - 4000, overflow * 90));
-  if (travelMs <= 0) return;
+   A viewer cannot scroll a livestream, so the text has to travel by itself.
+   Three things move it, in this order of authority:
 
+     1. the voice, while it reports word positions — the line being spoken is
+        the line on screen;
+     2. a gentle drift when the voice is speaking but reports no markers (some
+        phones never fire `onboundary`), so the story never stalls halfway;
+     3. the same drift when the reader is off or blocked.
+
+   The window is eased toward that position every frame, so the movement is
+   an animation rather than a jump, and it is measured each frame because the
+   card can reflow after the first paint. The host may take over by hand; a
+   viewer has no way to, which is why the text must not depend on scrolling. */
+function followReading(
+  box: HTMLElement,
+  narration: Narration | null,
+  holdMs: number,
+  share: () => number,
+  shareAt: () => number
+): () => void {
   let stopped = false;
   const stop = () => {
     stopped = true;
   };
+
   box.addEventListener('pointerdown', stop, { passive: true });
   box.addEventListener('wheel', stop, { passive: true });
   box.addEventListener('touchstart', stop, { passive: true });
   box.addEventListener('keydown', stop);
 
-  const started = performance.now();
-  const step = () => {
+  /* The whole story in the time the card is held, so a short story barely
+     moves and a long one still reaches its last line. */
+  const pace = 1 / Math.max(6000, holdMs - 2500);
+  let target = 0;
+  let shown = 0;
+  let lastFrame = performance.now();
+
+  const frame = () => {
     if (stopped || !box.isConnected) return;
-    const progress = Math.min(1, (performance.now() - started) / travelMs);
-    box.scrollTop = overflow * progress;
-    if (progress < 1) window.requestAnimationFrame(step);
+
+    const current = performance.now();
+    const dt = Math.min(120, Math.max(0, current - lastFrame));
+    lastFrame = current;
+
+    const overflow = Math.max(0, box.scrollHeight - box.clientHeight);
+    const heard = Math.max(0, Math.min(1, share()));
+    const speaking = !!narration && narration.started();
+    const markerAt = shareAt();
+    const fresh = speaking && markerAt > 0 && current - markerAt <= 1200;
+
+    if (overflow > 0) {
+      if (fresh) target = Math.max(target, heard);
+      else target = Math.min(1, Math.max(target, heard) + dt * pace);
+    }
+
+    /* Ease toward the target: ~120ms of smoothing, so the text glides. */
+    const ease = Math.min(0.2, dt / 120);
+    shown += (target - shown) * ease;
+    if (Math.abs(target - shown) < 0.0004) shown = target;
+    if (overflow > 0) box.scrollTop = overflow * shown;
+
+    window.requestAnimationFrame(frame);
   };
-  window.requestAnimationFrame(step);
+
+  window.requestAnimationFrame(frame);
+  return stop;
 }
 
 function attachDeck(v: HTMLVideoElement): void {
