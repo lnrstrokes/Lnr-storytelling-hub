@@ -2383,6 +2383,8 @@
   on(el.ownVideoBtn, 'click', function () {
     applyOwnershipToAll('own');
     if (el.videoOwnershipTag) el.videoOwnershipTag.textContent = 'I own this video';
+    // Immediately dismiss any showing preroll since we now own the video
+    if (prerollActive) dismissPreroll();
     toast('Disclaimer off — videos play straight away');
   });
   on(el.refVideoBtn, 'click', function () {
@@ -2732,6 +2734,8 @@
      break-voice.ts, the same module the break cards use. */
   function startPreroll() {
     if (prerollActive) return;
+    // Don't show preroll during stream-safe mode for owned videos
+    // (reference videos still show the disclaimer)
     var overlay = el.videoPreroll;
     if (!overlay) return;
     prerollActive = true;
@@ -2815,15 +2819,91 @@
     prerollActive = false;
     if (prerollTimer) { window.clearInterval(prerollTimer); prerollTimer = 0; }
     var overlay = el.videoPreroll;
-    if (overlay) overlay.hidden = true;
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.onclick = null;
+    }
     if (overlay._prerollVoice && overlay._prerollVoice.stop) overlay._prerollVoice.stop();
     overlay._prerollVoice = null;
+    // Reset the interactive notice flag so it shows for the next clip
+    interactiveNoticeDismissed = false;
     if (live.inSession && live.phase === 'video' && !live.paused) {
       var av = activeVideo();
       if (av) {
         var p = av.play();
         if (p && p.catch) p.catch(function () {});
       }
+    }
+  }
+
+  /* ---------- interactive session notice (owned videos) ---------- */
+  var interactiveNoticeTimer = 0;
+  var interactiveNoticeDismissed = false;
+
+  function showInteractiveSessionNotice() {
+    if (!el.videoPreroll) return;
+    if (interactiveNoticeDismissed) return;
+    // Don't show if preroll is already active (reference video case)
+    if (prerollActive) return;
+    
+    var overlay = el.videoPreroll;
+    var pill = el.videoPrerollPill;
+    var title = el.videoPrerollTitle;
+    var body = el.videoPrerollBody;
+    
+    if (!overlay || !pill || !title || !body) return;
+    
+    // Use the interactive session disclaimer text
+    var disclaimer = currentInteractiveDisclaimer();
+    
+    overlay.hidden = false;
+    overlay.classList.add('is-interactive');
+    pill.textContent = 'INTERACTIVE SESSION';
+    title.textContent = 'Quiz & Anecdotes Ahead';
+    body.textContent = disclaimer;
+    
+    // Clear any progress bar showing
+    var bar = el.videoPrerollBar;
+    if (bar) bar.style.width = '0%';
+    var timer = el.videoPrerollTimer;
+    if (timer) timer.textContent = 'Tap to dismiss';
+    
+    // Auto-dismiss after 5 seconds or on click
+    if (interactiveNoticeTimer) window.clearTimeout(interactiveNoticeTimer);
+    interactiveNoticeTimer = window.setTimeout(function () {
+      dismissInteractiveNotice();
+    }, 5000);
+    
+    // Make the overlay clickable to dismiss
+    overlay.onclick = function () {
+      dismissInteractiveNotice();
+    };
+  }
+
+  function dismissInteractiveNotice() {
+    if (interactiveNoticeTimer) {
+      window.clearTimeout(interactiveNoticeTimer);
+      interactiveNoticeTimer = 0;
+    }
+    var overlay = el.videoPreroll;
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.onclick = null;
+    }
+    interactiveNoticeDismissed = true;
+  }
+
+  function currentInteractiveDisclaimer() {
+    try {
+      var raw = localStorage.getItem('lnr_video_disclaimer_v1');
+      if (!raw) return 'This clip is part of an interactive session: a short quiz and a quick anecdote will appear as the video plays. Jump in when the questions show up.';
+      var parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.copy === 'string' && parsed.copy.trim()) {
+        return parsed.copy.trim();
+      }
+      return 'This clip is part of an interactive session: a short quiz and a quick anecdote will appear as the video plays. Jump in when the questions show up.';
+    } catch (e) {
+      return 'This clip is part of an interactive session: a short quiz and a quick anecdote will appear as the video plays. Jump in when the questions show up.';
     }
   }
 
@@ -6528,11 +6608,16 @@
       stopSpeech();
       if (phase === 'video' && clips.length > 0) {
         var firstClip = clips[0];
-        if (firstClip && clipOwnership(firstClip.id) === 'reference') {
+        var ownership = firstClip ? clipOwnership(firstClip.id) : 'reference';
+        if (ownership === 'reference') {
           startPreroll();
           playClip(0);
           return;
         }
+        // Owned video: play straight away, but show a brief interactive session notice
+        playClip(0);
+        showInteractiveSessionNotice();
+        return;
       }
       playClip(phase === 'promo' ? live.clipIndex : 0);
       updatePromoBrand();
@@ -7030,7 +7115,20 @@
       el.safeBtn.classList.toggle('is-on', !!on_);
     }
     applyChatSafe();
-    if (on_ && el.drawer && !el.drawer.hidden) closeDrawer();
+    // Hide any video overlays during stream-safe mode
+    if (on_) {
+      closeDrawer();
+      // Hide preroll and interactive notice if showing
+      if (el.videoPreroll && !el.videoPreroll.hidden) {
+        var wasPrerollActive = prerollActive;
+        dismissPreroll();
+        if (wasPrerollActive) interactiveNoticeDismissed = true;
+      }
+      // Hide break overlay if showing
+      if (overlay && !overlay.hidden) {
+        hideOverlay();
+      }
+    }
     window.requestAnimationFrame(function () {
       sizeStage();
       if (live.phase === 'quiz' && currentQ() && !live.quizMilestone) applyQuestionFit(currentQ().q.length);

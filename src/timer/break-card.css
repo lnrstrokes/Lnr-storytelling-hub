@@ -162,3 +162,168 @@
   color: #f0cf95;
 }
 
+/* ============================================================
+   Break card background templates & motion effects
+   ============================================================ */
+
+/* Background template selector in the break panel */
+.vbreak-bg-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  margin-top: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
+}
+
+.vbreak-bg-selector .dsec-head {
+  margin-bottom: 4px;
+}
+
+.vbreak-bg-selector .dsec-head h4 {
+  font-size: 13px;
+  margin: 0;
+}
+
+.vbreak-bg-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.vbreak-bg-option {
+  position: relative;
+  aspect-ratio: 16/9;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  cursor: pointer;
+  background: #0a1218;
+  transition: border-color 150ms ease;
+}
+
+.vbreak-bg-option:hover {
+  border-color: rgba(217, 171, 99, 0.3);
+}
+
+.vbreak-bg-option.is-selected {
+  border-color: #e2bf88;
+}
+
+.vbreak-bg-option img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.vbreak-bg-option .bg-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #7bb095;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: #0a1218;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.vbreak-bg-option.is-selected .bg-check {
+  display: flex;
+}
+
+.vbreak-bg-option .bg-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 4px 6px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.7));
+  color: #e8e3d8;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Motion effect selector */
+.vbreak-motion-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.vbreak-motion-option {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(217, 171, 99, 0.2);
+  background: rgba(255, 255, 255, 0.03);
+  color: #c7d0c8;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  font-family: var(--mono, ui-monospace, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.vbreak-motion-option:hover {
+  border-color: rgba(217, 171, 99, 0.4);
+}
+
+.vbreak-motion-option.is-selected {
+  border-color: #e2bf88;
+  background: rgba(217, 171, 99, 0.15);
+  color: #f0cf95;
+}
+
+.vbreak-motion-option .motion-icon {
+  margin-right: 4px;
+}
+
+/* Remove background button */
+.vbreak-remove-bg {
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(214, 110, 88, 0.3);
+  background: rgba(214, 110, 88, 0.1);
+  color: #e8a89c;
+  font-size: 11px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  transition: all 150ms ease;
+}
+
+.vbreak-remove-bg:hover {
+  background: rgba(214, 110, 88, 0.2);
+}
+
+/* Preloaded background templates (static URLs - replace with actual template images) */
+.vbreak-template-1 { background-image: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
+.vbreak-template-2 { background-image: linear-gradient(135deg, #2d1b69 0%, #11998e 100%); }
+.vbreak-template-3 { background-image: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); }
+.vbreak-template-4 { background-image: linear-gradient(135deg, #000000 0%, #1a1a2e 50%, #0d0d0d 100%); }
+.vbreak-template-5 { background-image: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); }
+.vbreak-template-6 { background-image: linear-gradient(135deg, #3a0ca3 0%, #f7b733 100%); }
+
+/* Template thumbnail with pattern overlay */
+.vbreak-bg-option .template-pattern {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.3);
+  font-size: 24px;
+  font-weight: 300;
+}
+

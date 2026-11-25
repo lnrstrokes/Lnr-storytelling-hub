@@ -1654,6 +1654,20 @@ body.screen-stage .screen-stage {
   display: none;
 }
 
+/* During stream-safe mode, hide all video overlays for a clean interface */
+body.safe .video-preroll,
+body.safe .vbreak-overlay,
+body.safe .video-restart-notice {
+  display: none !important;
+}
+
+/* But show the restart notice briefly before video restarts even in safe mode */
+body.safe .video-restart-notice.is-visible {
+  display: flex !important;
+  position: absolute;
+  z-index: 100;
+}
+
 .demo-video-canvas {
   position: absolute;
   inset: 0;

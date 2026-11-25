@@ -20,7 +20,8 @@ import {
   currentDisclaimer,
   getInteractiveDisclaimer,
   setInteractiveDisclaimer,
-  installAnecdoteRestartNotice
+  installAnecdoteRestartNotice,
+  onBreakPanelReady
 } from './engine-decorator';
 
 export const videoDisclaimer = {
@@ -33,4 +34,8 @@ export function installTimerDecorations(host: HTMLElement): void {
   // Additive and fail-open: if the stage markup is not present yet, nothing
   // breaks — the restart notice installer creates its own element lazily.
   installAnecdoteRestartNotice();
+  
+  // Install break card customizer (background templates & motion effects)
+  // This is called after the break panel is built
+  onBreakPanelReady();
 }

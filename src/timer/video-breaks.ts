@@ -516,6 +516,10 @@ async function showAnecdote(
   await waitForNarration(narration, holdMs, 150000, alive);
   stopFollow();
   stopNarration();
+
+  // Signal that the anecdote has finished and video will restart soon
+  // The decorator listens for this to show the 10-second countdown notice
+  document.dispatchEvent(new CustomEvent('lnr:anecdote-finished'));
 }
 
 function followReading(

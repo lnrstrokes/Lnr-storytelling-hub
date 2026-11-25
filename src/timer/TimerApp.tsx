@@ -163,6 +163,18 @@ export default function TimerApp() {
     installProGate(host);
     publishClipTitles();
     installVideoBreaks(host);
+    
+    // Install break card customizer (background templates & motion effects)
+    // Called after a short delay to ensure the break panel is fully built
+    const setupCustomizer = () => {
+      try {
+        const { onBreakPanelReady } = require('./engine-decorator');
+        onBreakPanelReady();
+      } catch (e) {
+        // Fail silently - customizer is optional
+      }
+    };
+    setTimeout(setupCustomizer, 100);
 
     // Existing quiz-and-anecdote toggle: the only quiz-loop toggle in the app.
     const anecdoteToggle = host.querySelector<HTMLInputElement>('#sermonAnecdoteToggle');

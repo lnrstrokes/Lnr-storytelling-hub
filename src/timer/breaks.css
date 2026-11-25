@@ -760,9 +760,29 @@
   background:
     radial-gradient(70% 70% at 50% 30%, rgba(207, 163, 90, 0.12) 0%, rgba(4, 9, 7, 0.96) 72%),
     #040907;
+  cursor: pointer;
 }
 
 .video-preroll[hidden] { display: none; }
+
+/* Interactive session notice (for owned videos) - sage green accent */
+.video-preroll.is-interactive {
+  background:
+    radial-gradient(70% 70% at 50% 30%, rgba(123, 176, 149, 0.12) 0%, rgba(4, 9, 7, 0.96) 72%),
+    #040907;
+}
+
+.video-preroll.is-interactive .video-preroll-pill {
+  color: #7bb095;
+}
+
+.video-preroll.is-interactive .video-preroll-title {
+  color: #7bb095;
+}
+
+.video-preroll.is-interactive .video-preroll-card {
+  border-left-color: #7bb095;
+}
 
 .video-preroll-card {
   width: min(100%, 560px);
