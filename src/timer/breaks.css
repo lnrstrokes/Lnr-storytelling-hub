@@ -42,6 +42,40 @@
 
 /* ------------------------------------------------------------------ switch */
 
+/* Break status for the host. It sits in this panel, off the broadcast frame:
+   the video screen must show footage and nothing else. */
+.vbreak-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(4, 9, 7, 0.7);
+  border: 1px solid rgba(217, 171, 99, 0.28);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9aab9f;
+}
+
+.vbreak-chip[hidden] { display: none; }
+
+.vbreak-chip.is-on {
+  color: #f0cf95;
+  border-color: rgba(217, 171, 99, 0.55);
+}
+
+.vbreak-chip::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.65;
+}
+
 .vbreak-switch {
   display: inline-flex;
   align-items: center;

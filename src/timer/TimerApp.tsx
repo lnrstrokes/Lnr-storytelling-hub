@@ -60,10 +60,19 @@ declare global {
     gtag?: (...args: unknown[]) => void;
     LNR_TRACK?: (eventName: string, params?: Record<string, unknown>) => void;
     LNR_DEBUG?: unknown;
+    /** Set by index.html when this browser must not report to analytics. */
+    __LNR_ANALYTICS_OFF__?: boolean;
   }
 }
 
 function initAnalytics() {
+  /* The operator's own devices are excluded: index.html decides this before
+     gtag.js loads, so no page_view or realtime hit is ever sent from here.
+     The tracker becomes a no-op rather than a second, unlabelled source. */
+  if (window.__LNR_ANALYTICS_OFF__) {
+    window.LNR_TRACK = () => {};
+    return;
+  }
   const gaId = (import.meta.env.VITE_GA_MEASUREMENT_ID || '').trim();
   const isValidGa = /^G-[A-Z0-9]+$/i.test(gaId);
   const hasGoogleTag = !!document.querySelector('script[src*="googletagmanager.com/"]');

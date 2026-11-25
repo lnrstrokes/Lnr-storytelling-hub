@@ -196,7 +196,9 @@ export function renderPanel(): void {
 }
 
 function updateBreakIndicator(pro: boolean, breaksOn: boolean, hasClips: boolean, breakItemsCount: number): void {
-  const indicator = document.getElementById('vbreakStageIndicator');
+  /* Host-only status: this chip lives in the setup panel, never on the
+     video stage, so it can never be captured in the broadcast. */
+  const indicator = document.getElementById('vbreakBreakChip');
   if (!indicator) return;
 
   if (!pro || !hasClips || breakItemsCount === 0) {
@@ -222,6 +224,7 @@ export function buildPanel(root: HTMLElement): void {
       <div class="vbreak-heading">
         <h3 class="vbreak-title" id="vbreakTitle">Quiz and anecdote breaks</h3>
         <p class="vbreak-sub">Pause the video at set times for a short quiz and anecdote, then resume from the same second.</p>
+        <p class="vbreak-chip" id="vbreakBreakChip" hidden></p>
       </div>
       <label class="vbreak-switch" id="vbreakSwitch">
         <input type="checkbox" id="vbreakToggle" />
