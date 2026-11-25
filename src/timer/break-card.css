@@ -43,8 +43,6 @@
   padding-right: 8px;
   scrollbar-width: thin;
   scrollbar-color: rgba(217, 171, 99, 0.55) transparent;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 22px), transparent 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 22px), transparent 100%);
 }
 
 .vbreak-anecdote-scroll::-webkit-scrollbar {
@@ -66,3 +64,101 @@
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ==========================================================================
+   Additive: creator background layer + gentle motion treatments for the break
+   cards. This sits on top of the existing card styles; it does not replace the
+   three rotating card templates. It is used only when the host opts a card into
+   a treatment and/or supplies a background image.
+
+   Motion is deliberately subtle: these are livestream cards, so the treatment
+   is atmosphere, not distraction.
+   ========================================================================== */
+
+.vbreak-bg-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  opacity: 0.85;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 26px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 26px), transparent 100%);
+}
+
+.vbreak-card > :not(.vbreak-bg-layer) {
+  position: relative;
+  z-index: 1;
+}
+
+/* --- treatments --- */
+
+.vbreak-treatment-drift .vbreak-bg-layer {
+  animation: vbreak-bg-drift 18s ease-in-out infinite alternate;
+}
+
+@keyframes vbreak-bg-drift {
+  from { transform: translateY(0) translateX(-2%); }
+  to { transform: translateY(-4%) translateX(2%); }
+}
+
+.vbreak-treatment-parallax .vbreak-bg-layer {
+  animation: vbreak-bg-parallax 14s ease-in-out infinite alternate;
+}
+
+@keyframes vbreak-bg-parallax {
+  from { transform: translateY(-2%) scale(1.02); }
+  to { transform: translateY(2%) scale(0.98); }
+}
+
+.vbreak-treatment-pull .vbreak-bg-layer {
+  animation: vbreak-bg-pull 12s ease-in-out infinite alternate;
+}
+
+@keyframes vbreak-bg-pull {
+  from { transform: scale(1); }
+  to { transform: scale(1.05) translateY(-1%); }
+}
+
+/* ============================================================
+   Upper-frame notice: video will soon restart
+   ============================================================ */
+
+.video-restart-notice {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 8px;
+  z-index: 9;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(4, 9, 7, 0.72);
+  border: 1px solid rgba(217, 171, 99, 0.4);
+  border-radius: 999px;
+  color: #f0e8d4;
+  font-size: clamp(11px, 1.3cqw, 13px);
+  letter-spacing: 0.04em;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  pointer-events: none;
+}
+
+.video-restart-notice.is-visible {
+  opacity: 1;
+}
+
+.video-restart-notice .vr-label {
+  font-weight: 600;
+}
+
+.video-restart-notice .vr-clock {
+  font-family: var(--mono, ui-monospace, monospace);
+  color: #f0cf95;
+}
+

@@ -26,6 +26,8 @@ import { installVideoBreaks } from './video-breaks.ts';
 // clip list. Must run before the engine boots.
 import { publishClipTitles } from './clip-title-store.ts';
 import { installVideoSetup } from './video-setup.ts';
+import { installTimerDecorations, videoDisclaimer } from './timer-decorator';
+import { installBreakVoice } from './break-voice';
 import { installAdminKeys } from './admin-keys.ts';
 // Free tier: 2 hours of airtime per day. Pro is unlimited. Enforced outside
 // the engine, against the stage class the engine already sets.
@@ -214,6 +216,8 @@ export default function TimerApp() {
     }
 
     installVideoSetup(host);
+    installTimerDecorations(host);
+    installBreakVoice(host);
     installAdminKeys(host);
     installAirtimeLimit(host);
     initInstallNotice();

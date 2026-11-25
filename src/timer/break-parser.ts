@@ -583,6 +583,15 @@ export function buildClipBreaks(record: ClipRecord, clipName: string): ClipBreak
   };
 }
 
+/** breaksFor(clipId, clipName) — the public API the break cards expect.
+  * When a real clip name is available, pass it so the card can show the created-
+  * for-this-clip title. When it is not, fall back to the record's stored name.
+  */
+export function breaksFor(clipId: string, clipName?: string | null): ClipBreaks {
+  const record = readRecord(clipId);
+  return buildClipBreaks(record, clipName ?? clipId);
+}
+
 /* ------------------------------------------------------------------ storage */
 
 export function readStore(): Store {
