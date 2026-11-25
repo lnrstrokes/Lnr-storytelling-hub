@@ -4376,3 +4376,32 @@ body.safe .chat-safe-guide { display: none !important; }
 @media (max-width: 560px) {
   .qsource-switch { grid-template-columns: 1fr; }
 }
+
+/* ---- editable video title in the upload list ---- */
+.clip-list .clip-name.is-editable {
+  cursor: text;
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin-left: -6px;
+  outline: 1px dashed rgba(217, 171, 99, 0.3);
+  outline-offset: 0;
+}
+.clip-list .clip-name.is-editable:hover {
+  outline-color: rgba(217, 171, 99, 0.7);
+}
+.clip-list .clip-name.is-editable::after {
+  content: "\270E";
+  margin-left: 8px;
+  font-size: 0.85em;
+  color: var(--brass, #d9ab63);
+  opacity: 0.7;
+}
+.clip-list .clip-name.is-editing {
+  outline: 1px solid var(--brass, #d9ab63);
+  background: rgba(217, 171, 99, 0.1);
+  color: #f6efdd;
+}
+.clip-list .clip-name.is-editing::after {
+  content: "";
+  margin-left: 0;
+}

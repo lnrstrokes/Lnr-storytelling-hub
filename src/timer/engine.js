@@ -2123,6 +2123,66 @@
   function itemFor(kind) { return kind === 'promo' ? promos : clips; }
   function countElFor(kind) { return kind === 'promo' ? el.promoCount : el.clipCount; }
 
+  /* ---------- editable video titles ----------
+     The uploaded file name ("81412.mp4") is the only label a creator sees, so
+     it is the label they can edit. The saved title follows the clip id, so it
+     survives a refresh and shows wherever the clip is listed; clearing it falls
+     back to the file name without its extension. The store itself lives in
+     clip-title-store.ts and publishes window.LNR_CLIP_TITLES, because this file
+     is plain JS and cannot import a TS module directly. */
+  function clipTitle(id, filename) {
+    var api = window.LNR_CLIP_TITLES;
+    if (api && typeof api.clipDisplayName === 'function') {
+      try { return api.clipDisplayName(id, filename); } catch (e) {}
+    }
+    var base = String(filename || '').split('/').pop().split('\\').pop();
+    return base.replace(/\.[^.]+$/, '').trim();
+  }
+
+  function saveClipTitle(id, value) {
+    var api = window.LNR_CLIP_TITLES;
+    if (api && typeof api.saveClipDisplayName === 'function') {
+      try { return api.saveClipDisplayName(id, value); } catch (e) {}
+    }
+    return String(value || '').trim().slice(0, 60);
+  }
+
+  /* Rename in place: click the name, type, Enter or clicking away saves,
+     Escape cancels. Clearing the field restores the file name. */
+  function startClipRename(span, cc, index) {
+    if (!span || span.getAttribute('contenteditable') === 'true') return;
+    var original = clipTitle(cc.id, cc.name);
+    span.textContent = original;
+    span.setAttribute('contenteditable', 'true');
+    span.classList.add('is-editing');
+    span.focus();
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(span);
+      var sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+    } catch (e) {}
+
+    var done = false;
+    function finish(commit) {
+      if (done) return;
+      done = true;
+      span.removeAttribute('contenteditable');
+      span.classList.remove('is-editing');
+      var saved = commit ? saveClipTitle(cc.id, span.textContent) : original;
+      var shown = saved || clipTitle(cc.id, cc.name);
+      span.textContent = (index + 1) + '. ' + shown;
+      if (!commit) return;
+      toast(saved ? 'Video title saved' : 'Title cleared — showing the file name');
+      renderClips();
+    }
+    span.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); span.blur(); }
+      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    span.addEventListener('blur', function () { finish(true); });
+  }
+
   function renderMedia(kind) {
     var host = listFor(kind);
     var items = itemFor(kind);
@@ -2133,7 +2193,24 @@
       if (cc.id) li.setAttribute('data-clip-id', cc.id);
       var name = document.createElement('span');
       name.className = 'clip-name';
-      name.textContent = (i + 1) + '. ' + cc.name;
+      var shownName = kind === 'clip' ? clipTitle(cc.id, cc.name) : cc.name;
+      name.textContent = (i + 1) + '. ' + shownName;
+      if (kind === 'clip') {
+        name.classList.add('is-editable');
+        name.title = 'Click to rename this video';
+        name.setAttribute('tabindex', '0');
+        name.setAttribute('role', 'button');
+        name.setAttribute('aria-label', 'Rename ' + shownName);
+        name.addEventListener('click', function (e) {
+          e.stopPropagation();
+          startClipRename(name, cc, i);
+        });
+        name.addEventListener('keydown', function (e) {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          startClipRename(name, cc, i);
+        });
+      }
       var size = document.createElement('span');
       size.className = 'clip-size';
       size.textContent = (cc.duration ? clock(cc.duration * 1000) + ' \u00b7 ' : '') + humanSize(cc.size);
@@ -2641,46 +2718,96 @@
     }
   }
 
+  /* The intro disclaimer is READ first, then counted down. It used to run a
+     fixed 10-second clock, which cut the voice off mid-sentence and lifted the
+     card while the viewer was still being told what the clip is — the stream
+     appeared to jump into the video during the disclaimer.
+
+     Now: the card says "Reading…" with an empty bar while the voice speaks, the
+     clip is held on its first frame (transitionToClip does not autoplay while
+     prerollActive), and only when the reading ends does the 10-second countdown
+     run. If the reader is off, or the device never speaks, the fallback reading
+     time (words / 2.5 + 1) is used, so the card can never hang.
+     One reader for the whole app: window.LNR_READER, published by
+     break-voice.ts, the same module the break cards use. */
   function startPreroll() {
     if (prerollActive) return;
     var overlay = el.videoPreroll;
     if (!overlay) return;
     prerollActive = true;
     overlay.hidden = false;
+
     var bar = el.videoPrerollBar;
     var timer = el.videoPrerollTimer;
+    var voiceText = PREROLL_VOICE;
     if (bar) bar.style.width = '0%';
-    if (timer) timer.textContent = (PREROLL_MS / 1000) + 's';
+    if (timer) timer.textContent = 'Reading…';
+
+    var reader = window.LNR_READER;
+    var narration = null;
+    if (reader && typeof reader.startNarration === 'function') {
+      try { narration = reader.startNarration([voiceText]); } catch (e) { narration = null; }
+    }
+    var readSeconds = (reader && typeof reader.fallbackReadSeconds === 'function')
+      ? reader.fallbackReadSeconds(voiceText)
+      : 14;
+
+    var reading = !!narration;
+    var readDoneAt = reading ? 0 : now();
     var started = now();
+
+    function takeDown() {
+      prerollActive = false;
+      if (overlay) overlay.hidden = true;
+      if (overlay && overlay._prerollVoice && overlay._prerollVoice.stop) overlay._prerollVoice.stop();
+      if (overlay) overlay._prerollVoice = null;
+    }
+
     if (prerollTimer) window.clearInterval(prerollTimer);
     prerollTimer = window.setInterval(function () {
       if (!live.inSession || live.phase !== 'video' || !prerollActive) {
         window.clearInterval(prerollTimer);
         prerollTimer = 0;
+        /* The stage moved on (stop, exit, another engine). Take the card down
+           without ever starting playback. */
+        if (prerollActive) takeDown();
         return;
       }
-      var elapsed = now() - started;
+
+      if (reading) {
+        var waited = now() - started;
+        var speaking = !!(narration && typeof narration.speaking === 'function' && narration.speaking());
+        var heard = !!(narration && typeof narration.started === 'function' && narration.started());
+
+        if (speaking) {
+          /* Never count down under the voice. Only a synthesiser that never
+             goes quiet is cut off, and it gets a wide margin. */
+          if (waited <= (readSeconds + 30) * 1000) {
+            if (bar) bar.style.width = '0%';
+            if (timer) timer.textContent = 'Reading…';
+            return;
+          }
+        } else if (!heard && waited < readSeconds * 1000) {
+          /* The voice has not started yet: give it the fallback reading time
+             before counting down, so a phone that needs a beat to speak is not
+             skipped straight past the disclaimer. */
+          if (bar) bar.style.width = '0%';
+          if (timer) timer.textContent = 'Reading…';
+          return;
+        }
+        reading = false;
+        readDoneAt = now();
+      }
+
+      if (!readDoneAt) readDoneAt = now();
+      var elapsed = Math.max(0, now() - readDoneAt);
       var left = Math.max(0, PREROLL_MS - elapsed);
       if (bar) bar.style.width = Math.min(100, (elapsed / PREROLL_MS) * 100).toFixed(1) + '%';
       if (timer) timer.textContent = Math.max(1, Math.ceil(left / 1000)) + 's';
       if (left <= 0) dismissPreroll();
     }, 100);
-    var voiceText = PREROLL_VOICE;
-    var spoken = null;
-    if (window.LNR_SPEECH && typeof window.LNR_SPEECH.speak === 'function') {
-      try {
-        spoken = window.LNR_SPEECH.speak(voiceText, { wait: false });
-      } catch (e) {}
-    } else if (window.speechSynthesis) {
-      try {
-        var u = new SpeechSynthesisUtterance(voiceText);
-        u.rate = 0.92;
-      u.volume = 1;
-        window.speechSynthesis.speak(u);
-        spoken = { stop: function () { try { window.speechSynthesis.cancel(); } catch (e) {} } };
-      } catch (e) {}
-    }
-    overlay._prerollVoice = spoken;
+
+    overlay._prerollVoice = narration;
   }
 
   function dismissPreroll() {

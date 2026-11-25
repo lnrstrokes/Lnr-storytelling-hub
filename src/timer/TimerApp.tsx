@@ -22,6 +22,9 @@ import './speech.js';
 import './speech-football.js';
 import { installProGate } from './pro-gate.ts';
 import { installVideoBreaks } from './video-breaks.ts';
+// Editable video titles: publishes window.LNR_CLIP_TITLES for the engine's
+// clip list. Must run before the engine boots.
+import { publishClipTitles } from './clip-title-store.ts';
 import { installVideoSetup } from './video-setup.ts';
 import { installAdminKeys } from './admin-keys.ts';
 // Free tier: 2 hours of airtime per day. Pro is unlimited. Enforced outside
@@ -147,6 +150,7 @@ export default function TimerApp() {
     // Installed BEFORE the engine boots: the gate listens on `document` in the
     // capture phase, so it always sees a gated control's event first.
     installProGate(host);
+    publishClipTitles();
     installVideoBreaks(host);
 
     // Existing quiz-and-anecdote toggle: the only quiz-loop toggle in the app.
