@@ -239,14 +239,83 @@ function cardMeta(card: HTMLDivElement, clipBreaks: ClipBreaks, kicker: string):
 
 
 
+/* --------------------------------------------------------------------------
+   Five-second lead-in before a card the viewer must be ready for
+   --------------------------------------------------------------------------
+   The clip pauses and a quiet countdown gives the audience a beat to look up
+   before the quiz card (or the anecdote) takes the screen. It is deliberately
+   silent: nothing is narrated here, so the reader is never raced and the five
+   seconds are the same on a device with no voice at all. The timer is driven
+   by the clock rather than by a chain of timeouts, and it bails out the moment
+   the break is no longer alive — so it can never keep the clip paused.
+   -------------------------------------------------------------------------- */
+const NOTICE_SECONDS = 5;
+
+function noticeCard(
+  kicker: string,
+  headline: string,
+  detail: string,
+  alive: () => boolean
+): Promise<boolean> {
+  const card = flashCard(0);
+  card.classList.add('vbreak-notice-card');
+
+  const head = elm('div', 'vbreak-card-head');
+  head.appendChild(elm('span', 'vbreak-kicker', kicker));
+  card.appendChild(head);
+
+  card.appendChild(elm('p', 'vbreak-notice-title', headline));
+  card.appendChild(elm('p', 'vbreak-notice-sub', detail));
+
+  const counter = elm('div', 'vbreak-notice-count', String(NOTICE_SECONDS));
+  card.appendChild(counter);
+
+  const track = elm('div', 'vbreak-notice-track');
+  const bar = elm('div', 'vbreak-notice-bar');
+  track.appendChild(bar);
+  card.appendChild(track);
+
+  return new Promise<boolean>((resolve) => {
+    const startedAt = performance.now();
+    let lastShown = NOTICE_SECONDS;
+    const tick = window.setInterval(() => {
+      if (!alive()) {
+        window.clearInterval(tick);
+        resolve(false);
+        return;
+      }
+      const elapsed = (performance.now() - startedAt) / 1000;
+      bar.style.width = `${Math.min(100, (elapsed / NOTICE_SECONDS) * 100)}%`;
+      const left = Math.max(0, Math.ceil(NOTICE_SECONDS - elapsed));
+      if (left !== lastShown) {
+        lastShown = left;
+        counter.textContent = String(left);
+      }
+      if (elapsed >= NOTICE_SECONDS) {
+        window.clearInterval(tick);
+        resolve(true);
+      }
+    }, 100);
+  });
+}
+
 async function playBreak(item: BreakItem, clipBreaks: ClipBreaks, alive: () => boolean): Promise<void> {
   const total = item.questions.length;
 
-  /* No extra text between the video and the cards. The reference disclaimer is
-     shown once, as the intro notice before the clip starts (engine.js), and
-     everything from here on is content the viewer is meant to read. The old
-     per-break REFERENCE card and the two "break starting soon" notices were
-     the overlays nobody needed — and every one of them raced the reader. */
+  /* No extra chrome between the video and the cards — no reference tag, no
+     source line, no status text. The only thing shown before a card is the
+     five-second lead-in, because the clip has just paused and the audience
+     needs a moment to look up before a question appears. */
+
+  if (total > 0) {
+    const ready = await noticeCard(
+      'UP NEXT',
+      'Quiz break',
+      'The first question starts in a moment.',
+      alive
+    );
+    if (!ready || !alive()) return;
+  }
 
   for (let index = 0; index < item.questions.length; index++) {
     if (!alive()) return;
@@ -259,6 +328,13 @@ async function playBreak(item: BreakItem, clipBreaks: ClipBreaks, alive: () => b
   }
 
   if (item.anecdote && alive()) {
+    const ready = await noticeCard(
+      'UP NEXT',
+      'Anecdote',
+      'A short story from the source starts in a moment.',
+      alive
+    );
+    if (!ready || !alive()) return;
     await showAnecdote(item, clipBreaks, alive);
   }
 }

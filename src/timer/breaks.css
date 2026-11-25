@@ -634,6 +634,64 @@
   color: #dcd5c5;
 }
 
+/* ---- five-second lead-in before the quiz / anecdote card ---- */
+
+.vbreak-notice-card {
+  width: min(100%, 560px);
+  align-items: center;
+  text-align: center;
+  gap: clamp(6px, 1.1cqw, 12px);
+  background: linear-gradient(160deg, #17281f 0%, #0b1511 68%);
+  border: 1px solid rgba(217, 171, 99, 0.34);
+  border-top: 5px solid rgba(217, 171, 99, 0.75);
+}
+
+.vbreak-notice-card .vbreak-card-head {
+  justify-content: center;
+}
+
+.vbreak-notice-title {
+  margin: 0;
+  font-family: var(--display, ui-serif, Georgia, serif);
+  font-size: clamp(24px, 4.2cqw, 44px);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: #fbf7ee;
+  text-wrap: balance;
+}
+
+.vbreak-notice-sub {
+  margin: 0;
+  font-size: clamp(13px, 1.7cqw, 17px);
+  line-height: 1.5;
+  color: #b9c6bc;
+  text-wrap: balance;
+}
+
+.vbreak-notice-count {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: clamp(26px, 4.6cqw, 48px);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: #f0cf95;
+}
+
+.vbreak-notice-track {
+  width: min(100%, 320px);
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(240, 232, 212, 0.12);
+}
+
+.vbreak-notice-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #cfa35a, #e2bf88);
+  transition: width 120ms linear;
+}
+
 /* ---- video ownership selector (setup panel) ---- */
 .video-ownership-row {
   margin-top: 14px;
