@@ -2457,19 +2457,11 @@
     handleClipFiles(el.adminPromoFilesInput.files, 'admin_promo');
     el.adminPromoFilesInput.value = '';
   });
-  on(el.loadDemoVideoBtn, 'click', function () {
-    demoVideoMode = !demoVideoMode;
-    if (el.demoVideoStatus) {
-      el.demoVideoStatus.textContent = demoVideoMode
-        ? 'Built-in 15s demo ready — press Start video session below to preview.'
-        : 'Try Engine 03 right now without uploading an MP4.';
-    }
-    if (el.loadDemoVideoBtn) {
-      el.loadDemoVideoBtn.textContent = demoVideoMode ? 'Demo Video Ready (Tap to Disable)' : 'Preview 15s Built-in Video Demo';
-    }
-    refreshStats();
-    toast(demoVideoMode ? '15s Video Engine demo enabled' : 'Video Engine demo disabled');
-  });
+  /* NOTE: the demo toggle is bound ONCE, above (near the video upload
+     handlers). A second identical handler used to be bound here as well, and
+     because each one flips `demoVideoMode`, a single click toggled it twice and
+     left it unchanged — the button looked dead and the video engine could never
+     be started without an upload. Do not re-add a second binding. */
 
   [[el.videoDrop, 'clip'], [el.promoDrop, 'promo']].forEach(function (pair) {
     var zone = pair[0], kind = pair[1];

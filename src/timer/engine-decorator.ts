@@ -146,20 +146,23 @@ export function installAnecdoteRestartNotice(): void {
     }
   }
 
+  /* The notice must be up for the LAST 10 seconds of the anecdote, not after
+     it. It used to be wired to `lnr:anecdote-finished`, which the break runner
+     dispatches once the anecdote has already ended — so the banner appeared
+     only as the stage was being torn down, and the audience never got the
+     warning it exists to give. The break runner now dispatches
+     `lnr:anecdote-ending` 10s before the read completes; that is the signal
+     this listens for. `lnr:anecdote-finished` is kept as a fallback for an
+     older runner, but only starts the notice if it is not already showing. */
   try {
-    document.addEventListener('lnr:break-run', function (e) {
-      var detail = (e as unknown as { detail?: { anecdote?: unknown; item?: { anecdote?: unknown } } }).detail;
-      if (!detail) return;
-      var hasAnecdote = !!(detail.anecdote || (detail.item && detail.item.anecdote));
-      if (!hasAnecdote) return;
-      // Don't start the notice yet - wait until the anecdote is about to finish
-      // The notice will be shown 10s before video restarts
+    document.addEventListener('lnr:anecdote-ending', function () {
+      startNotice();
     });
   } catch {}
 
-  // Show the restart notice when the anecdote finishes (10s before video restarts)
   try {
     document.addEventListener('lnr:anecdote-finished', function () {
+      if (noticeTimer) return;
       startNotice();
     });
   } catch {}

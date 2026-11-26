@@ -233,7 +233,11 @@ function cardMeta(card: HTMLDivElement, clipBreaks: ClipBreaks, kicker: string):
   card.appendChild(meta);
 }
 
-const NOTICE_SECONDS = 5;
+/* The "UP NEXT" card is a 10-second warning, matching the stage notices the
+   engine shows before a quiz block and before an anecdote ends. It used to run
+   for 5 seconds, which was too short for a viewer to read the headline, the
+   detail line and the countdown before the first question appeared. */
+const NOTICE_SECONDS = 10;
 
 function noticeCard(
   kicker: string,
@@ -522,12 +526,23 @@ async function showAnecdote(
     () => 0
   );
 
+  /* Fire the "stage is ending" warning 10 seconds BEFORE the read completes,
+     not after it. The decorator's banner is a 10-second countdown, so it has to
+     start while the anecdote is still on screen — dispatching only on
+     `lnr:anecdote-finished` meant the banner appeared as the card was already
+     being torn down. A timer is used rather than a second wait so the warning
+     lands at a predictable point regardless of how long the voice runs. */
+  const endingTimer = window.setTimeout(() => {
+    if (!alive()) return;
+    document.dispatchEvent(new CustomEvent('lnr:anecdote-ending'));
+  }, Math.max(0, holdMs - 10000));
+
   await waitForNarration(narration, holdMs, 150000, alive);
+  window.clearTimeout(endingTimer);
   stopFollow();
   stopNarration();
 
   // Signal that the anecdote has finished and video will restart soon
-  // The decorator listens for this to show the 10-second countdown notice
   document.dispatchEvent(new CustomEvent('lnr:anecdote-finished'));
 }
 

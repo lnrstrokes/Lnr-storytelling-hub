@@ -12,6 +12,11 @@ export interface Narration {
       `speaking()` alone is not enough: it drops to false in the gap between
       two utterances, so anything waiting on it moved on mid-read. */
   done: () => boolean;
+  /** Stop this read immediately. The engine's preroll calls
+      `overlay._prerollVoice.stop()` when the card is dismissed; the token used
+      to expose no such method, so the guarded call was a no-op and the
+      disclaimer voice carried on speaking over the footage. */
+  stop: () => void;
 }
 
 let synth: SpeechSynthesis | null = null;
@@ -83,6 +88,11 @@ function makeReader(): {
       speaking: () => speaking,
       started: () => started,
       done: () => completed,
+      stop: () => {
+        if (finished) return;
+        try { s.cancel(); } catch {}
+        finish(true);
+      },
     };
     let finished = false;
     const finish = (late: boolean) => {

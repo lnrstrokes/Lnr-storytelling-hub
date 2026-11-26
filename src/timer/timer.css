@@ -1723,9 +1723,14 @@ body.safe .video-restart-notice {
 /* Stream-safe is a clean capture: the segment pill ("Bible / Faith") and the
    question counter ("Question 1 of 10") are operator context, not broadcast
    content, so they must not appear in the captured frame. They used to stay
-   visible because only the stage chrome was hidden. */
+   visible because only the stage chrome was hidden.
+   `.q-kicker` is the SECOND place the segment name is printed — the quiz stage
+   repeats it above the question as "Bible / Faith · Easy". Hiding only the
+   frame-top pill left that one on air, so the segment name still leaked into
+   the capture. */
 body.safe .frame-seg,
-body.safe .frame-meta {
+body.safe .frame-meta,
+body.safe .q-kicker {
   display: none !important;
 }
 
