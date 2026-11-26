@@ -33,7 +33,7 @@ import { installTimerDecorations, videoDisclaimer } from './timer-decorator';
 import { onBreakPanelReady } from './engine-decorator';
 import { installBreakVoice } from './break-voice';
 import { installAdminKeys } from './admin-keys.ts';
-// Free tier: 2 hours of airtime per day. Pro is unlimited. Enforced outside
+// Free tier: 5 hours of airtime per day. Pro is unlimited. Enforced outside
 // the engine, against the stage class the engine already sets.
 import { installAirtimeLimit } from './airtime-limit.ts';
 // Install + streaming-route notice. Additive: injects its own markup, so

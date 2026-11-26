@@ -47,13 +47,21 @@ function makeReader(): {
     const s = ready();
     if (!s) return null;
     try { s.cancel(); } catch {}
+    /* Accept BOTH shapes the callers use: a plain string (the engine passes
+       `[voiceText]`) and an object with `text`. The filter used to keep only
+       the object form, so every string-only call — which is every call the
+       video preroll makes — produced an empty list and returned null. The
+       caller then treated the narration as absent and started its countdown
+       immediately, which is exactly the "countdown cuts off the reader" bug. */
     const utterances = items
-      .filter(
-        (item): item is { text: string } =>
-          typeof item === 'object' && item && 'text' in item && typeof (item as Record<string, unknown>).text === 'string'
-      )
       .map((item) => {
-        const u = new SpeechSynthesisUtterance(item.text);
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && typeof item.text === 'string') return item.text;
+        return '';
+      })
+      .filter((text) => text.trim().length > 0)
+      .map((text) => {
+        const u = new SpeechSynthesisUtterance(text);
         u.rate = 0.96;
         u.pitch = 1;
         u.volume = 1;
@@ -133,8 +141,22 @@ function makeReader(): {
   };
 }
 
+/* The engine (plain JS, cannot import this module) reads the reader off
+   window.LNR_READER. It used to be documented as "published by break-voice.ts"
+   but nothing ever assigned it, so every caller saw `undefined`, treated the
+   narration as absent, and fell straight through to the silent fallback timer.
+   That is why the reference preroll never spoke and its countdown started
+   immediately instead of waiting for the voice. Publish it here, once. */
+function publishReader(): void {
+  if (typeof window === 'undefined') return;
+  const w = window as unknown as { LNR_READER?: unknown };
+  if (w.LNR_READER) return;
+  w.LNR_READER = makeReader();
+}
+
 export function installReader(): void {
   if (typeof window === 'undefined') return;
+  publishReader();
   if (ready()) return;
   makeReader();
 }

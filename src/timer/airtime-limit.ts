@@ -1,9 +1,9 @@
 /* ==========================================================================
-   airtime-limit.ts — 2 hours of airtime per day on Free, unlimited on Pro
+   airtime-limit.ts — 5 hours of airtime per day on Free, unlimited on Pro
    --------------------------------------------------------------------------
    THE RULE
 
-     Free  : 2 hours of broadcast airtime per calendar day, counted by the
+     Free  : 5 hours of broadcast airtime per calendar day, counted by the
              SERVER (/api/airtime). The server refuses to start or continue a
              session once the allowance is spent.
      Pro   : unlimited. No cap is ever applied to a licensed device.
@@ -45,8 +45,11 @@
 
 import { getProLicenseKey, getProState, PRO_CHECKOUT_URL } from '../pro/license';
 
-/** Free plan: 2 hours of airtime per calendar day. */
-export const FREE_DAILY_LIMIT_MS = 2 * 60 * 60 * 1000;
+/* Free plan: 5 hours of airtime per calendar day. Raised from 2 hours — see
+   the note in api/airtime.ts for the reasoning. The two constants must stay in
+   step: the server is the source of truth, and this one only drives the UI and
+   the offline fallback. */
+export const FREE_DAILY_LIMIT_MS = 5 * 60 * 60 * 1000;
 
 const TICK_MS = 1000;
 /** A single tick longer than this is a suspended tab, not real airtime. */
@@ -258,11 +261,11 @@ function updateCopy(): void {
       ? 'Pro Studio: unlimited airtime today.'
       : remaining > 0
         ? `Creator Free: ${formatAirtime(remaining)} of airtime left today. Pro Studio is unlimited.`
-        : 'Creator Free: today\'s 2 hours of airtime are used. Pro Studio is unlimited.';
+        : 'Creator Free: today\'s 5 hours of airtime are used. Pro Studio is unlimited.';
   }
 
   const freeBullet = document.getElementById('airtimeFreeBullet');
-  if (freeBullet) freeBullet.textContent = `2 hours of airtime per day (${formatAirtime(remaining)} left today)`;
+  if (freeBullet) freeBullet.textContent = `5 hours of airtime per day (${formatAirtime(remaining)} left today)`;
 
   const proBullet = document.getElementById('airtimeProBullet');
   if (proBullet) proBullet.textContent = 'Unlimited daily airtime';
@@ -303,12 +306,12 @@ function showLimitDialog(): void {
 
   const title = document.createElement('h2');
   title.id = 'airtimeLimitTitle';
-  title.textContent = 'Today\'s 2 hours of airtime are used';
+  title.textContent = 'Today\'s 5 hours of airtime are used';
   Object.assign(title.style, { margin: '0 0 8px', fontSize: '20px', color: '#f3e9d2' });
 
   const body = document.createElement('p');
   body.textContent =
-    'Creator Free includes 2 hours of airtime per day, and that allowance is spent. ' +
+    'Creator Free includes 5 hours of airtime per day, and that allowance is spent. ' +
     'Your quizzes, stories and settings stay saved — the allowance resets at midnight UTC, ' +
     'and Pro Studio has no daily airtime limit.';
   Object.assign(body.style, { margin: '0 0 18px', color: '#b9c2c9' });
@@ -370,7 +373,7 @@ function showLimitDialog(): void {
  */
 const STALE_PLAN_COPY = 'freely with zero paywalls or daily limits.';
 const CURRENT_PLAN_COPY =
-  'with no paywalls. Pro Studio has no daily airtime limit; Creator Free includes 2 hours of airtime per day.';
+  'with no paywalls. Pro Studio has no daily airtime limit; Creator Free includes 5 hours of airtime per day.';
 
 function fixPlanCopy(root: HTMLElement): void {
   root.querySelectorAll('p').forEach((p) => {
@@ -426,7 +429,7 @@ export function installAirtimeLimit(root: HTMLElement): void {
   if (freeList && !document.getElementById('airtimeFreeBullet')) {
     const li = document.createElement('li');
     li.id = 'airtimeFreeBullet';
-    li.textContent = '2 hours of airtime per day';
+    li.textContent = '5 hours of airtime per day';
     freeList.appendChild(li);
   }
 

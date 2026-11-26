@@ -81,6 +81,92 @@
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Structured data. Two graphs: the app itself (so a search or answer
+         engine can describe what the site IS) and a FAQ block (so the common
+         questions can be quoted directly). Every URL is absolute and filled in
+         at build time, like the og:* tags above. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebApplication",
+          "@id": "__SITE_URL__/#app",
+          "name": "LNR Storytelling Hub",
+          "alternateName": "lnr Studio",
+          "url": "__SITE_URL__/",
+          "applicationCategory": "MultimediaApplication",
+          "operatingSystem": "Any (web browser, installable PWA)",
+          "description": "A phone-first live broadcast studio. One browser tab runs four broadcast engines — a live interactive quiz, a Guess-the-Player card round, a documentary storytelling engine, and a 24/7 video loop — and the operator screen-casts it to YouTube.",
+          "image": "__SITE_URL__/og-image.png",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD",
+            "description": "Free tier: 2 hours of airtime per calendar day. Pro adds unlimited airtime, partner break clips and a signed licence key."
+          },
+          "featureList": [
+            "Live interactive quiz engine with TTS voice reader",
+            "Guess-the-Player trivia cards",
+            "Documentary storytelling engine",
+            "24/7 video loop engine",
+            "Stream-safe clean capture mode",
+            "Installable PWA, works offline"
+          ]
+        },
+        {
+          "@type": "Organization",
+          "@id": "__SITE_URL__/#org",
+          "name": "LNR Storytelling Hub",
+          "url": "__SITE_URL__/",
+          "logo": "__SITE_URL__/pwa-512x512.png",
+          "sameAs": [
+            "https://github.com/lnrstrokes/Lnr-storytelling-hub",
+            "https://x.com/lnrstudio"
+          ]
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "__SITE_URL__/#faq",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What is LNR Storytelling Hub?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "LNR Storytelling Hub is a browser-based live broadcast studio. It runs four engines from one tab — a live interactive quiz, a Guess-the-Player card round, a documentary storytelling engine, and a 24/7 video loop — and the operator screen-casts the result to YouTube. It needs no signup and no server."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Do I need to install anything to use it?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. It runs in any modern browser. It can optionally be installed as a PWA so it opens full-screen and works offline once loaded."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is it free?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes. The free tier gives 2 hours of airtime per calendar day, enforced server-side. Pro removes the airtime limit and adds partner break clips and a signed licence key."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Where is my content stored?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "On your own device, in the browser's IndexedDB. There are no user accounts and no content is uploaded to a server."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>

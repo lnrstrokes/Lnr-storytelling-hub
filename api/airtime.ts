@@ -10,7 +10,7 @@
 
    THE RULE
 
-     Free : 2 hours of airtime per calendar day (UTC), counted by the server.
+     Free : 5 hours of airtime per calendar day (UTC), counted by the server.
      Pro  : unlimited. The licence key is verified HERE, not trusted from the
             client, so a Free device cannot claim Pro to dodge the cap.
 
@@ -41,8 +41,17 @@ import { json, readJson, verifyProLicenseKey } from './_edge';
 
 export const config = { runtime: 'edge' };
 
-/** Free plan: 2 hours of airtime per calendar day. */
-const FREE_DAILY_LIMIT_MS = 2 * 60 * 60 * 1000;
+/* Free plan: 5 hours of airtime per calendar day.
+
+   Raised from 2 hours. The 2-hour cap was cutting real broadcasts off
+   mid-stream: a single quiz block plus a documentary episode plus the breaks
+   between them routinely runs past two hours, so a Free creator hit the wall
+   during their first session and had no reason to believe a second one would
+   be different. Five hours covers a full evening's broadcast, which is what
+   the product is actually for, while still leaving a clear reason to upgrade
+   for anyone running 24/7. The enforcement mechanism is unchanged — only the
+   number moved. */
+const FREE_DAILY_LIMIT_MS = 5 * 60 * 60 * 1000;
 
 /** A single tick longer than this is a suspended tab, not real airtime. */
 const MAX_TICK_MS = 90 * 1000;

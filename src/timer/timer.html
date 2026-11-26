@@ -1099,6 +1099,7 @@
                   <div class="video-preroll-bar" id="videoPrerollBar"></div>
                 </div>
                 <p class="video-preroll-timer" id="videoPrerollTimer">Reading&hellip;</p>
+                <p class="voice-indicator" id="videoPrerollVoice" hidden>Onscreen reader speaking</p>
               </div>
             </div>
             <div class="studio-break-card" id="promoAdOverlay" hidden>
@@ -1113,6 +1114,7 @@
               </div>
             </div>
             <div class="promo-brand" id="promoBrand" hidden><span id="promoBrandText">LNR STUDIO</span></div>
+            <button class="video-unmute" id="videoUnmuteBtn" type="button" hidden>Tap for sound</button>
 
             <!-- Text-only promo funnel. This is the DEFAULT break surface when
                  no sponsor clip is loaded: it turns the break into a funnel
@@ -1497,3 +1499,7 @@
 
 <div class="scrim" id="scrim" hidden></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="stage-notice" id="stageNotice" hidden role="status" aria-live="polite">
+  <span class="stage-notice-pill" id="stageNoticePill">UP NEXT</span>
+  <span class="stage-notice-text" id="stageNoticeText"></span>
+</div>

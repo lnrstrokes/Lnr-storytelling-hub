@@ -1,0 +1,38 @@
+# LNR Storytelling Hub — https://lnr-storytelling-hub.vercel.app
+# Search engines and answer engines are both welcome.
+
+User-agent: *
+Allow: /
+Disallow: /admin-issue.html
+
+# Answer engines / AI crawlers: explicitly allowed, so the site can be
+# summarised and cited. The public pages are the marketing site and the
+# studio; there is no private content behind a login.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://lnr-storytelling-hub.vercel.app/sitemap.xml

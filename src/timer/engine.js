@@ -453,7 +453,7 @@
     /* video engine */
     'videoDrop', 'videoInput', 'videoTierLimitNote', 'loadDemoVideoBtn', 'demoVideoStatus',
     'ownVideoBtn', 'refVideoBtn', 'videoOwnershipTag',
-    'videoPreroll', 'videoPrerollBar', 'videoPrerollTimer',
+    'videoPreroll', 'videoPrerollBar', 'videoPrerollTimer', 'videoPrerollVoice',
     'clipList', 'clipCount', 'loopCalc', 'loopMath',
     'lmDuration', 'lmLoops', 'lmTotal', 'loopPresets', 'loopHours', 'loopNote', 'loopClipInfo',
     /* promo / breaks */
@@ -477,10 +477,11 @@
     'storyStage', 'storyActPill', 'storyEpTitle', 'storyDisclaimerTag', 'storyPhaseCountdown', 'storyActRail',
     'storyCanvas', 'storyVisualHost', 'storyNarrationBox', 'storyNarrationText',
     'videoStage', 'stageVideo', 'stageVideoB', 'demoVideoCanvas', 'videoEmpty', 'videoEmptyTitle', 'videoEmptyNote',
-    'promoAdOverlay', 'promoAdBadge', 'promoAdTitle', 'promoAdClock', 'promoAdReturn', 'promoUnmuteBtn',
+    'promoAdOverlay', 'promoAdBadge', 'promoAdTitle', 'promoAdClock', 'promoAdReturn', 'promoUnmuteBtn', 'videoUnmuteBtn',
     'promoFunnel', 'promoFunnelImg', 'promoFunnelKicker', 'promoFunnelTitle', 'promoFunnelCopy',
     'promoFunnelUrl', 'promoFunnelClock',
     'adNotice', 'adNoticeBadge', 'adNoticeTitle', 'adNoticeSub', 'adNoticeTimer', 'adNoticeFill',
+    'stageNotice', 'stageNoticePill', 'stageNoticeText',
     'promoBrand', 'promoBrandText', 'loopBadge', 'loopBadgeText',
     'progFill', 'watermark', 'frameSite', 'frameCtaLead', 'curtain', 'safePeek',
     'stSiteCtaInput',
@@ -568,6 +569,40 @@
       t.style.transition = 'opacity .3s ease';
       window.setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 320);
     }, 2600);
+  }
+
+  /* ---------- stage-awareness notices ----------
+     A toast is operator feedback: small, brief, and easy to miss on a stream.
+     These notices are for the audience — they say what is about to happen on
+     the stage ("the quiz is about to start", "this anecdote is ending") and
+     stay up long enough to be read. Each one fires once per stage, guarded by
+     a key so a re-render or a paused tick cannot repeat it. */
+  var stageNoticeTimer = 0;
+  var stageNoticeShown = {};
+
+  function showStageNotice(key, pill, text, holdMs) {
+    if (!el.stageNotice) return;
+    if (stageNoticeShown[key]) return;
+    stageNoticeShown[key] = true;
+    if (el.stageNoticePill) el.stageNoticePill.textContent = pill;
+    if (el.stageNoticeText) el.stageNoticeText.textContent = text;
+    el.stageNotice.hidden = false;
+    if (stageNoticeTimer) window.clearTimeout(stageNoticeTimer);
+    stageNoticeTimer = window.setTimeout(function () {
+      stageNoticeTimer = 0;
+      if (el.stageNotice) el.stageNotice.hidden = true;
+    }, holdMs || 9000);
+  }
+
+  function clearStageNotice() {
+    if (stageNoticeTimer) { window.clearTimeout(stageNoticeTimer); stageNoticeTimer = 0; }
+    if (el.stageNotice) el.stageNotice.hidden = true;
+  }
+
+  /* Reset the once-per-stage guards when a new stage begins. */
+  function resetStageNotices() {
+    stageNoticeShown = {};
+    clearStageNotice();
   }
 
   /* ---------- runtime estimates ---------- */
@@ -2590,6 +2625,9 @@
   var prerollActive = false;
   var prerollTimer = 0;
   var PREROLL_MS = 10000;
+  /* How long the "quiz is about to start" notice holds before the first
+     question is allowed to run. */
+  var QUIZ_START_NOTICE_MS = 10000;
   var PREROLL_VOICE = 'Video used as reference. This clip is the reference used to generate the quiz and anecdote breaks. The clip is attributed as reference material. Own the video or use it for reference at your discretion.';
 
   function activeVideo() {
@@ -2758,9 +2796,11 @@
     if (!overlay) return;
     prerollActive = true;
     overlay.hidden = false;
+    overlay.classList.remove('is-interactive');
 
     var bar = el.videoPrerollBar;
     var timer = el.videoPrerollTimer;
+    var voiceTag = el.videoPrerollVoice;
     var voiceText = PREROLL_VOICE;
     if (bar) bar.style.width = '0%';
     if (timer) timer.textContent = 'Reading…';
@@ -2774,6 +2814,11 @@
       ? reader.fallbackReadSeconds(voiceText)
       : 14;
 
+    /* The onscreen reader is a visible part of the card, not a hidden voice:
+       the operator and the audience must be able to see that the disclaimer is
+       being read. It stays up for as long as the voice is speaking. */
+    if (voiceTag) voiceTag.hidden = !narration;
+
     var reading = !!narration;
     var readDoneAt = reading ? 0 : now();
     var started = now();
@@ -2781,6 +2826,7 @@
     function takeDown() {
       prerollActive = false;
       if (overlay) overlay.hidden = true;
+      if (voiceTag) voiceTag.hidden = true;
       if (overlay && overlay._prerollVoice && overlay._prerollVoice.stop) overlay._prerollVoice.stop();
       if (overlay) overlay._prerollVoice = null;
     }
@@ -2807,6 +2853,7 @@
           if (waited <= (readSeconds + 30) * 1000) {
             if (bar) bar.style.width = '0%';
             if (timer) timer.textContent = 'Reading…';
+            if (voiceTag) voiceTag.hidden = false;
             return;
           }
         } else if (!heard && waited < readSeconds * 1000) {
@@ -2815,10 +2862,14 @@
              skipped straight past the disclaimer. */
           if (bar) bar.style.width = '0%';
           if (timer) timer.textContent = 'Reading…';
+          if (voiceTag) voiceTag.hidden = false;
           return;
         }
+        /* The reader has finished (or never spoke). Only now does the
+           countdown begin, so the timer can never cut the voice off. */
         reading = false;
         readDoneAt = now();
+        if (voiceTag) voiceTag.hidden = true;
       }
 
       if (!readDoneAt) readDoneAt = now();
@@ -2849,7 +2900,19 @@
       var av = activeVideo();
       if (av) {
         var p = av.play();
-        if (p && p.catch) p.catch(function () {});
+        if (p && p.catch) {
+          /* The preroll card was dismissed, but the browser may still refuse
+             to start a clip with sound (no user gesture yet). Swallowing that
+             left the stage on a frozen first frame forever. Fall back to a
+             muted start and surface the unmute control, exactly as the
+             transition path does. */
+          p.catch(function () {
+            av.muted = true;
+            if (el.videoUnmuteBtn) el.videoUnmuteBtn.hidden = false;
+            var p2 = av.play();
+            if (p2 && p2.catch) p2.catch(function () {});
+          });
+        }
       }
     }
   }
@@ -2987,8 +3050,12 @@
           var p = deck.play();
           if (p && p.catch) {
             p.catch(function () {
+              /* Autoplay with sound was refused. Muting is the only way to
+                 start at all, but a reference clip must still be audible, so
+                 surface a control instead of leaving it silently muted. */
               deck.muted = true;
               if (live.phase === 'promo' && el.promoUnmuteBtn) el.promoUnmuteBtn.hidden = false;
+              if (live.phase === 'video' && el.videoUnmuteBtn) el.videoUnmuteBtn.hidden = false;
               var p2 = deck.play();
               if (p2 && p2.catch) p2.catch(function () {});
             });
@@ -3039,6 +3106,7 @@
         if (pIn && pIn.catch) {
           pIn.catch(function () {
             inV.muted = true;
+            if (live.phase === 'video' && el.videoUnmuteBtn) el.videoUnmuteBtn.hidden = false;
             var pIn2 = inV.play();
             if (pIn2 && pIn2.catch) pIn2.catch(function () {});
           });
@@ -3200,12 +3268,33 @@
     var av = activeVideo();
     if (av) {
       av.muted = false;
-      av.volume = 1;
       var p = av.play();
       if (p && p.catch) p.catch(function () {});
     }
     if (el.promoUnmuteBtn) el.promoUnmuteBtn.hidden = true;
     toast('Break clip sound on');
+  });
+
+  /* The video engine's own unmute control. A reference clip that autoplay
+     refused to start with sound is muted by the browser, not by us; this is
+     how the operator restores its audio without leaving the stage. */
+  on(el.videoUnmuteBtn, 'click', function () {
+    var av = activeVideo();
+    if (av) {
+      av.muted = false;
+      av.volume = 1;
+      var p = av.play();
+      if (p && p.catch) {
+        p.catch(function () {
+          /* Still refused. Do not silently re-mute and leave the operator
+             guessing: keep the control up and say so. */
+          if (el.videoUnmuteBtn) el.videoUnmuteBtn.hidden = false;
+          toast('Tap the video once, then tap for sound', true);
+        });
+      }
+    }
+    if (el.videoUnmuteBtn) el.videoUnmuteBtn.hidden = true;
+    toast('Video sound on');
   });
 
   function updateLoopBadge() {
@@ -5191,6 +5280,13 @@
     if (S.voiceOn) speakCurrent(live.served > 1);
   }
 
+  /* The first question of a quiz block is held behind the "quiz is about to
+     start" notice. The question is rendered (so the stage is not blank) but its
+     clock does not run until the notice has had its ten seconds. */
+  function quizStartHeld() {
+    return !!(live.quizStartAt && now() < live.quizStartAt);
+  }
+
   function prevQuestion() {
     if (live.phase !== 'quiz') return;
     clearPreAdNotice();
@@ -6224,6 +6320,7 @@
     }
     storyLive.episode = ep;
     storyLive.flatSteps = buildFlatStorySteps(ep);
+    resetStageNotices();
     if (S.storyVaryCadence && live.running && !live.paused && !isAudioSuppressedPhase()) {
       startMusic();
     }
@@ -6611,6 +6708,13 @@
       el.videoStage.hidden = true;
       releasePlayerVisual();
       stopVideo();
+      resetStageNotices();
+      /* Tell the audience the quiz is about to begin, ten seconds before the
+         first question lands. The notice is shown first and the question is
+         held for the same ten seconds, so the warning is never a flash that
+         the first question immediately covers. */
+      showStageNotice('quiz-start', 'UP NEXT', 'The quiz is about to start \u2014 get ready to answer.', 10000);
+      live.quizStartAt = now() + QUIZ_START_NOTICE_MS;
       nextQuestion();
     } else if (phase === 'players') {
       el.quizStage.hidden = true;
@@ -6650,22 +6754,27 @@
       }
       el.videoStage.hidden = false;
       stopSpeech();
+      /* These branches used to `return` here, which skipped the phase-UI block
+         below: the frame never got `is-video-clean`, the phase name stayed on
+         the previous engine's label, and the Bible/Faith pill and the question
+         counter were never cleared. Set the clip going, then fall through so
+         the stage chrome is updated for the video engine. */
       if (phase === 'video' && clips.length > 0) {
         var firstClip = clips[0];
         var ownership = firstClip ? clipOwnership(firstClip.id) : 'reference';
         if (ownership === 'reference') {
           startPreroll();
           playClip(0);
-          return;
+        } else {
+          // Owned video: play straight away, but show a brief interactive session notice
+          playClip(0);
+          showInteractiveSessionNotice();
         }
-        // Owned video: play straight away, but show a brief interactive session notice
-        playClip(0);
-        showInteractiveSessionNotice();
-        return;
+      } else {
+        playClip(phase === 'promo' ? live.clipIndex : 0);
+        updatePromoBrand();
+        updatePromoOverlay();
       }
-      playClip(phase === 'promo' ? live.clipIndex : 0);
-      updatePromoBrand();
-      updatePromoOverlay();
     }
 
     var isVideo = phase === 'video' || phase === 'promo';
@@ -6885,6 +6994,13 @@
         }
       } else if (live.phase === 'quiz') {
         if (!live.quizMilestone) live.quizActiveMs += dt;
+        /* Hold the first question's clock while the "quiz is about to start"
+           notice is up, so the ten-second warning is real time and not eaten
+           by the question countdown. */
+        if (quizStartHeld()) {
+          live.qEndsAt = Math.max(live.qEndsAt, live.quizStartAt);
+          return;
+        }
         if (live.quizMilestone) {
           if (t >= live.quizMilestoneEndsAt && !revealBusy()) {
             finishQuizMilestone(false);
@@ -6984,6 +7100,17 @@
             if (stRemSec >= 1 && stRemSec <= 10 && stRemSec !== storyLive.lastTickCueSec) {
               storyLive.lastTickCueSec = stRemSec;
               playCountdownTick(stRemSec);
+            }
+          }
+          /* Ten seconds before the anecdote finishes, tell the audience the
+             stage is ending. "Finishes" means the last step of the episode, so
+             the notice is tied to the final step's clock rather than to any
+             intermediate beat. */
+          var isLastStep = storyLive.stepIndex >= storyLive.flatSteps.length - 1;
+          if (isLastStep && !speechBusy()) {
+            var endRemSec = Math.ceil((storyLive.stepEndsAt - t) / 1000);
+            if (endRemSec >= 1 && endRemSec <= 10) {
+              showStageNotice('story-end', 'WRAPPING UP', 'This anecdote is ending \u2014 the stage is about to change.', 9000);
             }
           }
           if (t >= storyLive.stepEndsAt) {

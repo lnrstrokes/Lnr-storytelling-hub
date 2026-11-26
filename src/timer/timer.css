@@ -1477,6 +1477,33 @@ body.screen-stage .screen-stage {
   color: #0d1612;
 }
 
+/* Video-engine unmute control. Sits over the footage, bottom-right, and only
+   appears when the browser muted a clip to let it autoplay. */
+.video-unmute {
+  position: absolute;
+  right: 2.2cqw;
+  bottom: clamp(18px, 3cqw, 40px);
+  z-index: 12;
+  appearance: none;
+  border: 1px solid rgba(123, 176, 149, .6);
+  background: rgba(12, 18, 16, .72);
+  color: #d6efe1;
+  font: inherit;
+  font-size: clamp(11px, 1.2cqw, 13px);
+  font-weight: 700;
+  padding: 6px 13px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+  transition: background .15s ease;
+}
+.video-unmute:hover {
+  background: var(--sage);
+  color: #0d1612;
+}
+.video-unmute[hidden] { display: none; }
+
 .studio-break-notice {
   position: absolute;
   right: 2.2cqw;
@@ -1687,6 +1714,15 @@ body.screen-stage .screen-stage {
 body.safe .video-preroll,
 body.safe .vbreak-overlay,
 body.safe .video-restart-notice {
+  display: none !important;
+}
+
+/* Stream-safe is a clean capture: the segment pill ("Bible / Faith") and the
+   question counter ("Question 1 of 10") are operator context, not broadcast
+   content, so they must not appear in the captured frame. They used to stay
+   visible because only the stage chrome was hidden. */
+body.safe .frame-seg,
+body.safe .frame-meta {
   display: none !important;
 }
 
@@ -2302,6 +2338,59 @@ body.safe .screen-stage { gap: 0; }
   max-width: 100%;
 }
 .toast.is-bad { border-color: rgba(208, 130, 98, .6); color: #f0c6b0; }
+
+/* Stage-awareness notice: a deliberate, readable banner on the stage that tells
+   the audience what is about to happen (a quiz is starting, the anecdote is
+   ending). It is not a toast — a toast is operator feedback and is too small
+   and too brief to be seen on a stream. */
+.stage-notice {
+  position: fixed;
+  left: 50%;
+  /* Top-centre, not bottom: the bottom of the frame already carries the
+     progress bar, the watermark/CTA foot and the partner-break notice, and a
+     bottom-anchored banner landed on top of them. The top band is clear. */
+  /* Below the top chrome bar (which is ~56px tall and carries its own
+     backdrop-filter stacking context) and above everything else. */
+  top: clamp(96px, 15vh, 150px);
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 720px);
+  padding: 12px 20px;
+  border-radius: 999px;
+  background: rgba(12, 18, 16, .9);
+  border: 1px solid rgba(123, 176, 149, .55);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .5);
+  backdrop-filter: blur(12px);
+  color: #eef4ef;
+  font-size: clamp(13px, 1.5vw, 17px);
+  font-weight: 600;
+  line-height: 1.3;
+  animation: stageNoticeIn .32s cubic-bezier(.22, .8, .28, 1);
+}
+.stage-notice[hidden] { display: none; }
+.stage-notice-pill {
+  flex: none;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #0d1612;
+  background: var(--sage);
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-weight: 800;
+}
+.stage-notice-text { min-width: 0; }
+@keyframes stageNoticeIn {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+/* Stream-safe captures a clean frame: the notice is operator/audience context
+   that would otherwise be burned into the recording. */
+body.safe .stage-notice { display: none !important; }
 @keyframes toastin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 /* inner headings inside a merged panel section */
