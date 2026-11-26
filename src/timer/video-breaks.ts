@@ -335,12 +335,21 @@ function readingDone(
 ): boolean {
   if (!spoken) return true;
   const waited = performance.now() - startedAt;
-  const speaking =
-    typeof spoken.speaking === 'function' ? spoken.speaking() : false;
-  if (speaking) return waited > (readSeconds + 30) * 1000;
-  const heard = typeof spoken.started === 'function' ? spoken.started() : false;
-  if (heard) return true;
-  return waited >= readSeconds * 1000;
+
+  /* Only a finished read releases the countdown. This used to return true the
+     moment `speaking()` went false while `started()` was already true — which
+     happens in the gap between "Option A" and "Option B", so the clock began
+     counting while the reader was still on the middle of the question and the
+     scene moved on before it finished. */
+  if (spoken.done()) return true;
+
+  /* The voice has not begun yet: give it the fallback reading time, so a phone
+     that needs a beat to speak is not skipped straight into the countdown. */
+  if (!spoken.started()) return waited >= readSeconds * 1000;
+
+  /* Started but never finishes — a stuck synthesis queue gets a wide margin
+     and is then released, so a break can never hang on a reader. */
+  return waited > (readSeconds + 30) * 1000;
 }
 
 function askQuestion(

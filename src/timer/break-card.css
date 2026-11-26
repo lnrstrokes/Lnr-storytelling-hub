@@ -315,6 +315,79 @@
 .vbreak-template-5 { background-image: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); }
 .vbreak-template-6 { background-image: linear-gradient(135deg, #3a0ca3 0%, #f7b733 100%); }
 
+/* ==========================================================================
+   Stage background layer — where the pack renders in the quiz / players /
+   story engines.
+
+   The templates and motion treatments were only ever painted onto
+   `.vbreak-card`, the break overlay inside the video engine. That is the one
+   engine the pack is scoped OUT of, and the other three never had a
+   `.vbreak-card` at all — so choosing a template or a treatment changed
+   nothing on screen anywhere. The pack now has a real surface on the
+   broadcast stage itself: a single inset layer inside `.frame`, behind the
+   frame's own content.
+
+   It is additive: with no template chosen the layer is empty and invisible,
+   so the stage looks exactly as it did before.
+   ========================================================================== */
+
+.frame > .lnr-stage-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  opacity: 0.55;
+  pointer-events: none;
+  /* Blend into the stage rather than sitting on it as a pasted photo. */
+  mix-blend-mode: soft-light;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%);
+}
+
+/* The frame's own content must sit above the layer. */
+.frame > .lnr-stage-bg ~ .frame-inner {
+  position: relative;
+  z-index: 1;
+}
+
+/* An uploaded photo is used at full strength; the presets are gradients and
+   only need a wash, so they stay subdued. */
+.frame > .lnr-stage-bg.is-photo {
+  opacity: 0.82;
+  mix-blend-mode: normal;
+}
+
+/* --- motion treatments on the stage layer --- */
+
+.frame.vbreak-treatment-drift > .lnr-stage-bg {
+  animation: vbreak-bg-drift 18s ease-in-out infinite alternate;
+}
+
+.frame.vbreak-treatment-parallax > .lnr-stage-bg {
+  animation: vbreak-bg-parallax 14s ease-in-out infinite alternate;
+}
+
+.frame.vbreak-treatment-pull > .lnr-stage-bg {
+  animation: vbreak-bg-pull 12s ease-in-out infinite alternate;
+}
+
+/* Motion is atmosphere on a livestream card, never a distraction in the
+   capture: a viewer who has asked the device to reduce motion gets none. */
+@media (prefers-reduced-motion: reduce) {
+  .frame.vbreak-treatment-drift > .lnr-stage-bg,
+  .frame.vbreak-treatment-parallax > .lnr-stage-bg,
+  .frame.vbreak-treatment-pull > .lnr-stage-bg,
+  .vbreak-treatment-drift .vbreak-bg-layer,
+  .vbreak-treatment-parallax .vbreak-bg-layer,
+  .vbreak-treatment-pull .vbreak-bg-layer {
+    animation: none;
+  }
+}
+
 /* Template thumbnail with pattern overlay */
 .vbreak-bg-option .template-pattern {
   width: 100%;

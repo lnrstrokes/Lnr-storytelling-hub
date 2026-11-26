@@ -2625,8 +2625,9 @@
   var prerollActive = false;
   var prerollTimer = 0;
   var PREROLL_MS = 10000;
-  /* How long the "quiz is about to start" notice holds before the first
-     question is allowed to run. */
+  /* Kept for the hold the quiz block used to run behind its "UP NEXT" notice.
+     The notice now lives with the video engine, so nothing sets quizStartAt
+     from here; the constant stays so external code reading it still resolves. */
   var QUIZ_START_NOTICE_MS = 10000;
   var PREROLL_VOICE = 'Video used as reference. This clip is the reference used to generate the quiz and anecdote breaks. The clip is attributed as reference material. Own the video or use it for reference at your discretion.';
 
@@ -2917,45 +2918,65 @@
     }
   }
 
-  /* ---------- interactive session notice (owned videos) ---------- */
+  /* ---------- owned-video + breaks notice ---------- */
   var interactiveNoticeTimer = 0;
   var interactiveNoticeDismissed = false;
 
-  function showInteractiveSessionNotice() {
+  /* True only when this clip has quiz & anecdote breaks switched on. The engine
+     is plain JS and cannot import break-parser, so it reads the same store
+     record the break panel writes (STORAGE_KEY 'lnr_video_breaks_v1'), one
+     entry per clip id. Fail-closed: an unreadable store means no notice. */
+  function breaksEnabledFor(clipId) {
+    if (!clipId) return false;
+    try {
+      var raw = localStorage.getItem('lnr_video_breaks_v1');
+      if (!raw) return false;
+      var store = JSON.parse(raw);
+      var rec = store && store[clipId];
+      if (!rec || typeof rec !== 'object') return false;
+      /* Breaks are only real when there is a quiz file to run: 'on' alone with
+         nothing uploaded would announce a break that never comes. */
+      return !!rec.on && (!!rec.quiz || !!rec.anecdote);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /* The one disclaimer that belongs to this flow: the operator told us they own
+     the clip AND switched quiz & anecdote breaks on. It states what happens to
+     the footage and that the operator holds the rights. Nothing else shows it —
+     not a reference clip, not an owned clip with breaks off. */
+  function showOwnedBreaksNotice() {
     if (!el.videoPreroll) return;
     if (interactiveNoticeDismissed) return;
-    // Don't show if preroll is already active (reference video case)
     if (prerollActive) return;
-    
+
     var overlay = el.videoPreroll;
     var pill = el.videoPrerollPill;
     var title = el.videoPrerollTitle;
     var body = el.videoPrerollBody;
-    
+
     if (!overlay || !pill || !title || !body) return;
-    
-    // Use the interactive session disclaimer text
-    var disclaimer = currentInteractiveDisclaimer();
-    
+
     overlay.hidden = false;
     overlay.classList.add('is-interactive');
-    pill.textContent = 'INTERACTIVE SESSION';
-    title.textContent = 'Quiz & Anecdotes Ahead';
-    body.textContent = disclaimer;
-    
-    // Clear any progress bar showing
+    pill.textContent = 'YOUR VIDEO';
+    title.textContent = 'Quiz & anecdotes from your video';
+    body.textContent =
+      'This video is yours and you have confirmed you own the right to use it. ' +
+      'It is used to generate the quiz and anecdote breaks that appear as it plays. ' +
+      'Jump in when the questions show up.';
+
     var bar = el.videoPrerollBar;
     if (bar) bar.style.width = '0%';
     var timer = el.videoPrerollTimer;
     if (timer) timer.textContent = 'Tap to dismiss';
-    
-    // Auto-dismiss after 5 seconds or on click
+
     if (interactiveNoticeTimer) window.clearTimeout(interactiveNoticeTimer);
     interactiveNoticeTimer = window.setTimeout(function () {
       dismissInteractiveNotice();
-    }, 5000);
-    
-    // Make the overlay clickable to dismiss
+    }, 6000);
+
     overlay.onclick = function () {
       dismissInteractiveNotice();
     };
@@ -6709,12 +6730,15 @@
       releasePlayerVisual();
       stopVideo();
       resetStageNotices();
-      /* Tell the audience the quiz is about to begin, ten seconds before the
-         first question lands. The notice is shown first and the question is
-         held for the same ten seconds, so the warning is never a flash that
-         the first question immediately covers. */
-      showStageNotice('quiz-start', 'UP NEXT', 'The quiz is about to start \u2014 get ready to answer.', 10000);
-      live.quizStartAt = now() + QUIZ_START_NOTICE_MS;
+      /* The "The quiz is about to start" stage notice used to fire here, in the
+         quiz engine itself. It belongs to the Video engine, where it warns the
+         audience that a video clip is about to be interrupted for a quiz break
+         — that warning is now drawn by the break module on the video stage
+         (video-breaks.ts noticeCard, "UP NEXT"). Shown on a quiz block it just
+         landed on top of question 1 and its own countdown, so it is gone from
+         here. The question clock is no longer held either: there is nothing
+         left to hold it for. */
+      live.quizStartAt = 0;
       nextQuestion();
     } else if (phase === 'players') {
       el.quizStage.hidden = true;
@@ -6762,13 +6786,17 @@
       if (phase === 'video' && clips.length > 0) {
         var firstClip = clips[0];
         var ownership = firstClip ? clipOwnership(firstClip.id) : 'reference';
-        if (ownership === 'reference') {
-          startPreroll();
-          playClip(0);
-        } else {
-          // Owned video: play straight away, but show a brief interactive session notice
-          playClip(0);
-          showInteractiveSessionNotice();
+        /* Both ownership choices play the clip straight away. The reference
+           pre-roll card is gone from this flow: choosing "video / reference"
+           used to park a full-screen card over the footage and hold it at 0:00
+           while a reader spoke, which looked like the upload had failed. A
+           reference clip now simply plays. */
+        playClip(0);
+        /* One notice, one combination only: the operator owns the clip AND has
+           quiz & anecdote breaks switched on for it. Reference clips never get
+           it, and neither does an owned clip with breaks off. */
+        if (firstClip && ownership !== 'reference' && breaksEnabledFor(firstClip.id)) {
+          showOwnedBreaksNotice();
         }
       } else {
         playClip(phase === 'promo' ? live.clipIndex : 0);

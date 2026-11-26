@@ -193,6 +193,23 @@ export function breakCardTreatmentClass(
   return `vbreak-treatment-${treatment}`;
 }
 
+/** The stage layer the pack paints into. One per stage, created on demand
+ *  inside `.frame` so it sits behind the frame's own content. */
+export function ensureStageBgLayer(): HTMLDivElement | null {
+  const frame = document.getElementById('frame');
+  if (!frame) return null;
+  let layer = frame.querySelector<HTMLDivElement>(':scope > .lnr-stage-bg');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.className = 'lnr-stage-bg';
+    layer.setAttribute('aria-hidden', 'true');
+    const before = frame.firstElementChild;
+    if (before) frame.insertBefore(layer, before);
+    else frame.appendChild(layer);
+  }
+  return layer;
+}
+
 /** Ensure the optional background layer exists on a break card. */
 export function ensureBreakCardBgLayer(card: HTMLElement): HTMLDivElement {
   let layer = card.querySelector<HTMLDivElement>('.vbreak-bg-layer');
@@ -262,10 +279,15 @@ export function installBreakCardCustomizer(): void {
         <div class="bg-check">✓</div>
       `;
       option.addEventListener('click', () => {
-        document.querySelectorAll('.vbreak-bg-option').forEach(o => o.classList.remove('isselected'));
+        /* 'isselected' (no hyphen) matched no CSS class, so the previous
+           choice was never cleared and two thumbnails stayed highlighted. */
+        document.querySelectorAll('.vbreak-bg-option').forEach(o => o.classList.remove('is-selected'));
         option.classList.add('is-selected');
         applyBackgroundTemplate(template.id);
-        saveBgPreference('template-' + template.id);
+        /* template.id is already 'template-1' — prefixing it again stored
+           'template-template-1', which no lookup could ever match, so the
+           choice was silently lost on the next load. */
+        saveBgPreference(template.id);
       });
       bgOptions.appendChild(option);
     });
@@ -311,11 +333,21 @@ export function installBreakCardCustomizer(): void {
       
       try {
         const url = URL.createObjectURL(file);
-        const layer = ensureBreakCardBgLayer(document.querySelector('.vbreak-card') || document.createElement('div'));
-        layer.style.backgroundImage = `url(${url})`;
-        layer.style.backgroundSize = 'cover';
-        layer.style.backgroundPosition = 'center';
-        
+        const stage = ensureStageBgLayer();
+        if (stage) {
+          stage.className = 'lnr-stage-bg is-photo';
+          stage.style.backgroundImage = `url(${url})`;
+        }
+
+
+        const card = document.querySelector<HTMLElement>('.vbreak-card');
+        if (card) {
+          const layer = ensureBreakCardBgLayer(card);
+          layer.style.backgroundImage = `url(${url})`;
+          layer.style.backgroundSize = 'cover';
+          layer.style.backgroundPosition = 'center';
+        }
+
         document.querySelectorAll('.vbreak-bg-option').forEach(o => o.classList.remove('is-selected'));
         const removeBtn = document.querySelector('#vbreakRemoveBg');
         if (removeBtn) (removeBtn as HTMLElement).hidden = false;
@@ -331,12 +363,27 @@ export function installBreakCardCustomizer(): void {
   const removeBtn = bgSection.querySelector('#vbreakRemoveBg');
   if (removeBtn) {
     removeBtn.addEventListener('click', () => {
-      const layer = ensureBreakCardBgLayer(document.querySelector('.vbreak-card') || document.createElement('div'));
-      layer.style.backgroundImage = '';
-      layer.className = 'vbreak-bg-layer';
+      const stage = ensureStageBgLayer();
+      if (stage) {
+        stage.style.backgroundImage = '';
+        stage.className = 'lnr-stage-bg';
+      }
+
+      const card = document.querySelector<HTMLElement>('.vbreak-card');
+      if (card) {
+        const layer = ensureBreakCardBgLayer(card);
+        layer.style.backgroundImage = '';
+        layer.className = 'vbreak-bg-layer';
+      }
+
       document.querySelectorAll('.vbreak-bg-option').forEach(o => o.classList.remove('is-selected'));
       (removeBtn as HTMLElement).hidden = true;
-      saveBgPreference('none');
+      /* Remove the background only. The motion treatment is a separate choice
+         and must survive clearing the image. */
+      try {
+        localStorage.removeItem(BG_TEMPLATE_KEY);
+        localStorage.removeItem(BG_LEGACY_KEY);
+      } catch {}
       alert('Background removed');
     });
   }
@@ -380,7 +427,7 @@ function graphicPackAllowed(): boolean {
 
 /**
  * Show or hide the graphic pack for the selected engine, and undo any treatment
- * already painted on the card when the video engine is in charge.
+ * already painted on the stage when the video engine is in charge.
  */
 export function syncGraphicPack(): void {
   if (typeof document === 'undefined') return;
@@ -396,24 +443,49 @@ export function syncGraphicPack(): void {
     if (card) {
       card.className = card.className.replace(/vbreak-treatment-\w+/g, '').trim();
     }
+    const frame = document.getElementById('frame');
+    if (frame) {
+      frame.className = frame.className.replace(/vbreak-treatment-\w+/g, '').trim();
+    }
     const layer = document.querySelector<HTMLElement>('.vbreak-card .vbreak-bg-layer');
     if (layer) {
       layer.style.backgroundImage = '';
       layer.className = 'vbreak-bg-layer';
     }
+    const stageLayer = document.querySelector<HTMLElement>('.frame > .lnr-stage-bg');
+    if (stageLayer) {
+      stageLayer.style.backgroundImage = '';
+      stageLayer.className = 'lnr-stage-bg';
+    }
+  } else {
+    /* Switching back to a card engine must repaint whatever the operator had
+       chosen before, instead of leaving the stage bare until they re-pick. */
+    loadBgPreference();
   }
 }
 
 function applyBackgroundTemplate(templateId: string): void {
   if (!graphicPackAllowed()) return;
+
+  const template = BREAK_CARD_TEMPLATES.find(t => t.id === templateId);
+
+  /* Primary surface: the broadcast stage. Templates are gradients on the
+     stage layer; an uploaded photo replaces it with an image. */
+  const stage = ensureStageBgLayer();
+  if (stage) {
+    stage.style.backgroundImage = '';
+    stage.className = 'lnr-stage-bg';
+    if (template) stage.classList.add(template.cssClass);
+  }
+
+  /* Secondary surface: a break card, when one is on screen. */
   const card = document.querySelector<HTMLElement>('.vbreak-card');
   if (!card) return;
-  
+
   const layer = ensureBreakCardBgLayer(card);
   layer.style.backgroundImage = '';
   layer.className = 'vbreak-bg-layer';
-  
-  const template = BREAK_CARD_TEMPLATES.find(t => t.id === templateId);
+
   if (template) {
     layer.classList.add(template.cssClass);
   }
@@ -421,37 +493,76 @@ function applyBackgroundTemplate(templateId: string): void {
 
 function applyMotionEffect(treatment: string): void {
   if (!graphicPackAllowed()) return;
+
+  /* The treatment applies to whatever is actually on the stage: the frame (so
+     the stage layer animates in the quiz / players / story engines) and the
+     break card if one is open. */
+  const surfaces: HTMLElement[] = [];
+  const frame = document.getElementById('frame');
+  if (frame) surfaces.push(frame);
   const card = document.querySelector<HTMLElement>('.vbreak-card');
-  if (!card) return;
-  
-  // Remove all treatment classes
-  card.className = card.className.replace(/vbreak-treatment-\w+/g, '').trim();
-  
-  if (treatment !== 'none') {
-    card.classList.add(`vbreak-treatment-${treatment}`);
-  }
+  if (card) surfaces.push(card);
+
+  surfaces.forEach((surface) => {
+    surface.className = surface.className.replace(/vbreak-treatment-\w+/g, '').trim();
+    if (treatment !== 'none') {
+      surface.classList.add(`vbreak-treatment-${treatment}`);
+    }
+  });
 }
+
+/* Template and motion are two independent choices, so they are stored as two
+   keys. They used to share one key ('lnr_break_card_bg_v1'), which meant
+   picking a motion silently discarded the template and vice versa — and a
+   reload could only ever restore one of the two. The old key is still read
+   once, so an existing choice is not lost. */
+const BG_TEMPLATE_KEY = 'lnr_break_card_template_v1';
+const BG_MOTION_KEY = 'lnr_break_card_motion_v1';
+const BG_LEGACY_KEY = 'lnr_break_card_bg_v1';
 
 function saveBgPreference(value: string): void {
   try {
-    localStorage.setItem('lnr_break_card_bg_v1', value);
+    if (value.startsWith('template-')) {
+      localStorage.setItem(BG_TEMPLATE_KEY, value);
+    } else if (value.startsWith('motion-')) {
+      localStorage.setItem(BG_MOTION_KEY, value);
+    } else if (value === 'none') {
+      localStorage.removeItem(BG_TEMPLATE_KEY);
+      localStorage.removeItem(BG_MOTION_KEY);
+    } else if (value.startsWith('uploaded-')) {
+      /* An uploaded photo is a template choice too. */
+      localStorage.setItem(BG_TEMPLATE_KEY, value);
+    }
+    /* Keep the legacy key in step so an older build still reads something. */
+    localStorage.setItem(BG_LEGACY_KEY, value);
   } catch {}
 }
 
 function loadBgPreference(): void {
   try {
-    const saved = localStorage.getItem('lnr_break_card_bg_v1');
-    if (!saved) return;
     /* A saved pack must not be re-applied in the video engine. */
     if (!graphicPackAllowed()) return;
-    
-    if (saved.startsWith('template-')) {
-      applyBackgroundTemplate(saved);
-      const option = document.querySelector(`[data-template-id="${saved}"]`);
+
+    let template = localStorage.getItem(BG_TEMPLATE_KEY) || '';
+    let motion = localStorage.getItem(BG_MOTION_KEY) || '';
+
+    /* One-time migration from the single shared key. */
+    if (!template && !motion) {
+      const legacy = localStorage.getItem(BG_LEGACY_KEY) || '';
+      if (legacy.startsWith('template-') || legacy.startsWith('uploaded-')) template = legacy;
+      else if (legacy.startsWith('motion-')) motion = legacy;
+    }
+
+    if (template && template.startsWith('template-')) {
+      applyBackgroundTemplate(template);
+      const option = document.querySelector(`[data-template-id="${template}"]`);
       if (option) option.classList.add('is-selected');
-    } else if (saved.startsWith('motion-')) {
-      applyMotionEffect(saved.replace('motion-', ''));
-      const option = document.querySelector(`[data-treatment="${saved.replace('motion-', '')}"]`);
+    }
+
+    if (motion && motion.startsWith('motion-')) {
+      const treatment = motion.replace('motion-', '');
+      applyMotionEffect(treatment);
+      const option = document.querySelector(`[data-treatment="${treatment}"]`);
       if (option) option.classList.add('is-selected');
     }
   } catch {}

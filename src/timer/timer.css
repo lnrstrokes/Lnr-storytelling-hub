@@ -1710,9 +1710,12 @@ body.screen-stage .screen-stage {
   display: none;
 }
 
-/* During stream-safe mode, hide all video overlays for a clean interface */
+/* During stream-safe mode, hide the pre-roll and restart cards.
+   The quiz / anecdote break card is deliberately NOT in this list: it is the
+   break content the audience is meant to read. Hiding `.vbreak-overlay` here
+   made every quiz and anecdote card — and the "UP NEXT" notice before it —
+   invisible the moment Stream-safe was switched on. */
 body.safe .video-preroll,
-body.safe .vbreak-overlay,
 body.safe .video-restart-notice {
   display: none !important;
 }

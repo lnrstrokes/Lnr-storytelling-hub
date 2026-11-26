@@ -8,6 +8,10 @@
 export interface Narration {
   speaking: () => boolean;
   started: () => boolean;
+  /** True only once the LAST utterance has ended (or the read was cancelled).
+      `speaking()` alone is not enough: it drops to false in the gap between
+      two utterances, so anything waiting on it moved on mid-read. */
+  done: () => boolean;
 }
 
 let synth: SpeechSynthesis | null = null;
@@ -70,18 +74,30 @@ function makeReader(): {
     if (!utterances.length) return null;
     let speaking = false;
     let started = false;
+    /* `completed` is set only when every utterance has ended, so a caller that
+       waits on it can never be released during the pause between two sentences
+       (or between two utterances) while the voice is still going. */
+    let completed = false;
+    let ended = 0;
     const token: Narration = {
       speaking: () => speaking,
       started: () => started,
+      done: () => completed,
     };
     let finished = false;
     const finish = (late: boolean) => {
       if (finished) return;
       finished = true;
       speaking = false;
+      completed = true;
       if (current) {
         current = null;
       }
+    };
+    const settleOne = () => {
+      ended += 1;
+      speaking = false;
+      if (ended >= utterances.length) completed = true;
     };
     for (const u of utterances) {
       u.onstart = () => {
@@ -91,11 +107,11 @@ function makeReader(): {
       };
       u.onend = () => {
         if (finished) return;
-        speaking = false;
+        settleOne();
       };
       u.onerror = () => {
         if (finished) return;
-        speaking = false;
+        settleOne();
       };
     }
     try {
@@ -195,21 +211,38 @@ export function waitForNarration(
       return;
     }
     const startedAt = performance.now();
-    const waitMs = Math.max(minMs, Math.min(maxMs, 12000));
-    let done = false;
+    const floorMs = Math.max(400, minMs);
+    const ceilingMs = Math.max(floorMs, Math.min(maxMs, 180000));
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
     const check = () => {
-      if (done) return;
-      if (!alive()) { resolve(); return; }
-      if (!spoken.speaking() && performance.now() - startedAt >= waitMs) {
-        done = true;
-        resolve();
+      if (settled) return;
+      if (!alive()) { finish(); return; }
+      const waited = performance.now() - startedAt;
+
+      /* Only a FULLY finished read may release the caller, and never before
+         the caller's own minimum hold. `speaking()` drops to false in the gap
+         between two utterances — using it here released the card mid-sentence
+         and started the scene transition while the reader was still talking,
+         which is exactly the "countdown cuts the reader off" bug. */
+      if (spoken.done() && waited >= floorMs) { finish(); return; }
+
+      /* A synthesiser that never reports done — a stuck queue, or a device
+         that silently drops its last utterance — gets a wide ceiling and is
+         then released, so the stage can never hang on a break. */
+      if (waited >= ceilingMs) { finish(); return; }
+
+      /* The voice never started at all (no engine voice, or autoplay blocked):
+         honour the minimum plus a grace period, then move on. */
+      if (!spoken.started() && !spoken.done() && waited >= floorMs + 6000) {
+        finish();
         return;
       }
-      if (!spoken.speaking() && spoken.started()) {
-        done = true;
-        resolve();
-        return;
-      }
+
       window.setTimeout(check, 100);
     };
     check();
