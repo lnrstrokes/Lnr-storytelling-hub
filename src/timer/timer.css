@@ -1283,42 +1283,6 @@ body.screen-stage .screen-stage {
   min-height: 0;
   margin: .5cqw 0;
 }
-.vbreak-stage-indicator {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(4, 9, 7, 0.85);
-  backdrop-filter: blur(4px);
-  font-family: var(--mono, ui-monospace, monospace);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #9aab9f;
-  border: 1px solid rgba(217, 171, 99, 0.2);
-  pointer-events: none;
-  transition: opacity 200ms ease;
-}
-
-.vbreak-stage-indicator.is-on {
-  color: #f0cf95;
-  border-color: rgba(217, 171, 99, 0.5);
-}
-
-.vbreak-stage-indicator::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.6;
-}
-
 .video-stage video {
   position: absolute;
   inset: 0;
@@ -1643,15 +1607,11 @@ body.screen-stage .screen-stage {
 /* ---------------- video engine: clean picture ----------------
    The prerecorded video engine must show the footage and a countdown timer
    and nothing else: no segment label, no counter, no watermark, no site
-   line, no loop badge, no stage chrome, and no "Breaks ready" pill.
-   The promo break is NOT clean — it keeps its brand strap and its own
-   overlay, which is deliberate branding rather than a counter. */
+   line, no loop badge, no stage chrome. The promo break is NOT clean — it
+   keeps its brand strap and its own overlay, which is deliberate branding
+   rather than a counter. */
 .frame.is-video-clean .frame-bottom,
-.frame.is-video-clean .loop-badge,
-.frame.is-video-clean .vbreak-stage-indicator,
-.frame.is-video-clean .frame-site,
-.frame.is-video-clean .frame-seg,
-.frame.is-video-clean .frame-meta {
+.frame.is-video-clean .loop-badge {
   display: none;
 }
 /* During a promo break the overlay has its own clock, so drop the frame
@@ -1665,8 +1625,7 @@ body.screen-stage .screen-stage {
   border-bottom: none;
 }
 .frame.is-video-clean-video .frame-seg,
-.frame.is-video-clean-video .frame-meta,
-.frame.is-video-clean-video .frame-site {
+.frame.is-video-clean-video .frame-meta {
   display: none;
 }
 .frame.is-video-clean-video .frame-timer {
@@ -1675,35 +1634,6 @@ body.screen-stage .screen-stage {
   font-size: max(14px, 1.9cqw);
   color: rgba(240, 232, 212, 0.82);
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.92);
-}
-/* On-tape video-title HUD: the name of the clip currently playing, shown
-   top-left on the tape during clean video playback so the screen reads as
-   footage + title + countdown only. */
-.frame-video-title {
-  position: absolute;
-  top: max(8px, 1.6cqw);
-  left: max(8px, 1.6cqw);
-  z-index: 11;
-  max-width: calc(100% - 16px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: max(11.5px, 1.3cqw);
-  letter-spacing: .01em;
-  color: rgba(240, 232, 212, 0.86);
-  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.92);
-  pointer-events: none;
-  line-height: 1.35;
-}
-.frame-video-title::before {
-  content: "";
-  display: inline-block;
-  width: 5px; height: 5px;
-  margin-right: 7px;
-  border-radius: 50%;
-  background: var(--sage);
-  opacity: .9;
-  vertical-align: middle;
 }
 .frame.is-video-clean .video-stage {
   position: absolute;
@@ -1722,6 +1652,20 @@ body.screen-stage .screen-stage {
    furniture, not broadcast content — hide it during clean video mode. */
 .screen-stage.is-video-clean .stage-chrome {
   display: none;
+}
+
+/* During stream-safe mode, hide all video overlays for a clean interface */
+body.safe .video-preroll,
+body.safe .vbreak-overlay,
+body.safe .video-restart-notice {
+  display: none !important;
+}
+
+/* But show the restart notice briefly before video restarts even in safe mode */
+body.safe .video-restart-notice.is-visible {
+  display: flex !important;
+  position: absolute;
+  z-index: 100;
 }
 
 .demo-video-canvas {
@@ -4408,4 +4352,33 @@ body.safe .chat-safe-guide { display: none !important; }
 
 @media (max-width: 560px) {
   .qsource-switch { grid-template-columns: 1fr; }
+}
+
+/* ---- editable video title in the upload list ---- */
+.clip-list .clip-name.is-editable {
+  cursor: text;
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin-left: -6px;
+  outline: 1px dashed rgba(217, 171, 99, 0.3);
+  outline-offset: 0;
+}
+.clip-list .clip-name.is-editable:hover {
+  outline-color: rgba(217, 171, 99, 0.7);
+}
+.clip-list .clip-name.is-editable::after {
+  content: "\270E";
+  margin-left: 8px;
+  font-size: 0.85em;
+  color: var(--brass, #d9ab63);
+  opacity: 0.7;
+}
+.clip-list .clip-name.is-editing {
+  outline: 1px solid var(--brass, #d9ab63);
+  background: rgba(217, 171, 99, 0.1);
+  color: #f6efdd;
+}
+.clip-list .clip-name.is-editing::after {
+  content: "";
+  margin-left: 0;
 }

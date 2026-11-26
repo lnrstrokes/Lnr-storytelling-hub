@@ -477,7 +477,6 @@
     'storyStage', 'storyActPill', 'storyEpTitle', 'storyDisclaimerTag', 'storyPhaseCountdown', 'storyActRail',
     'storyCanvas', 'storyVisualHost', 'storyNarrationBox', 'storyNarrationText',
     'videoStage', 'stageVideo', 'stageVideoB', 'demoVideoCanvas', 'videoEmpty', 'videoEmptyTitle', 'videoEmptyNote',
-    'frameVideoTitle',
     'promoAdOverlay', 'promoAdBadge', 'promoAdTitle', 'promoAdClock', 'promoAdReturn', 'promoUnmuteBtn',
     'promoFunnel', 'promoFunnelImg', 'promoFunnelKicker', 'promoFunnelTitle', 'promoFunnelCopy',
     'promoFunnelUrl', 'promoFunnelClock',
@@ -1959,19 +1958,6 @@
   var promos = [];       /* custom channel / partner break clips: up to 5 uploaded */
   var defaultFolderPromos = []; /* /promos/manifest.json default folder */
 
-  function isEditableName(name) {
-    if (!name) return false;
-    var n = name.trim();
-    if (!n) return false;
-    if (/^\d+\.[a-zA-Z0-9]+$/.test(n)) return false;
-    if (/^[a-zA-Z0-9._-]+/i.test(n) && /\.(mp4|webm|mov|m4v|ogv|mkv|avi|wmv|flv)$/i.test(n)) return false;
-    return true;
-  }
-  function fName(name) {
-    if (!name) return '';
-    return String(name).replace(/^\s*\d+\.\s*/, '').trim();
-  }
-
   /* The compulsory studio promo shown to FREE viewers only.
      It is a built-in file, not an upload, so it cannot be deleted from the
      playlist, and effectivePromoList() only ever adds it when the device is
@@ -2137,6 +2123,66 @@
   function itemFor(kind) { return kind === 'promo' ? promos : clips; }
   function countElFor(kind) { return kind === 'promo' ? el.promoCount : el.clipCount; }
 
+  /* ---------- editable video titles ----------
+     The uploaded file name ("81412.mp4") is the only label a creator sees, so
+     it is the label they can edit. The saved title follows the clip id, so it
+     survives a refresh and shows wherever the clip is listed; clearing it falls
+     back to the file name without its extension. The store itself lives in
+     clip-title-store.ts and publishes window.LNR_CLIP_TITLES, because this file
+     is plain JS and cannot import a TS module directly. */
+  function clipTitle(id, filename) {
+    var api = window.LNR_CLIP_TITLES;
+    if (api && typeof api.clipDisplayName === 'function') {
+      try { return api.clipDisplayName(id, filename); } catch (e) {}
+    }
+    var base = String(filename || '').split('/').pop().split('\\').pop();
+    return base.replace(/\.[^.]+$/, '').trim();
+  }
+
+  function saveClipTitle(id, value) {
+    var api = window.LNR_CLIP_TITLES;
+    if (api && typeof api.saveClipDisplayName === 'function') {
+      try { return api.saveClipDisplayName(id, value); } catch (e) {}
+    }
+    return String(value || '').trim().slice(0, 60);
+  }
+
+  /* Rename in place: click the name, type, Enter or clicking away saves,
+     Escape cancels. Clearing the field restores the file name. */
+  function startClipRename(span, cc, index) {
+    if (!span || span.getAttribute('contenteditable') === 'true') return;
+    var original = clipTitle(cc.id, cc.name);
+    span.textContent = original;
+    span.setAttribute('contenteditable', 'true');
+    span.classList.add('is-editing');
+    span.focus();
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(span);
+      var sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+    } catch (e) {}
+
+    var done = false;
+    function finish(commit) {
+      if (done) return;
+      done = true;
+      span.removeAttribute('contenteditable');
+      span.classList.remove('is-editing');
+      var saved = commit ? saveClipTitle(cc.id, span.textContent) : original;
+      var shown = saved || clipTitle(cc.id, cc.name);
+      span.textContent = (index + 1) + '. ' + shown;
+      if (!commit) return;
+      toast(saved ? 'Video title saved' : 'Title cleared — showing the file name');
+      renderClips();
+    }
+    span.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); span.blur(); }
+      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    span.addEventListener('blur', function () { finish(true); });
+  }
+
   function renderMedia(kind) {
     var host = listFor(kind);
     var items = itemFor(kind);
@@ -2147,31 +2193,22 @@
       if (cc.id) li.setAttribute('data-clip-id', cc.id);
       var name = document.createElement('span');
       name.className = 'clip-name';
-      var displayText = (i + 1) + '. ' + cc.name;
-      name.textContent = displayText;
-      name.title = cc.name;
-      if (cc.id && cc.name !== fName(cc.name) && isEditableName(cc.name)) {
-        name.style.cursor = 'text';
-        name.addEventListener('click', function () {
-          var edited = window.prompt('Rename clip', cc.name);
-          if (!edited || edited.trim() === cc.name) return;
-          var trimmed = edited.trim();
-          if (!trimmed) return;
-          cc.name = trimmed;
-          var existing = clips.some(function (x) { return x !== cc && x.name === trimmed; });
-          if (existing) {
-            toast('A clip already uses that name', true);
-            cc.name = cc.name;
-            return;
-          }
-          renderMedia('clip');
-          refreshStats();
-          if (live.phase === 'video' && el.frameVideoTitle) {
-            var tc = activeList() && activeList().length ? activeList()[live.clipIndex % activeList().length] : null;
-            el.frameVideoTitle.textContent = tc && tc.name ? tc.name : 'Video engine';
-          }
-          if (typeof refreshClipSelect === 'function') refreshClipSelect();
-          toast('Clip renamed');
+      var shownName = kind === 'clip' ? clipTitle(cc.id, cc.name) : cc.name;
+      name.textContent = (i + 1) + '. ' + shownName;
+      if (kind === 'clip') {
+        name.classList.add('is-editable');
+        name.title = 'Click to rename this video';
+        name.setAttribute('tabindex', '0');
+        name.setAttribute('role', 'button');
+        name.setAttribute('aria-label', 'Rename ' + shownName);
+        name.addEventListener('click', function (e) {
+          e.stopPropagation();
+          startClipRename(name, cc, i);
+        });
+        name.addEventListener('keydown', function (e) {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          startClipRename(name, cc, i);
         });
       }
       var size = document.createElement('span');
@@ -2346,6 +2383,8 @@
   on(el.ownVideoBtn, 'click', function () {
     applyOwnershipToAll('own');
     if (el.videoOwnershipTag) el.videoOwnershipTag.textContent = 'I own this video';
+    // Immediately dismiss any showing preroll since we now own the video
+    if (prerollActive) dismissPreroll();
     toast('Disclaimer off — videos play straight away');
   });
   on(el.refVideoBtn, 'click', function () {
@@ -2681,46 +2720,98 @@
     }
   }
 
+  /* The intro disclaimer is READ first, then counted down. It used to run a
+     fixed 10-second clock, which cut the voice off mid-sentence and lifted the
+     card while the viewer was still being told what the clip is — the stream
+     appeared to jump into the video during the disclaimer.
+
+     Now: the card says "Reading…" with an empty bar while the voice speaks, the
+     clip is held on its first frame (transitionToClip does not autoplay while
+     prerollActive), and only when the reading ends does the 10-second countdown
+     run. If the reader is off, or the device never speaks, the fallback reading
+     time (words / 2.5 + 1) is used, so the card can never hang.
+     One reader for the whole app: window.LNR_READER, published by
+     break-voice.ts, the same module the break cards use. */
   function startPreroll() {
     if (prerollActive) return;
+    // Don't show preroll during stream-safe mode for owned videos
+    // (reference videos still show the disclaimer)
     var overlay = el.videoPreroll;
     if (!overlay) return;
     prerollActive = true;
     overlay.hidden = false;
+
     var bar = el.videoPrerollBar;
     var timer = el.videoPrerollTimer;
+    var voiceText = PREROLL_VOICE;
     if (bar) bar.style.width = '0%';
-    if (timer) timer.textContent = (PREROLL_MS / 1000) + 's';
+    if (timer) timer.textContent = 'Reading…';
+
+    var reader = window.LNR_READER;
+    var narration = null;
+    if (reader && typeof reader.startNarration === 'function') {
+      try { narration = reader.startNarration([voiceText]); } catch (e) { narration = null; }
+    }
+    var readSeconds = (reader && typeof reader.fallbackReadSeconds === 'function')
+      ? reader.fallbackReadSeconds(voiceText)
+      : 14;
+
+    var reading = !!narration;
+    var readDoneAt = reading ? 0 : now();
     var started = now();
+
+    function takeDown() {
+      prerollActive = false;
+      if (overlay) overlay.hidden = true;
+      if (overlay && overlay._prerollVoice && overlay._prerollVoice.stop) overlay._prerollVoice.stop();
+      if (overlay) overlay._prerollVoice = null;
+    }
+
     if (prerollTimer) window.clearInterval(prerollTimer);
     prerollTimer = window.setInterval(function () {
       if (!live.inSession || live.phase !== 'video' || !prerollActive) {
         window.clearInterval(prerollTimer);
         prerollTimer = 0;
+        /* The stage moved on (stop, exit, another engine). Take the card down
+           without ever starting playback. */
+        if (prerollActive) takeDown();
         return;
       }
-      var elapsed = now() - started;
+
+      if (reading) {
+        var waited = now() - started;
+        var speaking = !!(narration && typeof narration.speaking === 'function' && narration.speaking());
+        var heard = !!(narration && typeof narration.started === 'function' && narration.started());
+
+        if (speaking) {
+          /* Never count down under the voice. Only a synthesiser that never
+             goes quiet is cut off, and it gets a wide margin. */
+          if (waited <= (readSeconds + 30) * 1000) {
+            if (bar) bar.style.width = '0%';
+            if (timer) timer.textContent = 'Reading…';
+            return;
+          }
+        } else if (!heard && waited < readSeconds * 1000) {
+          /* The voice has not started yet: give it the fallback reading time
+             before counting down, so a phone that needs a beat to speak is not
+             skipped straight past the disclaimer. */
+          if (bar) bar.style.width = '0%';
+          if (timer) timer.textContent = 'Reading…';
+          return;
+        }
+        reading = false;
+        readDoneAt = now();
+      }
+
+      if (!readDoneAt) readDoneAt = now();
+      var elapsed = Math.max(0, now() - readDoneAt);
       var left = Math.max(0, PREROLL_MS - elapsed);
       if (bar) bar.style.width = Math.min(100, (elapsed / PREROLL_MS) * 100).toFixed(1) + '%';
       if (timer) timer.textContent = Math.max(1, Math.ceil(left / 1000)) + 's';
       if (left <= 0) dismissPreroll();
     }, 100);
-    var voiceText = PREROLL_VOICE;
-    var spoken = null;
-    if (window.LNR_SPEECH && typeof window.LNR_SPEECH.speak === 'function') {
-      try {
-        spoken = window.LNR_SPEECH.speak(voiceText, { wait: false });
-      } catch (e) {}
-    } else if (window.speechSynthesis) {
-      try {
-        var u = new SpeechSynthesisUtterance(voiceText);
-        u.rate = 0.92;
-      u.volume = 1;
-        window.speechSynthesis.speak(u);
-        spoken = { stop: function () { try { window.speechSynthesis.cancel(); } catch (e) {} } };
-      } catch (e) {}
-    }
-    overlay._prerollVoice = spoken;
+
+    overlay._prerollVoice = narration;
   }
 
   function dismissPreroll() {
@@ -2728,15 +2819,91 @@
     prerollActive = false;
     if (prerollTimer) { window.clearInterval(prerollTimer); prerollTimer = 0; }
     var overlay = el.videoPreroll;
-    if (overlay) overlay.hidden = true;
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.onclick = null;
+    }
     if (overlay._prerollVoice && overlay._prerollVoice.stop) overlay._prerollVoice.stop();
     overlay._prerollVoice = null;
+    // Reset the interactive notice flag so it shows for the next clip
+    interactiveNoticeDismissed = false;
     if (live.inSession && live.phase === 'video' && !live.paused) {
       var av = activeVideo();
       if (av) {
         var p = av.play();
         if (p && p.catch) p.catch(function () {});
       }
+    }
+  }
+
+  /* ---------- interactive session notice (owned videos) ---------- */
+  var interactiveNoticeTimer = 0;
+  var interactiveNoticeDismissed = false;
+
+  function showInteractiveSessionNotice() {
+    if (!el.videoPreroll) return;
+    if (interactiveNoticeDismissed) return;
+    // Don't show if preroll is already active (reference video case)
+    if (prerollActive) return;
+    
+    var overlay = el.videoPreroll;
+    var pill = el.videoPrerollPill;
+    var title = el.videoPrerollTitle;
+    var body = el.videoPrerollBody;
+    
+    if (!overlay || !pill || !title || !body) return;
+    
+    // Use the interactive session disclaimer text
+    var disclaimer = currentInteractiveDisclaimer();
+    
+    overlay.hidden = false;
+    overlay.classList.add('is-interactive');
+    pill.textContent = 'INTERACTIVE SESSION';
+    title.textContent = 'Quiz & Anecdotes Ahead';
+    body.textContent = disclaimer;
+    
+    // Clear any progress bar showing
+    var bar = el.videoPrerollBar;
+    if (bar) bar.style.width = '0%';
+    var timer = el.videoPrerollTimer;
+    if (timer) timer.textContent = 'Tap to dismiss';
+    
+    // Auto-dismiss after 5 seconds or on click
+    if (interactiveNoticeTimer) window.clearTimeout(interactiveNoticeTimer);
+    interactiveNoticeTimer = window.setTimeout(function () {
+      dismissInteractiveNotice();
+    }, 5000);
+    
+    // Make the overlay clickable to dismiss
+    overlay.onclick = function () {
+      dismissInteractiveNotice();
+    };
+  }
+
+  function dismissInteractiveNotice() {
+    if (interactiveNoticeTimer) {
+      window.clearTimeout(interactiveNoticeTimer);
+      interactiveNoticeTimer = 0;
+    }
+    var overlay = el.videoPreroll;
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.onclick = null;
+    }
+    interactiveNoticeDismissed = true;
+  }
+
+  function currentInteractiveDisclaimer() {
+    try {
+      var raw = localStorage.getItem('lnr_video_disclaimer_v1');
+      if (!raw) return 'This clip is part of an interactive session: a short quiz and a quick anecdote will appear as the video plays. Jump in when the questions show up.';
+      var parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.copy === 'string' && parsed.copy.trim()) {
+        return parsed.copy.trim();
+      }
+      return 'This clip is part of an interactive session: a short quiz and a quick anecdote will appear as the video plays. Jump in when the questions show up.';
+    } catch (e) {
+      return 'This clip is part of an interactive session: a short quiz and a quick anecdote will appear as the video plays. Jump in when the questions show up.';
     }
   }
 
@@ -2814,15 +2981,6 @@
         updatePromoOverlay();
         if (live.phase === 'video' && listNow.length > 1) {
           preloadStandbyClip((index + 1) % listNow.length);
-        }
-        if (live.phase === 'video' && el.frameVideoTitle) {
-          var titleClip = listNow[live.clipIndex % listNow.length];
-          if (titleClip && titleClip.name) {
-            el.frameVideoTitle.textContent = titleClip.name;
-          } else {
-            el.frameVideoTitle.textContent = 'Video engine';
-          }
-          el.frameVideoTitle.hidden = false;
         }
         return;
       }
@@ -3050,7 +3208,6 @@
     if (!el.videoEmpty) return;
     el.videoEmpty.hidden = false;
     if (el.loopBadge) el.loopBadge.hidden = true;
-    if (el.frameVideoTitle) { el.frameVideoTitle.hidden = true; }
     var activePromos = live.phase === 'promo' ? effectivePromoList() : [];
     var nextRound = live.promoReturnPhase === 'players' ? plLive.roundNum : live.quizRoundNum;
     if (el.videoEmptyTitle) {
@@ -4671,7 +4828,7 @@
       el.options.innerHTML = '';
       return;
     }
-    el.qKicker.textContent = (seg === 'bible' ? 'Faith' : 'History') + ' \u00b7 ' + q.level;
+    el.qKicker.textContent = SEGMENTS[seg] + ' \u00b7 ' + q.level;
     el.qText.textContent = q.q;
 
     el.options.innerHTML = '';
@@ -4713,20 +4870,6 @@
       if (el.segLabel) el.segLabel.textContent = SEGMENTS[seg];
     }
     playSceneChime();
-    if (videoStageActive()) {
-      if (el.qKicker) el.qKicker.textContent = '';
-      if (el.qText) el.qText.textContent = '';
-      if (el.options) el.options.innerHTML = '';
-      if (el.reveal) el.reveal.hidden = true;
-      el.frameVideoTitle.hidden = false;
-      var list = activeList && activeList() || clips;
-      var cc = list && list[live.clipIndex % list.length];
-      if (cc && cc.name) {
-        el.frameVideoTitle.textContent = cc.name;
-      } else {
-        el.frameVideoTitle.textContent = 'Video engine';
-      }
-    }
   }
 
   function revealAnswer() {
@@ -5027,20 +5170,6 @@
       live.qRemaining = S.qSec * 1000;
     }
     renderQuestion();
-    if (videoStageActive()) {
-      if (el.qKicker) el.qKicker.textContent = '';
-      if (el.qText) el.qText.textContent = '';
-      if (el.options) el.options.innerHTML = '';
-      if (el.reveal) el.reveal.hidden = true;
-      var list = activeList && activeList() || clips;
-      var cc = list && list[live.clipIndex % list.length];
-      if (cc && cc.name) {
-        el.frameVideoTitle.textContent = cc.name;
-      } else {
-        el.frameVideoTitle.textContent = 'Video engine';
-      }
-      el.frameVideoTitle.hidden = false;
-    }
     if (S.voiceOn) speakCurrent(live.served > 1);
   }
 
@@ -5065,19 +5194,6 @@
       live.waitingForSpeech = false;
       live.qEndsAt = now() + S.qSec * 1000;
       live.qRemaining = S.qSec * 1000;
-    }
-    if (videoStageActive()) {
-      var list = activeList && activeList() || clips;
-      var cc = list && list[live.clipIndex % list.length];
-      var title = cc && cc.name ? cc.name : 'Video engine';
-      if (el.frameVideoTitle) {
-        el.frameVideoTitle.textContent = title;
-        el.frameVideoTitle.hidden = false;
-      }
-      if (el.qKicker) el.qKicker.textContent = '';
-      if (el.qText) el.qText.textContent = '';
-      if (el.options) el.options.innerHTML = '';
-      if (el.reveal) el.reveal.hidden = true;
     }
   }
 
@@ -6071,10 +6187,7 @@
     storyLive.stepStartedAt = now();
     if (S.voiceOn && (synth || storySpeechTracks.length)) {
       storyLive.waitingForSpeech = true;
-      /* Wait until the on-screen reader finishes this step's narration before
-         the scene transitions. The fixed hold is only a floor / timeout, not
-         the gate that advances the step. */
-      storyLive.stepEndsAt = storyLive.stepStartedAt + Math.max(holdMs, S.voiceOn ? 60000 : 0);
+      storyLive.stepEndsAt = storyLive.stepStartedAt + holdMs + 35000;
     } else {
       storyLive.waitingForSpeech = false;
       storyLive.stepEndsAt = storyLive.stepStartedAt + holdMs;
@@ -6495,11 +6608,16 @@
       stopSpeech();
       if (phase === 'video' && clips.length > 0) {
         var firstClip = clips[0];
-        if (firstClip && clipOwnership(firstClip.id) === 'reference') {
+        var ownership = firstClip ? clipOwnership(firstClip.id) : 'reference';
+        if (ownership === 'reference') {
           startPreroll();
           playClip(0);
           return;
         }
+        // Owned video: play straight away, but show a brief interactive session notice
+        playClip(0);
+        showInteractiveSessionNotice();
+        return;
       }
       playClip(phase === 'promo' ? live.clipIndex : 0);
       updatePromoBrand();
@@ -6522,27 +6640,17 @@
     el.phaseName.classList.toggle('is-video', isVideo);
     el.phaseFill.classList.toggle('is-video', isVideo);
     el.progFill.classList.toggle('is-video', isVideo);
-          if (el.segLabel) el.segLabel.textContent = '';
-      if (el.counter) el.counter.textContent = '';
-
-
-    /* Clean video screen: blank the segment / category tag and the question
-       counter on the tape, and drive the on-tape clip-title HUD from the
-       currently playing clip. During a promo break the overlay has its own
-       clock, so the frame-top strip is fully hidden by CSS. */
-    if (phase === 'video' || phase === 'promo') {
-      if (el.segLabel) el.segLabel.textContent = '';
-      if (el.counter) el.counter.textContent = '';
-      if (el.frameVideoTitle) {
-        el.frameVideoTitle.hidden = (phase !== 'video');
-        if (phase === 'video') {
-          var list = activeList && activeList() || clips;
-          var cc = list && list[live.clipIndex % list.length];
-          el.frameVideoTitle.textContent = cc && cc.name ? cc.name : 'Video engine';
-        }
+    if (el.segLabel && phase !== 'players' && phase !== 'story') {
+      el.segLabel.textContent = phase === 'quiz' ? SEGMENTS[S.segment] : label;
+    }
+    if (isVideo && el.counter) {
+      if (phase === 'video') {
+        el.counter.textContent = '';
+      } else {
+        el.counter.textContent = activePromos.length
+          ? 'Break 1 of 1 (' + ((live.clipIndex % activePromos.length) + 1) + '/' + activePromos.length + ')'
+          : ('Partner break (' + formatShortSec(effectivePromoAdSec()) + ' slot)');
       }
-    } else if (el.frameVideoTitle) {
-      el.frameVideoTitle.hidden = true;
     }
 
     if (el.frame) {
@@ -6826,7 +6934,7 @@
               storyLive.lastTickCueSec = 10;
             }
           }
-        } else if (!storyLive.waitingForSpeech) {
+        } else {
           if (stCur && stCur.kind === 'checkpoint' && !speechBusy()) {
             var stRemSec = Math.ceil((storyLive.stepEndsAt - t) / 1000);
             if (stRemSec >= 1 && stRemSec <= 10 && stRemSec !== storyLive.lastTickCueSec) {
@@ -7007,7 +7115,20 @@
       el.safeBtn.classList.toggle('is-on', !!on_);
     }
     applyChatSafe();
-    if (on_ && el.drawer && !el.drawer.hidden) closeDrawer();
+    // Hide any video overlays during stream-safe mode
+    if (on_) {
+      closeDrawer();
+      // Hide preroll and interactive notice if showing
+      if (el.videoPreroll && !el.videoPreroll.hidden) {
+        var wasPrerollActive = prerollActive;
+        dismissPreroll();
+        if (wasPrerollActive) interactiveNoticeDismissed = true;
+      }
+      // Hide break overlay if showing
+      if (overlay && !overlay.hidden) {
+        hideOverlay();
+      }
+    }
     window.requestAnimationFrame(function () {
       sizeStage();
       if (live.phase === 'quiz' && currentQ() && !live.quizMilestone) applyQuestionFit(currentQ().q.length);

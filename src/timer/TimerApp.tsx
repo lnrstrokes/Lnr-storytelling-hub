@@ -22,7 +22,12 @@ import './speech.js';
 import './speech-football.js';
 import { installProGate } from './pro-gate.ts';
 import { installVideoBreaks } from './video-breaks.ts';
+// Editable video titles: publishes window.LNR_CLIP_TITLES for the engine's
+// clip list. Must run before the engine boots.
+import { publishClipTitles } from './clip-title-store.ts';
 import { installVideoSetup } from './video-setup.ts';
+import { installTimerDecorations, videoDisclaimer } from './timer-decorator';
+import { installBreakVoice } from './break-voice';
 import { installAdminKeys } from './admin-keys.ts';
 // Free tier: 2 hours of airtime per day. Pro is unlimited. Enforced outside
 // the engine, against the stage class the engine already sets.
@@ -57,10 +62,19 @@ declare global {
     gtag?: (...args: unknown[]) => void;
     LNR_TRACK?: (eventName: string, params?: Record<string, unknown>) => void;
     LNR_DEBUG?: unknown;
+    /** Set by index.html when this browser must not report to analytics. */
+    __LNR_ANALYTICS_OFF__?: boolean;
   }
 }
 
 function initAnalytics() {
+  /* The operator's own devices are excluded: index.html decides this before
+     gtag.js loads, so no page_view or realtime hit is ever sent from here.
+     The tracker becomes a no-op rather than a second, unlabelled source. */
+  if (window.__LNR_ANALYTICS_OFF__) {
+    window.LNR_TRACK = () => {};
+    return;
+  }
   const gaId = (import.meta.env.VITE_GA_MEASUREMENT_ID || '').trim();
   const isValidGa = /^G-[A-Z0-9]+$/i.test(gaId);
   const hasGoogleTag = !!document.querySelector('script[src*="googletagmanager.com/"]');
@@ -147,7 +161,20 @@ export default function TimerApp() {
     // Installed BEFORE the engine boots: the gate listens on `document` in the
     // capture phase, so it always sees a gated control's event first.
     installProGate(host);
+    publishClipTitles();
     installVideoBreaks(host);
+    
+    // Install break card customizer (background templates & motion effects)
+    // Called after a short delay to ensure the break panel is fully built
+    const setupCustomizer = () => {
+      try {
+        const { onBreakPanelReady } = require('./engine-decorator');
+        onBreakPanelReady();
+      } catch (e) {
+        // Fail silently - customizer is optional
+      }
+    };
+    setTimeout(setupCustomizer, 100);
 
     // Existing quiz-and-anecdote toggle: the only quiz-loop toggle in the app.
     const anecdoteToggle = host.querySelector<HTMLInputElement>('#sermonAnecdoteToggle');
@@ -201,6 +228,8 @@ export default function TimerApp() {
     }
 
     installVideoSetup(host);
+    installTimerDecorations(host);
+    installBreakVoice(host);
     installAdminKeys(host);
     installAirtimeLimit(host);
     initInstallNotice();

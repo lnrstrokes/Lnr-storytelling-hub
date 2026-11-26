@@ -42,6 +42,40 @@
 
 /* ------------------------------------------------------------------ switch */
 
+/* Break status for the host. It sits in this panel, off the broadcast frame:
+   the video screen must show footage and nothing else. */
+.vbreak-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(4, 9, 7, 0.7);
+  border: 1px solid rgba(217, 171, 99, 0.28);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9aab9f;
+}
+
+.vbreak-chip[hidden] { display: none; }
+
+.vbreak-chip.is-on {
+  color: #f0cf95;
+  border-color: rgba(217, 171, 99, 0.55);
+}
+
+.vbreak-chip::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.65;
+}
+
 .vbreak-switch {
   display: inline-flex;
   align-items: center;
@@ -600,6 +634,64 @@
   color: #dcd5c5;
 }
 
+/* ---- five-second lead-in before the quiz / anecdote card ---- */
+
+.vbreak-notice-card {
+  width: min(100%, 560px);
+  align-items: center;
+  text-align: center;
+  gap: clamp(6px, 1.1cqw, 12px);
+  background: linear-gradient(160deg, #17281f 0%, #0b1511 68%);
+  border: 1px solid rgba(217, 171, 99, 0.34);
+  border-top: 5px solid rgba(217, 171, 99, 0.75);
+}
+
+.vbreak-notice-card .vbreak-card-head {
+  justify-content: center;
+}
+
+.vbreak-notice-title {
+  margin: 0;
+  font-family: var(--display, ui-serif, Georgia, serif);
+  font-size: clamp(24px, 4.2cqw, 44px);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: #fbf7ee;
+  text-wrap: balance;
+}
+
+.vbreak-notice-sub {
+  margin: 0;
+  font-size: clamp(13px, 1.7cqw, 17px);
+  line-height: 1.5;
+  color: #b9c6bc;
+  text-wrap: balance;
+}
+
+.vbreak-notice-count {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: clamp(26px, 4.6cqw, 48px);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: #f0cf95;
+}
+
+.vbreak-notice-track {
+  width: min(100%, 320px);
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(240, 232, 212, 0.12);
+}
+
+.vbreak-notice-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #cfa35a, #e2bf88);
+  transition: width 120ms linear;
+}
+
 /* ---- video ownership selector (setup panel) ---- */
 .video-ownership-row {
   margin-top: 14px;
@@ -668,9 +760,29 @@
   background:
     radial-gradient(70% 70% at 50% 30%, rgba(207, 163, 90, 0.12) 0%, rgba(4, 9, 7, 0.96) 72%),
     #040907;
+  cursor: pointer;
 }
 
 .video-preroll[hidden] { display: none; }
+
+/* Interactive session notice (for owned videos) - sage green accent */
+.video-preroll.is-interactive {
+  background:
+    radial-gradient(70% 70% at 50% 30%, rgba(123, 176, 149, 0.12) 0%, rgba(4, 9, 7, 0.96) 72%),
+    #040907;
+}
+
+.video-preroll.is-interactive .video-preroll-pill {
+  color: #7bb095;
+}
+
+.video-preroll.is-interactive .video-preroll-title {
+  color: #7bb095;
+}
+
+.video-preroll.is-interactive .video-preroll-card {
+  border-left-color: #7bb095;
+}
 
 .video-preroll-card {
   width: min(100%, 560px);

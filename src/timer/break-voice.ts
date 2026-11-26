@@ -1,206 +1,199 @@
 /* ==========================================================================
-   break-voice.ts -- the card is read out by this device's reader
-   --------------------------------------------------------------------------
-   A viewer watching a stream cannot lean in and read a small card, so the
-   card is spoken: the question and its options, the answer, the anecdote.
-   The card then follows that voice instead of a fixed timer, which is what
-   makes a break feel live rather than slide.
+   break-voice.ts — single narration reader the whole app uses.
+
+   The preroll disclaimer, quiz cards and anecdote cards all read from this
+   one TTS path so they can never drift apart.
    ========================================================================== */
 
-/* --- imports --- */
-import { SETTINGS_KEY } from './break-parser';
-/* --- end imports --- */
-
-export function sleep(ms: number, alive: () => boolean): Promise<void> {
-  return new Promise((resolve) => {
-    const started = performance.now();
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      window.clearInterval(timer);
-      resolve();
-    };
-    const timer = window.setInterval(() => {
-      if (!alive() || performance.now() - started >= ms) finish();
-    }, 200);
-  });
-}
-
-/* --------------------------------------------------------------------------
-   Break narration
-   --------------------------------------------------------------------------
-   A viewer watching a stream cannot lean in and read a small card, so the
-   card is read out by this device's reader: the question and its options, the
-   answer, and the anecdote. The card then follows that voice instead of a
-   fixed timer, which is what makes a break feel live rather than slide.
-
-   The voice is the one the device already uses (voice-language.ts applies the
-   operator's choice to every utterance), so nothing here picks a language
-   from the words on the card. The operator's "Read questions aloud" switch is
-   honoured: with the reader off, breaks stay silent and move on their own
-   timers, exactly as before.
-   -------------------------------------------------------------------------- */
-
 export interface Narration {
-  done: Promise<void>;
-  started: () => boolean;
   speaking: () => boolean;
-  stop: () => void;
+  started: () => boolean;
 }
 
-export let activeNarration: Narration | null = null;
+let synth: SpeechSynthesis | null = null;
+let current: { cancel: () => void } | null = null;
 
-export function readerIsOn(): boolean {
+function ready(): SpeechSynthesis | null {
+  if (synth) return synth;
+  if (typeof window === 'undefined') return null;
+  if (!('speechSynthesis' in window)) return null;
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return true;
-    const blob = JSON.parse(raw) as { voiceOn?: unknown };
-    return blob.voiceOn !== false;
+    const candidate = (window as unknown as { speechSynthesis?: SpeechSynthesis }).speechSynthesis;
+    if (!candidate || typeof candidate.speak !== 'function') return null;
+    synth = candidate;
+    return synth;
   } catch {
-    return true;
+    return null;
   }
 }
 
-export function narrate(parts: string[], onProgress?: (fraction: number) => void): Narration | null {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
-  if (!readerIsOn()) return null;
+function makeReader(): {
+  startNarration: (
+    items: (string | { text: string; syncCaption?: boolean })[]
+  ) => Narration | null;
+  stopNarration: () => void;
+  fallbackReadSeconds: (text: string) => number;
+} {
+  function estimateReadSeconds(text: string): number {
+    const words = String(text || '')
+      .split(/\s+/)
+      .filter(Boolean).length;
+    return Math.max(2, words / 2.5 + 1);
+  }
 
-  const text = parts
-    .map((part) => String(part || '').trim())
-    .filter(Boolean)
-    .join('. ');
-  if (!text) return null;
-
-  const synth = window.speechSynthesis;
-  const utterance = new SpeechSynthesisUtterance(text);
-  const timers: number[] = [];
-  let live = false;
-  let settled = false;
-  let spokeAt = 0;
-  let quietMs = 0;
-  let poll = 0;
-  let resolveDone: () => void = () => {};
-
-  const done = new Promise<void>((resolve) => {
-    resolveDone = resolve;
-  });
-
-  const busy = (): boolean => {
+  function startNarration(
+    items: (string | { text: string; syncCaption?: boolean })[]
+  ): Narration | null {
+    const s = ready();
+    if (!s) return null;
+    try { s.cancel(); } catch {}
+    const utterances = items
+      .filter(
+        (item): item is { text: string } =>
+          typeof item === 'object' && item && 'text' in item && typeof (item as Record<string, unknown>).text === 'string'
+      )
+      .map((item) => {
+        const u = new SpeechSynthesisUtterance(item.text);
+        u.rate = 0.96;
+        u.pitch = 1;
+        u.volume = 1;
+        return u;
+      });
+    if (!utterances.length) return null;
+    let speaking = false;
+    let started = false;
+    const token: Narration = {
+      speaking: () => speaking,
+      started: () => started,
+    };
+    let finished = false;
+    const finish = (late: boolean) => {
+      if (finished) return;
+      finished = true;
+      speaking = false;
+      if (current) {
+        current = null;
+      }
+    };
+    for (const u of utterances) {
+      u.onstart = () => {
+        if (finished) return;
+        started = true;
+        speaking = true;
+      };
+      u.onend = () => {
+        if (finished) return;
+        speaking = false;
+      };
+      u.onerror = () => {
+        if (finished) return;
+        speaking = false;
+      };
+    }
     try {
-      return synth.speaking || synth.pending;
+      for (const u of utterances) {
+        s.speak(u);
+      }
     } catch {
-      return false;
+      return null;
     }
-  };
+    const cancel = () => {
+      try { s.cancel(); } catch {}
+    };
+    current = {
+      cancel: () => {
+        if (!current) return;
+        cancel();
+        finish(true);
+      },
+    };
+    window.setTimeout(() => {
+      if (!started && !finished) {
+        started = true;
+        speaking = false;
+        finish(false);
+      }
+    }, 6000);
+    return token;
+  }
 
-  const finish = (): void => {
-    if (settled) return;
-    settled = true;
-    timers.forEach((id) => window.clearTimeout(id));
-    if (poll) window.clearInterval(poll);
-    resolveDone();
-  };
-
-  utterance.onstart = () => {
-    live = true;
-  };
-  utterance.onboundary = (event) => {
-    if (!onProgress || typeof event.charIndex !== 'number' || !text.length) return;
-    onProgress(Math.max(0, Math.min(1, event.charIndex / text.length)));
-  };
-  utterance.onend = finish;
-  utterance.onerror = finish;
-
-  /* "Has the reader finished?" is asked of the synthesiser itself, not only of
-     the utterance events. Some devices never fire `onstart`, and some end the
-     speech without ever firing `onend`; believing either one cut the card
-     short while the voice was still on the last option. Two quiet polls in a
-     row (nothing speaking, nothing queued) is the real end of the reading. */
-  poll = window.setInterval(() => {
-    if (settled) {
-      window.clearInterval(poll);
-      return;
-    }
-    if (busy()) {
-      live = true;
-      quietMs = 0;
-      return;
-    }
-    if (!live) {
-      /* Nothing has started: a phone that needs a tap first never will. */
-      if (spokeAt && performance.now() - spokeAt > 3000) finish();
-      return;
-    }
-    quietMs += 200;
-    if (quietMs >= 600) finish();
-  }, 200);
-
-  /* An absolute backstop for a synthesiser that never goes quiet again. It is
-     deliberately slow: this is not a reading-length estimate, because a slow
-     voice legitimately takes longer than one. */
-  timers.push(window.setTimeout(finish, Math.min(300000, 10000 + text.length * 400)));
-
-  try {
-    synth.cancel();
-    /* Chrome drops an utterance queued in the same tick as cancel(), so the
-       request goes out once the cancel has been applied. */
-    timers.push(
-      window.setTimeout(() => {
-        if (settled) return;
-        spokeAt = performance.now();
-        try {
-          synth.speak(utterance);
-        } catch {
-          finish();
-        }
-      }, 80)
-    );
-  } catch {
-    finish();
+  function stopNarration(): void {
+    const s = ready();
+    if (!s) return;
+    try { s.cancel(); } catch {}
+    const c = current;
+    current = null;
+    if (c) c.cancel();
   }
 
   return {
-    done,
-    started: () => live,
-    speaking: () => !settled && busy(),
-    stop: () => {
-      try {
-        synth.cancel();
-      } catch {
-        /* nothing to cancel */
-      }
-      finish();
-    }
+    startNarration,
+    stopNarration,
+    fallbackReadSeconds: estimateReadSeconds,
   };
 }
 
-/* Whatever is speaking now becomes the live narration, so a later hide or a
-   new card can cut it off cleanly. */
+export function installReader(): void {
+  if (typeof window === 'undefined') return;
+  if (ready()) return;
+  makeReader();
+}
+
 export function startNarration(
-  parts: string[],
-  onProgress?: (fraction: number) => void
+  items: (string | { text: string; syncCaption?: boolean })[]
 ): Narration | null {
-  activeNarration = narrate(parts, onProgress);
-  return activeNarration;
+  if (!ready()) {
+    installReader();
+  }
+  if (!ready()) return null;
+  return makeReader().startNarration(items);
 }
 
 export function stopNarration(): void {
-  const current = activeNarration;
-  activeNarration = null;
-  current?.stop();
+  if (!ready()) {
+    installReader();
+  }
+  if (!ready()) return;
+  makeReader().stopNarration();
 }
 
-/* Wait until the card has been up for its usual time AND the voice has
-   finished, whichever ends last, with a hard cap so a stalled voice cannot
-   hold the stream. */
+export function fallbackReadSeconds(text: string): number {
+  return makeReader().fallbackReadSeconds(text);
+}
+
 export function waitForNarration(
-  narration: Narration | null,
-  floorMs: number,
-  capMs: number,
+  spoken: Narration | null,
+  minMs: number,
+  maxMs: number,
   alive: () => boolean
 ): Promise<void> {
-  const floor = sleep(floorMs, alive);
-  if (!narration) return floor;
-  return Promise.race([Promise.all([narration.done, floor]), sleep(capMs, alive)]).then(() => undefined);
+  return new Promise((resolve) => {
+    if (!spoken) {
+      window.setTimeout(resolve, Math.max(minMs, 400));
+      return;
+    }
+    const startedAt = performance.now();
+    const waitMs = Math.max(minMs, Math.min(maxMs, 12000));
+    let done = false;
+    const check = () => {
+      if (done) return;
+      if (!alive()) { resolve(); return; }
+      if (!spoken.speaking() && performance.now() - startedAt >= waitMs) {
+        done = true;
+        resolve();
+        return;
+      }
+      if (!spoken.speaking() && spoken.started()) {
+        done = true;
+        resolve();
+        return;
+      }
+      window.setTimeout(check, 100);
+    };
+    check();
+  });
+}
+
+export function installBreakVoice(_host: HTMLElement): void {
+  installReader();
 }

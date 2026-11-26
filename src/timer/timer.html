@@ -394,7 +394,7 @@
           </p>
           <p class="video-reference-note">
             <strong>Reference &amp; ownership:</strong> the video you load is used as the reference to generate the quiz and anecdote breaks.
-            The 13-second notice before each break tells viewers the clip is used as reference. Own the video or use it for reference at your discretion,
+            A short notice with voice plays once, before the clip starts, and tells viewers the clip is used as reference. Own the video or use it for reference at your discretion,
             and attribute it as reference material in your stream description to respect copyright.
           </p>
           <p class="video-break-setup-note" id="videoBreakSetupNote">
@@ -1079,8 +1079,6 @@
           </div>
 
           <div class="video-stage" id="videoStage" hidden>
-            <div class="vbreak-stage-indicator" id="vbreakStageIndicator" hidden></div>
-            <span class="frame-video-title" id="frameVideoTitle" hidden></span>
             <video id="stageVideo" playsinline preload="auto" class="is-active"></video>
             <video id="stageVideoB" playsinline preload="auto" class="is-standby" hidden></video>
             <canvas id="demoVideoCanvas" class="demo-video-canvas" hidden></canvas>
@@ -1100,7 +1098,7 @@
                 <div class="video-preroll-progress">
                   <div class="video-preroll-bar" id="videoPrerollBar"></div>
                 </div>
-                <p class="video-preroll-timer" id="videoPrerollTimer">10s</p>
+                <p class="video-preroll-timer" id="videoPrerollTimer">Reading&hellip;</p>
               </div>
             </div>
             <div class="studio-break-card" id="promoAdOverlay" hidden>

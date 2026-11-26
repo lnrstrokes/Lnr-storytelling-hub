@@ -35,6 +35,8 @@
 
   function trackEvent(name: string, params?: Record<string, unknown>) {
     if (typeof window === 'undefined') return;
+    // Owner devices opted out in index.html: send nothing at all.
+    if ((window as { __LNR_ANALYTICS_OFF__?: boolean }).__LNR_ANALYTICS_OFF__) return;
     const p: Record<string, unknown> = Object.assign({}, internalParam(), params || {});
     // Privacy: never ship emails, licence keys, names or file contents.
     delete p.email;

@@ -14,9 +14,22 @@
 
 /* --- imports --- */
 import { breaksFor, buildPanel } from './break-panel';
-import { BreakItem, ClipBreaks, EngineDebug, QuizQ, globalQuizSeconds, readRecord } from './break-parser';
+import {
+  BreakItem,
+  ClipBreaks,
+  EngineDebug,
+  QuizQ,
+  globalQuizSeconds,
+  readRecord
+} from './break-parser';
 import { getProState } from '../pro/license';
-import { startNarration, stopNarration, waitForNarration, type Narration } from './break-voice';
+import {
+  startNarration,
+  stopNarration,
+  waitForNarration,
+  fallbackReadSeconds,
+  type Narration
+} from './break-voice';
 /* --- end imports --- */
 
 const shownSets = new Map<string, Set<number>>();
@@ -60,24 +73,20 @@ function onDeckTime(v: HTMLVideoElement): void {
 
   trackDeck(v);
 
-  // Debug: log why breaks might not trigger
   if (!getProState().active) {
-    // Silent: break requires Pro. The panel already shows the locked notice.
     return;
   }
 
   const record = readRecord(clipId);
   if (!record.on) {
-    // Silent: break toggle is off. The panel shows the toggle state.
     return;
   }
 
   const state = engineState();
   if (!state || state.phase !== 'video' || state.paused) return;
 
-  const clipBreaks = breaksFor(clipId);
+  const clipBreaks = breaksFor(clipId, clipId);
   if (!clipBreaks || !clipBreaks.items.length) {
-    // Silent: no break items for this clip. The panel shows the upload status.
     return;
   }
 
@@ -104,7 +113,7 @@ function onDeckTime(v: HTMLVideoElement): void {
 function onDeckSeeking(v: HTMLVideoElement): void {
   const clipId = v.getAttribute('data-clip-id') || '';
   if (!clipId) return;
-  const clipBreaks = breaksFor(clipId);
+  const clipBreaks = breaksFor(clipId, clipId);
   if (!clipBreaks) return;
 
   let shown = shownSets.get(clipId);
@@ -112,7 +121,6 @@ function onDeckSeeking(v: HTMLVideoElement): void {
     shown = new Set();
     shownSets.set(clipId, shown);
   }
-  /* Seeking past a break skips it silently. */
   clipBreaks.items.forEach((item) => {
     if (item.time != null && item.time <= v.currentTime + 0.75) shown!.add(item.key);
   });
@@ -149,8 +157,6 @@ async function runBreak(
 
   if (!wasPlaying) return;
   if (!alive()) return;
-  /* The engine may have handed the stage to another clip (a promo, or the
-     next loop). Never touch a deck that is no longer the active one. */
   if (v.getAttribute('data-clip-id') !== clipId || !v.classList.contains('is-active')) return;
 
   try {
@@ -193,7 +199,6 @@ function hideOverlay(): void {
 }
 
 function flashCard(styleIndex: number): HTMLDivElement {
-  /* A new card takes the floor: whatever the old one was saying stops. */
   stopNarration();
   const card = ensureOverlay();
   if (overlay) overlay.hidden = false;
@@ -213,17 +218,13 @@ function elm<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/* The card no longer carries a source tag: "Quiz Source" under every question
-   was a label nobody needed, and the uploaded file name ("81367.mp4") meant
-   nothing to a viewer. A title the creator wrote is still shown; with no title
-   the head alone is enough, so no empty row is rendered. */
-function cardMeta(card: HTMLDivElement, clipBreaks: ClipBreaks, kicker: string, counter: string): void {
+function cardMeta(card: HTMLDivElement, clipBreaks: ClipBreaks, kicker: string): void {
   const head = elm('div', 'vbreak-card-head');
   head.appendChild(elm('span', 'vbreak-kicker', kicker));
-  head.appendChild(elm('span', 'vbreak-counter', counter));
   card.appendChild(head);
 
-  const title = clipBreaks.title || (kicker.indexOf('ANECDOTE') === 0 ? 'Anecdote Source' : '');
+  const title =
+    clipBreaks.title || (kicker.indexOf('ANECDOTE') === 0 ? 'Anecdote Source' : '');
   if (!title && !clipBreaks.church) return;
 
   const meta = elm('div', 'vbreak-meta');
@@ -232,35 +233,77 @@ function cardMeta(card: HTMLDivElement, clipBreaks: ClipBreaks, kicker: string, 
   card.appendChild(meta);
 }
 
+const NOTICE_SECONDS = 5;
 
+function noticeCard(
+  kicker: string,
+  headline: string,
+  detail: string,
+  alive: () => boolean
+): Promise<boolean> {
+  const card = flashCard(0);
+  card.classList.add('vbreak-notice-card');
 
-async function playBreak(item: BreakItem, clipBreaks: ClipBreaks, alive: () => boolean): Promise<void> {
+  const head = elm('div', 'vbreak-card-head');
+  head.appendChild(elm('span', 'vbreak-kicker', kicker));
+  card.appendChild(head);
+
+  card.appendChild(elm('p', 'vbreak-notice-title', headline));
+  card.appendChild(elm('p', 'vbreak-notice-sub', detail));
+
+  const counter = elm('div', 'vbreak-notice-count', String(NOTICE_SECONDS));
+  card.appendChild(counter);
+
+  const track = elm('div', 'vbreak-notice-track');
+  const bar = elm('div', 'vbreak-notice-bar');
+  track.appendChild(bar);
+  card.appendChild(track);
+
+  return new Promise<boolean>((resolve) => {
+    const startedAt = performance.now();
+    let lastShown = NOTICE_SECONDS;
+    const tick = window.setInterval(() => {
+      if (!alive()) {
+        window.clearInterval(tick);
+        resolve(false);
+        return;
+      }
+      const elapsed = (performance.now() - startedAt) / 1000;
+      bar.style.width = `${Math.min(100, (elapsed / NOTICE_SECONDS) * 100)}%`;
+      const left = Math.max(0, Math.ceil(NOTICE_SECONDS - elapsed));
+      if (left !== lastShown) {
+        lastShown = left;
+        counter.textContent = String(left);
+      }
+      if (elapsed >= NOTICE_SECONDS) {
+        window.clearInterval(tick);
+        resolve(true);
+      }
+    }, 100);
+  });
+}
+
+async function playBreak(
+  item: BreakItem,
+  clipBreaks: ClipBreaks,
+  alive: () => boolean
+): Promise<void> {
   const total = item.questions.length;
 
-  /* A 60-second reference disclaimer plays before the quiz and anecdote cards.
-     The video is the reference used to generate the quiz and anecdote, so the
-     viewer is warned before the clip pauses. This sits in the same overlay as
-     the other break notices, and it never interrupts playback that is already
-     paused or no longer the active clip. */
-  {
-    const shown = await showVideoReferenceDisclaimer(alive);
-    if (!shown || !alive()) return;
-  }
+  document.dispatchEvent(
+    new CustomEvent('lnr:break-run', {
+      detail: { item, clipBreaks, total, questions: item.questions }
+    })
+  );
 
-  /* A notice before the break, in the same visual language as the promo
-     notice (#adNotice): same pill, same copy rhythm, same 5s countdown bar.
-     Without it the clip simply stopped and a quiz appeared with no warning,
-     which read as a glitch rather than a planned segment. */
   if (total > 0) {
-    const shown = await showBreakNotice(
-      'QUIZ',
-      'Quiz break starting soon',
-      total === 1
-        ? 'One question, then the clip resumes where it left off'
-        : `${total} questions, then the clip resumes where it left off`,
+    const ready = await noticeCard(
+      'UP NEXT',
+      'Quiz break',
+      'The first question starts in a moment.',
       alive
     );
-    if (!shown || !alive()) return;
+    if (!ready || !alive()) return;
   }
 
   for (let index = 0; index < item.questions.length; index++) {
@@ -274,141 +317,30 @@ async function playBreak(item: BreakItem, clipBreaks: ClipBreaks, alive: () => b
   }
 
   if (item.anecdote && alive()) {
-    const shown = await showBreakNotice(
-      'ANECDOTE',
-      'Anecdote break starting soon',
-      'A short story from this chapter, then the clip resumes',
+    const ready = await noticeCard(
+      'UP NEXT',
+      'Anecdote',
+      'A short story from the source starts in a moment.',
       alive
     );
-    if (!shown || !alive()) return;
+    if (!ready || !alive()) return;
     await showAnecdote(item, clipBreaks, alive);
   }
 }
 
-/* --------------------------------------------------------------------------
-   Pre-break notice
-   --------------------------------------------------------------------------
-   Mirrors the promo notice exactly: a pill, a bold title, one line of
-   supporting copy, a live countdown and a progress bar. It is rendered inside
-   the same overlay the break card uses, so placement and readability are
-   identical across all three break types.
-   -------------------------------------------------------------------------- */
-const NOTICE_MS = 5000;
-
-function showVideoReferenceDisclaimer(alive: () => boolean): Promise<boolean> {
-  const card = flashCard(0);
-  card.classList.add('vbreak-notice-card');
-
-  const notice = elm('div', 'studio-break-notice vbreak-notice');
-  notice.setAttribute('role', 'status');
-  notice.setAttribute('aria-live', 'polite');
-
-  const row = elm('div', 'studio-break-notice-row');
-  row.appendChild(elm('span', 'studio-break-pill', 'REFERENCE'));
-
-  const copy = elm('div', 'studio-break-notice-copy');
-  copy.appendChild(elm('b', '', 'Video used as reference'));
-  copy.appendChild(elm('span', '', 'This clip is the reference used to generate the quiz and anecdote.'));
-  row.appendChild(copy);
-
-  const timer = elm('span', 'studio-break-notice-timer', '13s');
-  row.appendChild(timer);
-  notice.appendChild(row);
-
-  const bar = elm('div', 'studio-break-bar');
-  const fill = elm('span', '');
-  bar.appendChild(fill);
-  notice.appendChild(bar);
-
-  const attribution = elm('p', 'vbreak-reference-attribution');
-  attribution.appendChild(
-    elm(
-      'span',
-      '',
-      'The clip is attributed as reference material. Own the video or use it for reference at your discretion.'
-    )
-  );
-  notice.appendChild(attribution);
-
-  card.appendChild(notice);
-
-  const started = performance.now();
-  const REFERENCE_MS = 13000;
-  return new Promise<boolean>((resolve) => {
-    let settled = false;
-    const finish = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      window.clearInterval(tick);
-      resolve(ok);
-    };
-    const tick = window.setInterval(() => {
-      if (!alive()) {
-        finish(false);
-        return;
-      }
-      const elapsed = performance.now() - started;
-      const left = Math.max(0, REFERENCE_MS - elapsed);
-      timer.textContent = Math.max(1, Math.ceil(left / 1000)) + 's';
-      fill.style.width = Math.min(100, (elapsed / REFERENCE_MS) * 100).toFixed(1) + '%';
-      if (left <= 0) finish(true);
-    }, 100);
-  });
-}
-
-function showBreakNotice(
-  pill: string,
-  title: string,
-  sub: string,
-  alive: () => boolean
-): Promise<boolean> {
-  const card = flashCard(0);
-  card.classList.add('vbreak-notice-card');
-
-  const notice = elm('div', 'studio-break-notice vbreak-notice');
-  notice.setAttribute('role', 'status');
-  notice.setAttribute('aria-live', 'polite');
-
-  const row = elm('div', 'studio-break-notice-row');
-  row.appendChild(elm('span', 'studio-break-pill', pill));
-
-  const copy = elm('div', 'studio-break-notice-copy');
-  copy.appendChild(elm('b', '', title));
-  copy.appendChild(elm('span', '', sub));
-  row.appendChild(copy);
-
-  const timer = elm('span', 'studio-break-notice-timer', '5s');
-  row.appendChild(timer);
-  notice.appendChild(row);
-
-  const bar = elm('div', 'studio-break-bar');
-  const fill = elm('span', '');
-  bar.appendChild(fill);
-  notice.appendChild(bar);
-
-  card.appendChild(notice);
-
-  const started = performance.now();
-  return new Promise<boolean>((resolve) => {
-    let settled = false;
-    const finish = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      window.clearInterval(tick);
-      resolve(ok);
-    };
-    const tick = window.setInterval(() => {
-      if (!alive()) {
-        finish(false);
-        return;
-      }
-      const elapsed = performance.now() - started;
-      const left = Math.max(0, NOTICE_MS - elapsed);
-      timer.textContent = Math.max(1, Math.ceil(left / 1000)) + 's';
-      fill.style.width = Math.min(100, (elapsed / NOTICE_MS) * 100).toFixed(1) + '%';
-      if (left <= 0) finish(true);
-    }, 100);
-  });
+function readingDone(
+  spoken: Narration | null,
+  startedAt: number,
+  readSeconds: number
+): boolean {
+  if (!spoken) return true;
+  const waited = performance.now() - startedAt;
+  const speaking =
+    typeof spoken.speaking === 'function' ? spoken.speaking() : false;
+  if (speaking) return waited > (readSeconds + 30) * 1000;
+  const heard = typeof spoken.started === 'function' ? spoken.started() : false;
+  if (heard) return true;
+  return waited >= readSeconds * 1000;
 }
 
 function askQuestion(
@@ -420,7 +352,7 @@ function askQuestion(
   alive: () => boolean
 ): Promise<number | null> {
   const card = flashCard(item.key + index);
-  cardMeta(card, clipBreaks, total > 1 ? `QUIZ · ${index + 1} OF ${total}` : 'QUIZ BREAK', `${item.key + 1}`);
+  cardMeta(card, clipBreaks, total > 1 ? `QUIZ · ${index + 1} OF ${total}` : 'QUIZ BREAK');
 
   card.appendChild(elm('p', 'vbreak-q', question.prompt));
 
@@ -435,75 +367,77 @@ function askQuestion(
   });
   card.appendChild(options);
 
-  /* Read the question and its options as they appear, so the break is
-     something the viewer hears rather than a card they have to squint at.
-     The narration is kept: the countdown below does not run while the
-     question is still being read. */
   const spoken = startNarration([
-    `Question ${index + 1} of ${total}.`,
-    question.prompt,
-    ...question.options.map((text, optIndex) => `Option ${String.fromCharCode(65 + optIndex)}. ${text}`)
+    { text: `Question ${index + 1} of ${total}.`, syncCaption: false },
+    { text: question.prompt, syncCaption: false },
+    ...question.options.map(
+      (text, optIndex) =>
+        ({
+          text: `Option ${String.fromCharCode(65 + optIndex)}. ${text}`,
+          syncCaption: false
+        } as { text: string; syncCaption: false })
+    )
   ]);
 
   const clock = elm('span', 'vbreak-clock', '');
   card.appendChild(clock);
 
-  const seconds = question.countdown && question.countdown > 0 ? question.countdown : globalQuizSeconds();
-  let remaining = seconds;
-  clock.textContent = `${remaining}s`;
+  const seconds =
+    question.countdown && question.countdown > 0 ? question.countdown : globalQuizSeconds();
 
-  return new Promise<number | null>((resolve) => {
-    let settled = false;
-    let timer = 0;
+  const questionText = [question.prompt, ...question.options].join(' ');
+  const readSeconds = fallbackReadSeconds(questionText);
+  let reading = !!spoken;
 
-    /* The reader owns this card. A fixed countdown used to expire while the
-       voice was still on the last option, so the answer appeared before the
-       question had been heard. The think timer now starts once the reading
-       finishes; a phone that refuses to speak resolves its own timeout and
-       the countdown proceeds as before. The synthesiser is asked directly as
-       well, because an utterance event can report "done" a moment early. */
-    let reading = !!spoken;
-    let readDoneAt = 0;
-    if (spoken) {
-      void spoken.done.then(() => {
-        reading = false;
-        readDoneAt = performance.now();
-      });
+  let settled = false;
+  let answerWith: (value: number | null) => void = () => {};
+  const answered = new Promise<number | null>((resolve) => {
+    answerWith = resolve;
+  });
+
+  const finish = (value: number | null) => {
+    if (settled) return;
+    settled = true;
+    window.clearInterval(timer);
+    stopNarration();
+    buttons.forEach((button) => {
+      button.disabled = true;
+    });
+    answerWith(value);
+  };
+
+  buttons.forEach((button, optIndex) => {
+    button.addEventListener('click', () => {
+      button.classList.add('is-chosen');
+      finish(optIndex);
+    });
+  });
+
+  const readStartTime = performance.now();
+  let countdownStartAt = 0;
+
+  const timer = window.setInterval(() => {
+    if (!alive()) {
+      finish(null);
+      return;
     }
 
-    const finish = (value: number | null) => {
-      if (settled) return;
-      settled = true;
-      window.clearInterval(timer);
-      stopNarration();
-      buttons.forEach((button) => {
-        button.disabled = true;
-      });
-      resolve(value);
-    };
-
-    buttons.forEach((button, optIndex) => {
-      button.addEventListener('click', () => {
-        button.classList.add('is-chosen');
-        finish(optIndex);
-      });
-    });
-
-    timer = window.setInterval(() => {
-      if (!alive()) {
-        finish(null);
+    if (reading) {
+      if (!readingDone(spoken, readStartTime, readSeconds)) {
+        clock.textContent = 'Reading…';
         return;
       }
-      if (reading) return;
-      /* Still audibly talking after the events said it was over: give it a
-         short grace, then move on so a stuck synthesiser cannot hold the
-         clip forever. */
-      if (spoken && spoken.speaking() && performance.now() - readDoneAt < 3000) return;
-      remaining -= 0.2;
-      clock.textContent = `${Math.max(0, Math.ceil(remaining))}s`;
-      if (remaining <= 0) finish(null);
-    }, 200);
-  });
+      reading = false;
+      countdownStartAt = performance.now();
+    }
+
+    if (!countdownStartAt) countdownStartAt = performance.now();
+    const left = Math.max(0, seconds - (performance.now() - countdownStartAt) / 1000);
+    clock.textContent = `${Math.max(0, Math.ceil(left))}s`;
+    if (left <= 0) finish(null);
+  }, 200);
+
+  return answered;
 }
 
 function revealQuestion(
@@ -515,7 +449,6 @@ function revealQuestion(
   clipBreaks: ClipBreaks,
   alive: () => boolean
 ): Promise<boolean> {
-  /* Re-render the same question state, then mark the answer. */
   const card = ensureOverlay();
   const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>('.vbreak-opt'));
   buttons.forEach((button, optIndex) => {
@@ -538,37 +471,25 @@ function revealQuestion(
   if (question.explanation) reveal.appendChild(elm('p', 'vbreak-explain', question.explanation));
   card.appendChild(reveal);
 
-  /* The answer is spoken too, and the card waits for it instead of a fixed
-     12 seconds: a short answer moves on quickly, a long explanation is heard
-     to its end (capped so the clip always resumes). */
   const spoken = startNarration([
     `Answer: ${String.fromCharCode(65 + question.correct)}. ${question.options[question.correct]}.`,
     question.explanation || ''
   ]);
 
-  void index;
-  void total;
-  void item;
-  void clipBreaks;
-
-  /* The cap is generous: the reader may take a minute on a long explanation,
-     and cutting it off is exactly the race this card exists to avoid. The
-     narration ends on its own when the voice goes quiet. */
   return waitForNarration(spoken, 6000, 90000, alive).then(() => alive());
 }
 
-async function showAnecdote(item: BreakItem, clipBreaks: ClipBreaks, alive: () => boolean): Promise<void> {
+async function showAnecdote(
+  item: BreakItem,
+  clipBreaks: ClipBreaks,
+  alive: () => boolean
+): Promise<void> {
   const anecdote = item.anecdote;
   if (!anecdote) return;
 
   const card = flashCard(item.key + 2);
-  cardMeta(card, clipBreaks, 'ANECDOTE', `${item.key + 1}`);
+  cardMeta(card, clipBreaks, 'ANECDOTE');
 
-  /* A long anecdote used to run past the bottom of the stage, and a viewer
-     watching a livestream cannot scroll: the rest of the story was simply
-     lost. The text now sits in its own window that glides down by itself at
-     reading speed, so the whole story is shown, and it stops moving the
-     moment the host touches it or scrolls it by hand. */
   card.classList.add('vbreak-anecdote-card');
 
   if (anecdote.title) card.appendChild(elm('h4', 'vbreak-anecdote-title', anecdote.title));
@@ -582,56 +503,25 @@ async function showAnecdote(item: BreakItem, clipBreaks: ClipBreaks, alive: () =
   const words = anecdote.text.split(/\s+/).filter(Boolean).length;
   const holdMs = Math.min(25, Math.max(12, words * 0.3 + 4)) * 1000;
 
-  /* The story is read aloud, and the card follows the reading: every spoken
-     word moves the window by the same share of the story, so the line being
-     heard is the line on screen. Movement is eased frame by frame, so the
-     text glides instead of jumping a line per word — and when this device
-     reports no word markers at all, the window keeps drifting at the same
-     gentle pace instead of sitting still on the first paragraph. */
-  const lead = anecdote.title
-    ? (anecdote.title.length + 2) / (anecdote.title.length + 2 + anecdote.text.length)
-    : 0;
-  let voiceShare = 0;
-  let voiceAt = 0;
+  const narration = startNarration([anecdote.title || '', anecdote.text]);
 
-  const narration = startNarration([anecdote.title || '', anecdote.text], (fraction) => {
-    const share = lead >= 1 ? 1 : Math.max(0, Math.min(1, (fraction - lead) / (1 - lead)));
-    voiceShare = Math.max(voiceShare, share);
-    voiceAt = performance.now();
-  });
-
-  /* From the next frame on: the card has a height by then, so the overflow is
-     known and the window can start moving. */
   const stopFollow = followReading(
     scroller,
     narration,
     holdMs,
-    () => voiceShare,
-    () => voiceAt
+    () => 0,
+    () => 0
   );
 
-  /* Long enough for a two-minute story to be read to its last line before the
-     clip resumes; the drift pace still reaches the end by the floor hold. */
   await waitForNarration(narration, holdMs, 150000, alive);
   stopFollow();
   stopNarration();
+
+  // Signal that the anecdote has finished and video will restart soon
+  // The decorator listens for this to show the 10-second countdown notice
+  document.dispatchEvent(new CustomEvent('lnr:anecdote-finished'));
 }
 
-/* The story window follows the reader.
-
-   A viewer cannot scroll a livestream, so the text has to travel by itself.
-   Three things move it, in this order of authority:
-
-     1. the voice, while it reports word positions — the line being spoken is
-        the line on screen;
-     2. a gentle drift when the voice is speaking but reports no markers (some
-        phones never fire `onboundary`), so the story never stalls halfway;
-     3. the same drift when the reader is off or blocked.
-
-   The window is eased toward that position every frame, so the movement is
-   an animation rather than a jump, and it is measured each frame because the
-   card can reflow after the first paint. The host may take over by hand; a
-   viewer has no way to, which is why the text must not depend on scrolling. */
 function followReading(
   box: HTMLElement,
   narration: Narration | null,
@@ -649,8 +539,6 @@ function followReading(
   box.addEventListener('touchstart', stop, { passive: true });
   box.addEventListener('keydown', stop);
 
-  /* The whole story in the time the card is held, so a short story barely
-     moves and a long one still reaches its last line. */
   const pace = 1 / Math.max(6000, holdMs - 2500);
   let target = 0;
   let shown = 0;
@@ -674,7 +562,6 @@ function followReading(
       else target = Math.min(1, Math.max(target, heard) + dt * pace);
     }
 
-    /* Ease toward the target: ~120ms of smoothing, so the text glides. */
     const ease = Math.min(0.2, dt / 120);
     shown += (target - shown) * ease;
     if (Math.abs(target - shown) < 0.0004) shown = target;
@@ -694,10 +581,6 @@ function attachDeck(v: HTMLVideoElement): void {
 
 let installed = false;
 
-/**
- * Call once after the timer markup is in the DOM. Injects the per-clip panel
- * under the video upload list and wires break playback to the video decks.
- */
 export function installVideoBreaks(root: HTMLElement): void {
   if (installed) return;
   installed = true;
@@ -708,9 +591,8 @@ export function installVideoBreaks(root: HTMLElement): void {
   if (stage) {
     stage.querySelectorAll<HTMLVideoElement>('video').forEach(attachDeck);
   } else {
-    document.querySelectorAll<HTMLVideoElement>('#stageVideo, #stageVideoB').forEach(attachDeck);
+    document.querySelectorAll<HTMLVideoElement>('#stageVideo, #stageVideoB').forEach(
+      attachDeck
+    );
   }
-
-  /* The engine may move a clip to the other deck; listeners live on both decks
-     for the life of the page, so nothing else is needed here. */
 }
