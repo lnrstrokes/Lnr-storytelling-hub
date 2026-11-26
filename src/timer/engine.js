@@ -6778,11 +6778,15 @@
       if (phase === 'video' && clips.length > 0) {
         var firstClip = clips[0];
         var ownership = firstClip ? clipOwnership(firstClip.id) : 'reference';
-        /* Both ownership choices play the clip straight away. The reference
-           pre-roll card is gone from this flow: choosing "video / reference"
-           used to park a full-screen card over the footage and hold it at 0:00
-           while a reader spoke, which looked like the upload had failed. A
-           reference clip now simply plays. */
+        /* A REFERENCE clip gets the spoken disclaimer before it airs; an owned
+           clip plays straight away. `startPreroll()` was left defined but never
+           called, so the reference disclaimer never played at all — the reader
+           and its countdown were dead code. It is started BEFORE playClip so
+           `prerollActive` is already true when transitionToClip runs, which
+           holds the clip on its first frame until the read finishes. */
+        if (firstClip && ownership === 'reference') {
+          startPreroll();
+        }
         playClip(0);
         /* One notice, one combination only: the operator owns the clip AND has
            quiz & anecdote breaks switched on for it. Reference clips never get
