@@ -197,8 +197,44 @@ interface Record_ {
   usedMs: number;
 }
 
-async function readRecord(store: Store, id: string): Promise<Record_> {
+/** The day an open session belongs to, so a stream cannot be refunded by the
+ *  calendar rolling over underneath it. Empty when no session is open.
+ *
+ *  Checked under both identities the tally is kept against: the signed cookie
+ *  and the device id. A browser that loses its cookie mid-broadcast (private
+ *  mode, a cleared jar) still has its device tally pinned, so the allowance
+ *  cannot be reset by dropping one of the two. */
+async function sessionDay(store: Store, id: string, deviceId: string): Promise<string> {
+  const keys = [`air:${id}:sess`];
+  if (deviceId) keys.push(`air:dev:${deviceId}:sess`);
+  for (const key of keys) {
+    const raw = await store.get(key);
+    if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  }
+  return '';
+}
+
+async function openSession(store: Store, id: string, deviceId: string): Promise<void> {
+  /* 12h is longer than any single Free session can be (the allowance is 2h),
+     and short enough that an abandoned session does not pin yesterday. */
   const day = dayKey();
+  await store.set(`air:${id}:sess`, day, 60 * 60 * 12);
+  if (deviceId) await store.set(`air:dev:${deviceId}:sess`, day, 60 * 60 * 12);
+}
+
+async function closeSession(store: Store, id: string, deviceId: string): Promise<void> {
+  /* Blank rather than delete: the store interface has no delete, and an empty
+     value reads back as "no open session". */
+  await store.set(`air:${id}:sess`, '', 1);
+  if (deviceId) await store.set(`air:dev:${deviceId}:sess`, '', 1);
+}
+
+async function readRecord(store: Store, id: string, pinnedDay = ''): Promise<Record_> {
+  /* A session that is already running keeps counting against the day it
+     started on. Without the pin, 00:00 UTC arriving mid-broadcast reset the
+     tally to zero and handed a Free creator a fresh 2 hours, so the allowance
+     did not actually cover their streaming activity. */
+  const day = pinnedDay || dayKey();
   const raw = await store.get(`air:${id}`);
   if (raw) {
     try {
@@ -264,9 +300,12 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   /* The larger of the two tallies wins, so clearing either store cannot
-     refund airtime. */
-  const cookieRec = await readRecord(store, id);
-  const deviceRec = deviceId ? await readRecord(store, `dev:${deviceId}`) : null;
+     refund airtime. An open session pins the day it started, so a broadcast
+     that crosses 00:00 UTC keeps spending the day it began on instead of
+     being handed a fresh allowance mid-stream. */
+  const pinned = await sessionDay(store, id, deviceId);
+  const cookieRec = await readRecord(store, id, pinned);
+  const deviceRec = deviceId ? await readRecord(store, `dev:${deviceId}`, pinned) : null;
   const rec: Record_ = {
     day: cookieRec.day,
     usedMs: Math.max(cookieRec.usedMs, deviceRec ? deviceRec.usedMs : 0),
@@ -306,6 +345,8 @@ export default async function handler(req: Request): Promise<Response> {
     if (rec.usedMs >= FREE_DAILY_LIMIT_MS) {
       return respond(403, { allowed: false, reason: 'exhausted' });
     }
+    /* Opening the session here is what makes the day stick for its duration. */
+    await openSession(store, id, deviceId);
     return respond(200, { allowed: true });
   }
 
@@ -333,6 +374,9 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   if (action === 'stop') {
+    /* Closing the session releases the pinned day, so the next broadcast is
+       judged against whatever day it starts on. */
+    await closeSession(store, id, deviceId);
     return respond(200, { allowed: true });
   }
 

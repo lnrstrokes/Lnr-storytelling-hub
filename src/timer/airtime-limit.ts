@@ -88,32 +88,47 @@ function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** The day an open session is spending. Empty when no session is running.
+ *
+ * A stream that crosses 00:00 UTC used to have its cache rejected the moment
+ * the date changed (the `day` guard below), so the browser showed a fresh
+ * 2 hours while the server kept counting against yesterday: the UI said there
+ * was airtime left and the broadcast was cut off mid-stream, or a reload after
+ * midnight handed out a second allowance. Pinning the day for the life of the
+ * session keeps the client and the server telling the same story. */
+let pinnedDay = '';
+
+function activeDay(): string {
+  return pinnedDay || todayKey();
+}
+
 function readCache(): Cache {
+  const day = activeDay();
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<Cache>;
       if (
         parsed &&
-        parsed.day === todayKey() &&
+        parsed.day === day &&
         typeof parsed.usedMs === 'number' &&
         Number.isFinite(parsed.usedMs) &&
         parsed.usedMs >= 0
       ) {
-        return { day: parsed.day, usedMs: parsed.usedMs, at: Number(parsed.at) || 0 };
+        return { day, usedMs: parsed.usedMs, at: Number(parsed.at) || 0 };
       }
     }
   } catch {
     /* private mode / corrupt */
   }
-  return { day: todayKey(), usedMs: 0, at: 0 };
+  return { day, usedMs: 0, at: 0 };
 }
 
 function writeCache(usedMs: number): void {
   try {
     localStorage.setItem(
       CACHE_KEY,
-      JSON.stringify({ day: todayKey(), usedMs: Math.round(usedMs), at: Date.now() })
+      JSON.stringify({ day: activeDay(), usedMs: Math.round(usedMs), at: Date.now() })
     );
   } catch {
     /* quota: the server still holds the truth */
@@ -474,6 +489,33 @@ export function installAirtimeLimit(root: HTMLElement): void {
     });
   }, true);
 
+  /* --- pin the day while a session is open ------------------------------ */
+  /* The stage class is the engine's own signal that a broadcast is running.
+     Everything in this module already keys off it, so the day pin follows it
+     too: set when the stage appears, cleared when it goes away. A session that
+     crosses midnight therefore keeps spending the day it started on, in the
+     browser as well as on the server. */
+  let stageWasUp = inSession();
+  const syncSessionDay = () => {
+    const up = inSession();
+    if (up === stageWasUp) return;
+    stageWasUp = up;
+    if (up) {
+      if (!pinnedDay) {
+        /* The day the running tally belongs to. readCache() already answers
+           under activeDay(), which is todayKey() until a pin exists, so this
+           is "the day this session started on". */
+        pinnedDay = todayKey();
+      }
+    } else {
+      /* Leaving the stage closes the session: the next broadcast is judged on
+         whatever day it starts. */
+      pinnedDay = '';
+      void callServer('stop');
+    }
+    updateCopy();
+  };
+
   /* --- meter the stage -------------------------------------------------- */
   let lastTickAt = Date.now();
   let unsyncedMs = 0;
@@ -484,6 +526,8 @@ export function installAirtimeLimit(root: HTMLElement): void {
     const now = Date.now();
     const delta = now - lastTickAt;
     lastTickAt = now;
+
+    syncSessionDay();
 
     if (!inSession() || document.hidden || sessionPaused() || isPro()) return;
     if (delta <= 0 || delta > MAX_TICK_MS) return;

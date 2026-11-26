@@ -841,6 +841,12 @@
        so the video engine showed "Bible / Faith" as if it were the active
        category. Hide the whole section for every other engine. */
     if (el.quizBankSection) el.quizBankSection.hidden = eng !== 'quiz';
+    /* Let the break-card graphic pack know which engine is in charge. The pack
+       is a quiz / trivia / storytelling device: it must not be offered or
+       applied in the video engine, which airs footage instead of a card. */
+    try {
+      window.dispatchEvent(new CustomEvent('lnr:engine-changed', { detail: { engine: eng } }));
+    } catch (e) {}
     if (el.wizStep2Title) el.wizStep2Title.textContent = 'Configuring: ' + engineTitle(eng);
     if (el.wizContextTag) el.wizContextTag.textContent = engineTitle(eng) + ' selected';
     if (el.startLabel) {
@@ -2324,13 +2330,20 @@
       }
       return persistableMediaBlob(f).then(function (ownedBlob) {
         storedBlobRef = ownedBlob || f;
-        return idbPut({ id: id, name: f.name, size: f.size, blob: storedBlobRef, kind: kind, duration: d, enabled: true, ownership: 'reference' }).then(function () { return d; });
+        return idbPut({ id: id, name: f.name, size: f.size, blob: storedBlobRef, kind: kind, duration: d, enabled: true, ownership: 'own' }).then(function () { return d; });
       });
     }).then(function (d) {
       if (kind === 'promo' && pendingPromoUploads > 0) pendingPromoUploads--;
       if (kind === 'clip' && pendingClipUploads > 0) pendingClipUploads--;
       if (d === null) return;
-      var rec = { id: id, name: f.name, size: f.size, duration: d || 0, enabled: true, ownership: 'reference' };
+      /* A clip the creator uploaded from their own device is theirs: it plays
+         straight away. It used to default to 'reference', which parked a
+         full-screen "this clip is reference material" card over the video and
+         held playback at 0:00 until a long voice read finished - so an
+         uploaded video looked as if it had failed to load while a Bible /
+         Faith branded reference card sat on air. The Reference toggle is
+         still there for anyone who does want that notice. */
+      var rec = { id: id, name: f.name, size: f.size, duration: d || 0, enabled: true, ownership: 'own' };
       if (!clipURLs[id]) clipURLs[id] = URL.createObjectURL(storedBlobRef);
       if (kind === 'admin_promo') adminPromos.push(rec);
       else if (kind === 'promo') {
@@ -6269,6 +6282,19 @@
   }
 
   function startSession() {
+    /* The built-in banks, story library and player library arrive
+       asynchronously (loadBuiltInBanks / loadStoryLibrary / initLibrary run
+       before the engine is imported, but a slow or failed load leaves
+       window.LNR_BUILT_IN_BANKS unset). Pressing Start in that window used to
+       drop straight onto the stage with an empty bank, where the quiz frame
+       sat on its placeholder reading "Import a quiz pack to begin..." and the
+       video engine sat on a dead frame. That is the setup screen the operator
+       reported being stuck on: it looked like the source-selection step, but
+       it was the stage with nothing to air. Repair the banks first, then
+       judge whether the engine really can run. */
+    if (S.engine === 'quiz') {
+      if (!bank[S.segment] || !bank[S.segment].length) rebuildQuizBanks();
+    }
     if (S.engine === 'quiz' && !bank[S.segment].length) {
       toast('Import a Quiz JSON pack first (or download the starter template below)', true);
       setPage('studio');
@@ -6303,6 +6329,19 @@
     }
 
     stopAudioPreview();
+    /* Video engine: with no clips and the demo loop off there is nothing to
+       air. Starting anyway put the stage on screen with an empty video frame,
+       which is the other half of the "stuck on the setup screen" report. */
+    if (S.engine === 'video' && !clips.length && !demoVideoMode) {
+      toast('Upload a video clip (or enable the 15s demo) before starting the video engine', true);
+      setPage('studio');
+      setWizardStep(2);
+      if (el.videoSetup && el.videoSetup.scrollIntoView) {
+        el.videoSetup.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
     stopStorySpeechPreview();
     live.inSession = true;
     live.running = true;

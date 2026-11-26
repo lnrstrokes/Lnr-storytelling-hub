@@ -348,9 +348,64 @@ export function installBreakCardCustomizer(): void {
   } else {
     panel.appendChild(bgSection);
   }
+
+  /* The pack is engine-scoped: hide it straight away when the studio is set to
+     the video engine, and keep it in step if the operator changes engine. */
+  syncGraphicPack();
+  window.addEventListener('lnr:engine-changed', syncGraphicPack);
+}
+
+/** The graphic pack (background templates + motion) belongs to the engines that
+ *  put a word-led card on the stage. The video engine airs footage, so the
+ *  pack is neither offered nor applied there. */
+const GRAPHIC_PACK_ENGINES = ['quiz', 'players', 'story'];
+
+/** The engine the studio currently has selected, read from the same settings
+ *  record the engine itself persists. */
+function currentEngine(): string {
+  try {
+    const raw = localStorage.getItem('lnr_timer_v2');
+    if (!raw) return 'quiz';
+    const parsed = JSON.parse(raw) as { engine?: string } | null;
+    const engine = parsed && typeof parsed.engine === 'string' ? parsed.engine : 'quiz';
+    return GRAPHIC_PACK_ENGINES.includes(engine) || engine === 'video' ? engine : 'quiz';
+  } catch {
+    return 'quiz';
+  }
+}
+
+function graphicPackAllowed(): boolean {
+  return GRAPHIC_PACK_ENGINES.includes(currentEngine());
+}
+
+/**
+ * Show or hide the graphic pack for the selected engine, and undo any treatment
+ * already painted on the card when the video engine is in charge.
+ */
+export function syncGraphicPack(): void {
+  if (typeof document === 'undefined') return;
+  const panel = document.querySelector<HTMLElement>('.vbreak-panel');
+  const section = panel ? panel.querySelector<HTMLElement>('.vbreak-bg-selector') : null;
+  const allowed = graphicPackAllowed();
+
+  if (section) section.hidden = !allowed;
+
+  if (!allowed) {
+    /* Nothing from the pack may reach the video engine's footage. */
+    const card = document.querySelector<HTMLElement>('.vbreak-card');
+    if (card) {
+      card.className = card.className.replace(/vbreak-treatment-\w+/g, '').trim();
+    }
+    const layer = document.querySelector<HTMLElement>('.vbreak-card .vbreak-bg-layer');
+    if (layer) {
+      layer.style.backgroundImage = '';
+      layer.className = 'vbreak-bg-layer';
+    }
+  }
 }
 
 function applyBackgroundTemplate(templateId: string): void {
+  if (!graphicPackAllowed()) return;
   const card = document.querySelector<HTMLElement>('.vbreak-card');
   if (!card) return;
   
@@ -365,6 +420,7 @@ function applyBackgroundTemplate(templateId: string): void {
 }
 
 function applyMotionEffect(treatment: string): void {
+  if (!graphicPackAllowed()) return;
   const card = document.querySelector<HTMLElement>('.vbreak-card');
   if (!card) return;
   
@@ -386,6 +442,8 @@ function loadBgPreference(): void {
   try {
     const saved = localStorage.getItem('lnr_break_card_bg_v1');
     if (!saved) return;
+    /* A saved pack must not be re-applied in the video engine. */
+    if (!graphicPackAllowed()) return;
     
     if (saved.startsWith('template-')) {
       applyBackgroundTemplate(saved);
@@ -403,4 +461,5 @@ function loadBgPreference(): void {
 export function onBreakPanelReady(): void {
   loadBgPreference();
   installBreakCardCustomizer();
+  syncGraphicPack();
 }
