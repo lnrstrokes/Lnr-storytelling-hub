@@ -497,7 +497,7 @@
     'storyMin', 'storySceneSec', 'drawerStoryTag', 'drawerStoryInterleave', 'drawerStoryVaryCadence',
     'drawerStorySpeechInput', 'drawerStorySpeechName', 'drawerStorySpeechClearBtn',
     'loopHoursDrawer', 'brandOverlayInput',
-    'bankTag', 'pillBible', 'pillHistory', 'pillBibleCount', 'pillHistoryCount',
+    'bankTag', 'pillBible', 'pillHistory', 'pillBibleCount', 'pillHistoryCount', 'quizBankSection',
     'importInput', 'importResult', 'voiceOn', 'voiceReveal', 'voiceSelect', 'voiceRate',
     'voiceRateLabel',
     'drawerPlayerTag', 'playerBlockMin', 'clueSec', 'guessSec', 'playerRevealSec',
@@ -836,6 +836,11 @@
     if (el.playersSetup) el.playersSetup.hidden = eng !== 'players';
     if (el.videoSetup) el.videoSetup.hidden = eng !== 'video';
     if (el.storySetup) el.storySetup.hidden = eng !== 'story';
+    /* The Bible / Faith and World History segment pills only mean something
+       for the quiz engine. They used to render unconditionally in the drawer,
+       so the video engine showed "Bible / Faith" as if it were the active
+       category. Hide the whole section for every other engine. */
+    if (el.quizBankSection) el.quizBankSection.hidden = eng !== 'quiz';
     if (el.wizStep2Title) el.wizStep2Title.textContent = 'Configuring: ' + engineTitle(eng);
     if (el.wizContextTag) el.wizContextTag.textContent = engineTitle(eng) + ' selected';
     if (el.startLabel) {

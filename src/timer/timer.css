@@ -1649,8 +1649,37 @@ body.screen-stage .screen-stage {
 }
 
 /* Stage chrome (phase name, transport, session clock) is setup/control
-   furniture, not broadcast content — hide it during clean video mode. */
-.screen-stage.is-video-clean .stage-chrome {
+   furniture, not broadcast content — hide it during clean video mode.
+   BUT the operator must still be able to reach Stream-safe and Exit: those
+   live in the top bar's .chrome-right. So instead of hiding the whole bar we
+   float that one cluster over the footage and drop everything else. */
+.screen-stage.is-video-clean {
+  position: relative;
+}
+.screen-stage.is-video-clean .stage-chrome-top {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  left: auto;
+  z-index: 40;
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+.screen-stage.is-video-clean .stage-chrome-top .chrome-left,
+.screen-stage.is-video-clean .stage-chrome-top .chrome-center {
+  display: none;
+}
+.screen-stage.is-video-clean .stage-chrome-top .chrome-right {
+  padding: 4px 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(240, 232, 212, .18);
+  background: rgba(9, 14, 22, .82);
+  backdrop-filter: blur(10px);
+}
+.screen-stage.is-video-clean .stage-chrome-bottom {
   display: none;
 }
 

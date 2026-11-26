@@ -27,6 +27,10 @@ import { installVideoBreaks } from './video-breaks.ts';
 import { publishClipTitles } from './clip-title-store.ts';
 import { installVideoSetup } from './video-setup.ts';
 import { installTimerDecorations, videoDisclaimer } from './timer-decorator';
+// Break-card customizer (background templates & motion effects). Imported
+// statically: the app ships as an ESM bundle where `require` is undefined, so
+// the old dynamic require() threw and the customizer never installed.
+import { onBreakPanelReady } from './engine-decorator';
 import { installBreakVoice } from './break-voice';
 import { installAdminKeys } from './admin-keys.ts';
 // Free tier: 2 hours of airtime per day. Pro is unlimited. Enforced outside
@@ -165,10 +169,9 @@ export default function TimerApp() {
     installVideoBreaks(host);
     
     // Install break card customizer (background templates & motion effects)
-    // Called after a short delay to ensure the break panel is fully built
+    // Called after a short delay to ensure the break panel is fully built.
     const setupCustomizer = () => {
       try {
-        const { onBreakPanelReady } = require('./engine-decorator');
         onBreakPanelReady();
       } catch (e) {
         // Fail silently - customizer is optional
