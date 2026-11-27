@@ -4810,7 +4810,7 @@
      Bounds are deliberate: 'xl' for a handful of words, 'xs' for a long
      one. This is what makes a two-word question feel like a title card
      and a long one still fit without shrinking below legibility. */
-  var Q_FITS = ['xl', 'lg', 'md', 'sm', 'xs'];
+  var Q_FITS = ['xl', 'lg', 'md', 'sm', 'xs', 'xxs'];
 
   function fitFor(len) {
     if (len <= 26) return 0;
@@ -4849,7 +4849,7 @@
     if (!host) return;
 
     var optEls = el.options ? Array.prototype.slice.call(el.options.children) : [];
-    var optFits = ['lg', 'md', 'sm', 'xs'];
+    var optFits = ['lg', 'md', 'sm', 'xs', 'xxs'];
 
     /* Reset every option to its own length tier first. Without this the
        previous question's shrink would carry over and the type would ratchet
@@ -4866,13 +4866,13 @@
       var overflow = host.scrollHeight - host.clientHeight;
       if (overflow <= 0) break;
 
-      if (idx < 4) {
+      if (idx < 5) {
         idx++;
         el.qText.setAttribute('data-fit', Q_FITS[idx]);
         continue;
       }
       /* question is at its floor — shrink the options instead */
-      if (optIdx < 3) {
+      if (optIdx < 4) {
         optIdx++;
         optEls.forEach(function (d) { d.setAttribute('data-fit', optFits[optIdx]); });
         continue;
@@ -4889,12 +4889,12 @@
       window.requestAnimationFrame(function () {
         for (var g2 = 0; g2 < 8; g2++) {
           if (host.scrollHeight - host.clientHeight <= 0) break;
-          if (idx < 4) {
+          if (idx < 5) {
             idx++;
             el.qText.setAttribute('data-fit', Q_FITS[idx]);
             continue;
           }
-          if (optIdx < 3) {
+          if (optIdx < 4) {
             optIdx++;
             optEls.forEach(function (d) { d.setAttribute('data-fit', optFits[optIdx]); });
             continue;
