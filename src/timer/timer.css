@@ -1076,6 +1076,28 @@ body.screen-stage .screen-stage {
   min-height: 0;
   gap: 1.6cqw;
   padding: 1.2cqw 2.4cqw 1.4cqw;
+  /* A screencast captures the visible box only, so anything past the frame
+     edge was silently absent from the stream. The JS fit guard shrinks type
+     until the block fits, but at its floor a long question plus four long
+     answers can still exceed the frame by ~70px. Clipping here keeps that
+     overflow inside the frame instead of letting it paint over the footer. */
+  overflow: hidden;
+}
+
+/* When the question has already been stepped down to its smallest tier the
+   type cannot shrink any further, so reclaim the space from the spacing
+   instead. This is what lets the worst-case question + four long answers fit
+   without clipping. */
+.quiz-stage:has(.q-text[data-fit="xs"]) {
+  gap: .7cqw;
+  padding: .6cqw 1.6cqw .7cqw;
+}
+.quiz-stage:has(.q-text[data-fit="xs"]) .options {
+  gap: .6cqw .8cqw;
+  margin-top: .4cqw;
+}
+.quiz-stage:has(.q-text[data-fit="xs"]) .opt {
+  padding: .6cqw .8cqw;
 }
 
 /* The kicker is a quiet eyebrow, not a second headline: small caps, wide
@@ -1660,6 +1682,24 @@ body.screen-stage .screen-stage {
 .frame.is-video-clean-video .frame-meta {
   display: none;
 }
+/* The video HUD (frame-timer) used to sit ON the footage: `.video-stage` was
+   inset:0, so the clock painted over the top-right of the picture. A
+   livestream must show all of its content, so the clock now gets its own
+   strip above the video and the video is inset below it. Nothing overlaps. */
+.frame.is-video-clean-video {
+  --video-hud-h: max(22px, 2.9cqw);
+}
+.frame.is-video-clean-video .frame-top {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 11;
+  height: var(--video-hud-h);
+  padding: 0 1.4cqw;
+  justify-content: flex-end;
+  border-bottom: none;
+}
 .frame.is-video-clean-video .frame-timer {
   position: relative;
   z-index: 10;
@@ -1672,6 +1712,10 @@ body.screen-stage .screen-stage {
   inset: 0;
   border-radius: inherit;
   overflow: hidden;
+}
+/* Video engine: reserve the HUD strip so the clock never covers the picture. */
+.frame.is-video-clean-video .video-stage {
+  inset: var(--video-hud-h) 0 0 0;
 }
 .frame.is-video-clean .video-stage video {
   width: 100%;
@@ -1715,12 +1759,18 @@ body.screen-stage .screen-stage {
   display: none;
 }
 
-/* During stream-safe mode, hide the pre-roll and restart cards.
+/* During stream-safe mode, hide the restart card only.
    The quiz / anecdote break card is deliberately NOT in this list: it is the
    break content the audience is meant to read. Hiding `.vbreak-overlay` here
    made every quiz and anecdote card — and the "UP NEXT" notice before it —
-   invisible the moment Stream-safe was switched on. */
-body.safe .video-preroll,
+   invisible the moment Stream-safe was switched on.
+
+   `.video-preroll` is NOT in this list either. It carries the rights
+   disclaimer (reference clip) and the owned-video + breaks notice. Those are
+   statements the audience is meant to see, not operator chrome, so hiding
+   them in Stream-safe meant the disclaimer silently never aired — the exact
+   "disclaimer notice is not visible" report. Stream-safe is a clean capture
+   of the broadcast, and the disclaimer is part of the broadcast. */
 body.safe .video-restart-notice {
   display: none !important;
 }
