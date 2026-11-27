@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>lnr Studio — social card</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap"
+    />
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { width: 1200px; height: 630px; overflow: hidden; }
+      body {
+        font-family: "DM Sans", ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: #ede7da;
+        background:
+          radial-gradient(900px 520px at 8% 0%, rgba(207, 163, 90, 0.16), transparent 62%),
+          radial-gradient(700px 500px at 100% 100%, rgba(207, 163, 90, 0.08), transparent 65%),
+          linear-gradient(160deg, #111916 0%, #0c1210 58%, #0a0f0d 100%);
+        position: relative;
+      }
+      .frame {
+        position: absolute;
+        inset: 0;
+        padding: 56px 0 0 64px;
+      }
+      .copy { width: 500px; display: flex; flex-direction: column; height: 100%; }
+      .brand { display: flex; align-items: center; gap: 13px; margin-bottom: 34px; }
+      .mark {
+        width: 44px; height: 44px; border-radius: 12px;
+        background: linear-gradient(150deg, #e0b96f, #c79a4f);
+        color: #17211c; font-family: Georgia, "Times New Roman", serif;
+        font-weight: 700; font-size: 20px; letter-spacing: -0.03em;
+        display: grid; place-items: center;
+        box-shadow: 0 10px 26px -12px rgba(207, 163, 90, 0.8);
+      }
+      .wordmark { font-family: Georgia, "Times New Roman", serif; font-size: 27px; letter-spacing: -0.015em; }
+      .eyebrow {
+        font-family: Manrope, sans-serif; font-size: 11px; font-weight: 700;
+        letter-spacing: 0.24em; text-transform: uppercase; color: #cfa35a;
+        margin-bottom: 15px;
+      }
+      h1 {
+        font-family: Georgia, "Times New Roman", serif; font-weight: 600;
+        font-size: 46px; line-height: 1.05; letter-spacing: -0.03em; color: #f3eee2; max-width: 470px;
+        margin-bottom: 18px;
+      }
+      h1 em { font-style: normal; color: #d8ad63; }
+      .sub { font-size: 16px; line-height: 1.45; color: #a9b7ae; max-width: 44ch; margin-bottom: 22px; }
+      .facts { list-style: none; display: grid; gap: 9px; margin-bottom: 26px; }
+      .facts li { display: flex; gap: 10px; font-size: 15px; color: #cfc8b8; align-items: baseline; }
+      .facts li::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: #cfa35a; flex: 0 0 7px; transform: translateY(-2px); }
+      .facts b { color: #f3eee2; font-weight: 600; }
+      .cta { display: flex; align-items: center; gap: 14px; margin-top: auto; padding-bottom: 48px; }
+      .pill {
+        font-weight: 700; font-size: 15px; color: #17211c;
+        background: linear-gradient(150deg, #e0b96f, #cfa35a);
+        padding: 11px 20px; border-radius: 999px;
+        box-shadow: 0 14px 30px -16px rgba(207, 163, 90, 0.9);
+      }
+      .url { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; color: #8fa096; }
+      .glow {
+        position: absolute; right: -40px; top: 70px; width: 720px; height: 520px;
+        background: radial-gradient(closest-side, rgba(207, 163, 90, 0.22), rgba(207, 163, 90, 0));
+        filter: blur(10px); pointer-events: none;
+      }
+      .shot {
+        position: absolute; right: 48px; top: 50%; transform: translateY(-50%);
+        width: 560px; border-radius: 18px; overflow: hidden;
+        border: 1px solid rgba(207, 163, 90, 0.28);
+        background: #0b100e;
+        box-shadow: 0 46px 90px -34px rgba(0, 0, 0, 0.95), 0 0 0 9px rgba(237, 231, 218, 0.025);
+      }
+      .shot img { display: block; width: 100%; height: auto; filter: brightness(1.16) saturate(1.04); }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <div class="copy">
+        <div class="brand">
+          <div class="mark">lnr</div>
+          <div class="wordmark">lnr Studio</div>
+        </div>
+        <p class="eyebrow">Livestream control room — on your phone</p>
+        <h1>Run a livestream for hours. <em>From your phone.</em></h1>
+        <p class="sub">Four broadcast engines, 1,867 non-repeating questions and episodes, and a clean screen-cast to YouTube.</p>
+        <ul class="facts">
+          <li><span><b>Quiz</b> · Guess-the-Player · <b>Storytelling</b> · Video loop</span></li>
+          <li><span><b>3h 28m</b> of built-in content before anything repeats</span></li>
+          <li><span>Free to start · no signup · installs as an app</span></li>
+        </ul>
+        <div class="cta">
+          <span class="pill">Start free</span>
+          <span class="url">lnr-storytelling-hub.vercel.app</span>
+        </div>
+      </div>
+      <div class="glow"></div>
+      <div class="shot">
+        <img src="/og-shot-crop.png" alt="" />
+      </div>
+    </div>
+  </body>
+</html>
