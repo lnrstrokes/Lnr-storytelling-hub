@@ -25,22 +25,22 @@
     <section class="page-view" id="pageHome" data-page="home">
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Livestream control room &mdash; on your phone, $0 server bill</p>
-          <h1>Your content, on air<br />for hours. Or days.</h1>
+          <p class="eyebrow">Livestream control room &mdash; on your phone</p>
+          <h1>Run a livestream for hours.<br />From your phone.</h1>
           <p class="hero-sub">
-            One app runs four broadcast engines from this phone: a live interactive quiz that turns a YouTube chat into a voting room, a Guess-the-Player card round, a multi-act documentary storytelling studio, and a seamless video loop that plays unattended. Everything here ships free. Upgrade to Pro when you want partner break clips, unlimited video uploads, and a signed licence key that locks your branding to your channel.
+            Four broadcast engines in one app: interactive quiz, Guess-the-Player, documentary storytelling, and an unattended video loop. No server, no signup, no monthly fee.
           </p>
           <div class="hero-cta-row">
             <button class="btn btn-primary btn-lg" id="homeGoStudioBtn" type="button">
               <span class="play-glyph" aria-hidden="true"></span>
-              <span>Start Studio Setup</span>
+              <span>Start free</span>
             </button>
             <a class="btn btn-quiet btn-lg" href="#pricing" data-page-link="pricing">See Pro pricing</a>
           </div>
         </div>
         <div class="hero-stat-card">
           <div class="hstat"><b id="statBank">0</b><span>questions, episodes &amp; cards ready</span></div>
-          <div class="hstat"><b id="statRun">0h&nbsp;00m</b><span>built-in non-repeating</span></div>
+          <div class="hstat"><b id="statRun">0h&nbsp;00m</b><span>of built-in content before anything repeats</span></div>
           <div class="hstat"><b>0</b><span>repeats per cycle</span></div>
         </div>
       </section>
@@ -48,7 +48,7 @@
       <section class="quickstart" id="quickStart" aria-label="How it works">
         <div class="qs-head">
           <h2>How the studio works</h2>
-          <p>Pick an engine, load content, set your timing and audio, and go. The studio is built to run a stream start to finish from one phone &mdash; no server, no signup, no monthly fee for the free tier.</p>
+          <p>Pick an engine, load your content, set your timing and audio, and go live. Screen-cast from your phone and the studio keeps playing.</p>
         </div>
         <ol class="qs-steps">
           <li class="qs-step">
@@ -62,7 +62,7 @@
             <span class="qs-num" aria-hidden="true">2</span>
             <div class="qs-body">
               <b>Load your content</b>
-              <span>Built-in packs are already loaded &mdash; 1,150+ Bible questions, 510+ World History questions, 8 documentary episodes, and 150+ Player Quizzes. Bring your own JSON and the studio runs your exact topic.</span>
+              <span>Built-in packs are already loaded &mdash; 589 Bible questions, 1,114 World History questions, 14 documentary episodes, and 150 player quizzes. Or upload your own JSON.</span>
             </div>
           </li>
           <li class="qs-step">
@@ -75,20 +75,27 @@
         </ol>
       </section>
 
+      <div class="qs-head">
+        <h2>Why creators use it</h2>
+      </div>
       <section class="info-grid">
         <article class="info-card">
-          <h3>Built to run unattended</h3>
-          <p>Shuffle bags and cross-session memory keep repeats out of long broadcasts, so a stream can run for hours without recycling the same question twice.</p>
+          <h3>Runs unattended</h3>
+          <p>Shuffle bags and cross-session memory stop questions repeating, even on very long streams.</p>
         </article>
         <article class="info-card">
-          <h3>YouTube-safe by default</h3>
-          <p>Active voice narration, an original royalty-free show bed, and honest Partner Break disclosures replace deceptive ad overlays and unlicensed music.</p>
+          <h3>YouTube-safe</h3>
+          <p>Voice narration, original royalty-free music, and honest Partner Break disclosures. No fake ad overlays, no unlicensed tracks.</p>
         </article>
         <article class="info-card">
-          <h3>Your branding, your device</h3>
-          <p>Custom watermark, site line, brand strap, and promo play CSV logs &mdash; all stored on this phone. Pro adds a signed licence key that locks the branding to your channel.</p>
+          <h3>Your brand, your phone</h3>
+          <p>Add your watermark, site line and strap. Everything stays on your device. Pro adds a signed licence key that locks your branding to your channel.</p>
         </article>
       </section>
+      <p class="hero-sub">
+        Free includes everything above. Pro adds partner break clips, unlimited video uploads, and branding lock.
+        <a href="#pricing" data-page-link="pricing">See Pro pricing</a>
+      </p>
     </section>
 
     <!-- PAGE 2: STUDIO WIZARD -->
@@ -417,10 +424,6 @@
                 <span class="seg-pill-sub">Short disclaimer with voice before playback</span>
               </button>
             </div>
-          </div>
-          <div class="demo-video-bar">
-            <button class="btn btn-quiet btn-sm" type="button" id="loadDemoVideoBtn">Preview 15s Built-in Video Demo</button>
-            <span class="block-note" id="demoVideoStatus" style="margin:0">Try Engine 03 right now without uploading an MP4.</span>
           </div>
           <ul class="clip-list" id="clipList"></ul>
           <div class="sub-block" style="margin-top:14px;">
@@ -1081,7 +1084,6 @@
           <div class="video-stage" id="videoStage" hidden>
             <video id="stageVideo" playsinline preload="auto" class="is-active"></video>
             <video id="stageVideoB" playsinline preload="auto" class="is-standby" hidden></video>
-            <canvas id="demoVideoCanvas" class="demo-video-canvas" hidden></canvas>
             <div class="video-empty" id="videoEmpty">
               <span class="ve-glyph" aria-hidden="true">&#9654;</span>
               <h2 id="videoEmptyTitle">Video break</h2>

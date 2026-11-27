@@ -521,6 +521,77 @@ function quizPackPlugin(): Plugin {
   };
 }
 
+/*
+ * The preloaded 15-second video demo is gone.
+ *
+ * The demo existed so Engine 03 could be previewed without an MP4. Its button
+ * and canvas have been removed from the markup, so `demoVideoMode` can never be
+ * turned on again. Two pieces of engine copy still pointed at it and would now
+ * send the operator looking for a control that is not on the page; they are
+ * patched here because engine.js is the one file this project does not edit.
+ */
+function demoRemovalPlugin(): Plugin {
+  const edits: Array<{ name: string; find: string; replace: string }> = [
+    {
+      name: 'loop-clip-info',
+      find: "        : (demoVideoMode ? '15s built-in animated demo enabled (does not use your upload slot).' : 'Add your prerecorded video or tap Preview 15s Demo above.');",
+      replace: "        : 'Add your prerecorded video to start the video engine.';"
+    },
+    {
+      name: 'start-without-clip',
+      find: "      toast('Upload a video clip (or enable the 15s demo) before starting the video engine', true);",
+      replace: "      toast('Upload a video clip before starting the video engine', true);"
+    }
+  ];
+
+  return {
+    name: 'lnr-demo-removal',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/[\\/]src[\\/]timer[\\/]engine\.js$/.test(id)) return null;
+
+      let out = code;
+      for (const edit of edits) {
+        const parts = out.split(edit.find);
+        if (parts.length !== 2) {
+          this.error(
+            `engine.js: demo removal "${edit.name}" matched ${parts.length - 1} time(s), expected exactly 1`
+          );
+        }
+        out = parts.join(edit.replace);
+      }
+      return { code: out, map: null };
+    }
+  };
+}
+
+/*
+ * The homepage bank total is written as a raw number (1867), while every other
+ * stat on the page is typeset. Group it so the hero reads 1,867, matching the
+ * copy and the studio counts.
+ */
+function statNumberPlugin(): Plugin {
+  return {
+    name: 'lnr-stat-number',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/[\\/]src[\\/]timer[\\/]engine\.js$/.test(id)) return null;
+
+      const find = "if (el.statBank) el.statBank.textContent = b + h + pAllQuizzes.length + sStats.total;";
+      const parts = code.split(find);
+      if (parts.length !== 2) {
+        this.error(`engine.js: stat number anchor matched ${parts.length - 1} time(s), expected exactly 1`);
+      }
+      return {
+        code: parts.join(
+          "if (el.statBank) el.statBank.textContent = (b + h + pAllQuizzes.length + sStats.total).toLocaleString('en-US');"
+        ),
+        map: null
+      };
+    }
+  };
+}
+
 function localApiPlugin(): Plugin {
   return {
     name: 'lnr-local-api',
@@ -537,7 +608,7 @@ function localApiPlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
-    plugins: [siteUrlPlugin(), clipOrderPlugin(), readerGuardPlugin(), packLanguagePlugin(), swVersionPlugin(), quizPackPlugin(), react(), tailwindcss(), localApiPlugin()],
+    plugins: [siteUrlPlugin(), clipOrderPlugin(), readerGuardPlugin(), packLanguagePlugin(), swVersionPlugin(), quizPackPlugin(), demoRemovalPlugin(), statNumberPlugin(), react(), tailwindcss(), localApiPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),

@@ -32,7 +32,7 @@ rotates between engines on a schedule.
 
 - Runs entirely in the browser; content is stored on the device (IndexedDB),
   not on a server. There are no user accounts.
-- Free tier: 2 hours of airtime per calendar day, enforced server-side by the
+- Free tier: 5 hours of airtime per calendar day, enforced server-side by the
   `/api/airtime` endpoint.
 - Pro: unlimited airtime, partner break clips, and a signed licence key.
 - Stream-safe mode hides all operator chrome so a screen capture is clean.

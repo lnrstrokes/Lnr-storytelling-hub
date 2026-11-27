@@ -103,6 +103,23 @@
   outline-offset: 2px;
 }
 
+/* STREAM MODE.
+   streamMode.ts adds .lnr-stream-mode to <html> when the app is broadcasting.
+   These rules are what actually take the two control bars off the page; without
+   them the bars stayed in the capture for the whole stream. A double-tap in the
+   bottom-right corner adds .lnr-stream-reveal for eight seconds so a phone can
+   still reach the controls. */
+html.lnr-stream-mode .reader-dock,
+html.lnr-stream-mode .rotation-dock {
+  display: none;
+}
+
+html.lnr-stream-mode.lnr-stream-reveal .reader-dock,
+html.lnr-stream-mode.lnr-stream-reveal .rotation-dock {
+  display: flex;
+  flex-wrap: wrap;
+}
+
 /* The reader bar is a sibling of .fs-app inside #root, so the app column and
    the bar split the viewport height between them. The bar can then never cover
    the app's content — no overlay, no hidden controls, nothing captured by a

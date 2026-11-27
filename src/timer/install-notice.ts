@@ -26,9 +26,8 @@
  */
 
 const INSTALL_LINE =
-  'Install lnr Studio for the 100% experience: installed, it opens as its own ' +
-  'full-screen app — no address bar, no tabs and no browser bars inside your ' +
-  'screen cast — and it keeps working if the connection drops.';
+  'Installed, lnr Studio opens full-screen with no browser bars in your stream, ' +
+  'and keeps running if your connection drops.';
 
 const ROUTE_LINE =
   'More than 50 YouTube subscribers? You do not need PRISM. Open the YouTube ' +
@@ -42,19 +41,18 @@ const UNDER_FIFTY_LINE =
 
 const HOME_HTML = `
   <div class="qs-head">
-    <h2>Before you go live: install the app, then pick your streaming route</h2>
-    <p>The studio works in a browser tab. Installed it is the full experience &mdash; and which way your stream reaches YouTube depends on one number.</p>
+    <h2>Before you go live: 2 quick steps</h2>
+    <p>${INSTALL_LINE}</p>
   </div>
 
   <div class="info-grid">
     <article class="info-card">
-      <h3>Install the app for the 100% experience</h3>
-      <p>${INSTALL_LINE}</p>
+      <h3>1. Install the app (30 seconds)</h3>
       <p style="margin-top:8px"><b>Android / Chrome:</b> menu (&#8942;) &rarr; <em>Install app</em>. <b>iPhone / Safari:</b> <em>Share</em> &rarr; <em>Add to Home Screen</em>. <b>Desktop Chrome or Edge:</b> the install icon in the address bar.</p>
     </article>
 
     <article class="info-card">
-      <h3>Over 50 subscribers? Skip PRISM and screencast</h3>
+      <h3>2. Pick your route to YouTube</h3>
       <p>${ROUTE_LINE}</p>
       <p style="margin-top:8px">${UNDER_FIFTY_LINE}</p>
     </article>
@@ -81,12 +79,16 @@ function injectHome(): void {
   section.setAttribute('aria-label', 'Install the app and choose your streaming route');
   section.innerHTML = HOME_HTML;
 
-  // Directly after the hero: the first thing a new visitor reads.
-  const quickstart = home.querySelector('.quickstart');
-  if (quickstart && quickstart.parentNode) {
-    quickstart.parentNode.insertBefore(section, quickstart);
+  // Directly after the hero: the first thing a new visitor reads. It used to
+  // be inserted before the first .quickstart, which put the "New in this
+  // version" notice above it; anchoring on the hero keeps the promised order.
+  const hero = home.querySelector('.hero');
+  if (hero && hero.parentNode) {
+    hero.parentNode.insertBefore(section, hero.nextSibling);
   } else {
-    home.appendChild(section);
+    const quickstart = home.querySelector('.quickstart');
+    if (quickstart && quickstart.parentNode) quickstart.parentNode.insertBefore(section, quickstart);
+    else home.appendChild(section);
   }
 }
 

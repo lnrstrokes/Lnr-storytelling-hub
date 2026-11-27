@@ -858,6 +858,12 @@
   text-align: center;
 }
 
+/* `display: flex` below beats the browser's [hidden] rule, so the badge stayed
+   on screen after the reader had finished. Keep it tied to the attribute. */
+.video-preroll-card .voice-indicator[hidden] {
+  display: none;
+}
+
 .video-preroll-card .voice-indicator {
   display: flex;
   align-items: center;

@@ -243,16 +243,18 @@ export const BREAK_CARD_TEMPLATES = [
  */
 export function installBreakCardCustomizer(): void {
   if (typeof document === 'undefined') return;
-  
-  const panel = document.querySelector<HTMLElement>('.vbreak-panel');
-  if (!panel) return;
-  
-  // Check if already installed
-  if (panel.querySelector('.vbreak-bg-selector')) return;
-  
+
+  /* One pack for the whole studio. It used to be injected inside the video
+     setup block, which the engine hides in the quiz, player and storytelling
+     engines — so the pack was invisible in exactly the three engines it is
+     meant for, and only appeared in the video engine, where it must not be
+     offered. It is now a sibling of the engine blocks, outside all of them. */
+  if (document.getElementById('lnrGraphicPack')) return;
+
   // Create background template section
   const bgSection = document.createElement('div');
   bgSection.className = 'vbreak-bg-selector';
+  bgSection.id = 'lnrGraphicPack';
   bgSection.innerHTML = `
     <div class="dsec-head">
       <h4>Background Template</h4>
@@ -391,12 +393,20 @@ export function installBreakCardCustomizer(): void {
     });
   }
   
-  // Insert after the break switch
-  const breakSwitch = panel.querySelector('.vbreak-switch')?.closest('.vbreak-row');
-  if (breakSwitch) {
-    breakSwitch.after(bgSection);
+  /* Place it after all the engine blocks, just before the wizard's own
+     navigation. Anchoring on one engine block put it in a different spot for
+     each engine (above the storytelling block, below the quiz block); the end
+     of step 2 is the same place every time and is never hidden. */
+  const step = document.getElementById('wizStep2');
+  const nav = step ? step.querySelector<HTMLElement>(':scope > .wiz-nav-row') : null;
+  if (step && nav) {
+    step.insertBefore(bgSection, nav);
+  } else if (step) {
+    step.appendChild(bgSection);
   } else {
-    panel.appendChild(bgSection);
+    const panel = document.querySelector<HTMLElement>('.vbreak-panel');
+    if (panel) panel.insertAdjacentElement('afterend', bgSection);
+    else document.body.appendChild(bgSection);
   }
 
   /* The pack is engine-scoped: hide it straight away when the studio is set to
@@ -434,8 +444,7 @@ function graphicPackAllowed(): boolean {
  */
 export function syncGraphicPack(): void {
   if (typeof document === 'undefined') return;
-  const panel = document.querySelector<HTMLElement>('.vbreak-panel');
-  const section = panel ? panel.querySelector<HTMLElement>('.vbreak-bg-selector') : null;
+  const section = document.getElementById('lnrGraphicPack');
   const allowed = graphicPackAllowed();
 
   if (section) section.hidden = !allowed;
@@ -573,7 +582,8 @@ function loadBgPreference(): void {
 
 /** Ensure the customizer is installed after the break panel is built */
 export function onBreakPanelReady(): void {
-  loadBgPreference();
+  /* Build the pack UI first: loadBgPreference() marks the saved template and
+     motion as selected, and those options only exist after the install. */
   installBreakCardCustomizer();
   syncGraphicPack();
 }

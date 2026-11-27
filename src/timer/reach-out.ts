@@ -70,11 +70,12 @@ function injectNotice(): void {
   });
   section.appendChild(dismiss);
 
-  /* Above the install notice, which is the first thing a new visitor reads.
-     Once this is dismissed the install notice takes the top slot back. */
-  const anchor = document.getElementById('installNotice') || home.querySelector('.quickstart');
+  /* After the install notice: the two pre-live steps are what a new visitor
+     needs first, so this release note follows them rather than pushing them
+     down the page. Falls back to just after the hero. */
+  const anchor = document.getElementById('installNotice') || home.querySelector('.hero');
   if (anchor && anchor.parentNode) {
-    anchor.parentNode.insertBefore(section, anchor);
+    anchor.parentNode.insertBefore(section, anchor.nextSibling);
   } else {
     home.appendChild(section);
   }

@@ -302,6 +302,11 @@ body.screen-setup .screen-stage { display: none; }
   font-weight: 600;
   letter-spacing: -.02em;
   color: var(--brass);
+  /* "3h 28m" must stay on one line: the stat column is narrow, and wrapping it
+     left "3h" and "28m" stacked. It may not shrink either, or the nowrap text
+     overflowed into the label beside it. */
+  white-space: nowrap;
+  flex: 0 0 auto;
   min-width: 68px;
   font-variant-numeric: tabular-nums;
 }

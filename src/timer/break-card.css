@@ -166,7 +166,13 @@
    Break card background templates & motion effects
    ============================================================ */
 
-/* Background template selector in the break panel */
+/* Background template selector in the break panel.
+   `display: flex` would override the browser's [hidden] rule, so the engine
+   guard (hidden for the video engine) needs an explicit rule to take effect. */
+.vbreak-bg-selector[hidden] {
+  display: none;
+}
+
 .vbreak-bg-selector {
   display: flex;
   flex-direction: column;
@@ -340,10 +346,14 @@
   background-repeat: no-repeat;
   background-position: center;
   background-size: cover;
-  opacity: 0.55;
+  /* Visible enough that choosing a template visibly changes the stage. At
+     0.55 in soft-light the gradient was a barely perceptible tint, which read
+     as the pack doing nothing. Dimmed instead of blended, so white and gold
+     question text keeps its contrast over every preset. */
+  opacity: 0.9;
+  filter: brightness(0.6) saturate(0.95);
   pointer-events: none;
-  /* Blend into the stage rather than sitting on it as a pasted photo. */
-  mix-blend-mode: soft-light;
+  mix-blend-mode: normal;
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%);
 }
