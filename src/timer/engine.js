@@ -2942,7 +2942,6 @@
     if (!el.videoPreroll) return;
     if (interactiveNoticeDismissed) return;
     if (prerollActive) return;
-
     var overlay = el.videoPreroll;
     var pill = el.videoPrerollPill;
     var title = el.videoPrerollTitle;
@@ -6932,7 +6931,17 @@
         playClip(0);
         /* One notice, one combination only: the operator owns the clip AND has
            quiz & anecdote breaks switched on for it. Reference clips never get
-           it, and neither does an owned clip with breaks off. */
+           it, and neither does an owned clip with breaks off.
+
+           The dismissed flag is cleared HERE, on every entry into the video
+           phase. It used to be cleared only inside dismissPreroll(), which
+           returns early when `prerollActive` is false — and for an OWNED clip
+           startPreroll() is never called, so prerollActive stays false and the
+           flag was never reset. The notice therefore appeared once per page
+           load and then never again: the "disclaimer notice is not visible"
+           report. Clearing it at the phase boundary makes it show for every
+           clip that qualifies. */
+        interactiveNoticeDismissed = false;
         if (firstClip && ownership !== 'reference' && breaksEnabledFor(firstClip.id)) {
           showOwnedBreaksNotice();
         }

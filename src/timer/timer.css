@@ -834,7 +834,15 @@ body.screen-setup .screen-stage { display: none; }
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 9px clamp(12px, 2vw, 24px);
+  /* Notched phones / installed PWA: the top bar used to start at y=0, so the
+     OS status bar painted straight over Stream-safe / Settings / Exit. Measured
+     on a 360x640 phone viewport: `.chrome-right` sat at y=6px, under the clock
+     and battery icons, and the buttons were not reliably tappable. The inset
+     is 0 in a normal browser tab, so desktop is unchanged. */
+  padding-top: max(9px, env(safe-area-inset-top));
+  padding-bottom: 9px;
+  padding-left: max(clamp(12px, 2vw, 24px), env(safe-area-inset-left));
+  padding-right: max(clamp(12px, 2vw, 24px), env(safe-area-inset-right));
   background: rgba(11, 19, 16, .92);
   backdrop-filter: blur(14px);
   flex-wrap: nowrap;
@@ -958,7 +966,12 @@ body.screen-setup .screen-stage { display: none; }
   overflow: hidden;
 }
 
-body.screen-stage { height: 100vh; overflow: hidden; }
+/* `100vh` on a phone is the LARGE viewport: it includes the strip behind the
+   browser's URL bar, so the stage was taller than the area the viewer can
+   actually see and the bottom of the frame fell outside the capture. `100dvh`
+   tracks the real visible height. The `100vh` line stays first as the fallback
+   for browsers without dvh support. */
+body.screen-stage { height: 100vh; height: 100dvh; overflow: hidden; }
 /* The app is mounted inside React's #root, which has no height of its own.
    A percentage height on .app resolves against an auto-height parent and
    collapses, so the chain is built with flex instead: #root fills the
@@ -1749,8 +1762,11 @@ body.screen-stage .screen-stage {
 }
 .screen-stage.is-video-clean .stage-chrome-top {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  /* Safe-area aware: on a notched phone the floating cluster was pinned 8px
+     from the top, i.e. under the status bar, so Stream-safe / Settings / Exit
+     were partly unreachable in the video engine. */
+  top: max(8px, env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
   left: auto;
   z-index: 40;
   width: auto;
@@ -1959,8 +1975,8 @@ body.safe .stage-chrome { display: none; }
 body.safe .safe-peek {
   display: grid;
   position: fixed;
-  right: 10px;
-  bottom: 10px;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
   z-index: 60;
 }
 body.safe .stage-wrap { padding: 0; }
@@ -1970,7 +1986,9 @@ body.safe .frame {
   box-shadow: none;
   max-width: none;
   width: min(100%, calc(100vh * 16 / 9));
+  width: min(100%, calc(100dvh * 16 / 9));
   height: 100vh;
+  height: 100dvh;
 }
 body.safe .screen-stage { gap: 0; }
 
@@ -2676,12 +2694,24 @@ body.safe .stage-notice { display: none !important; }
      frame 210px tall and the options at 6px. The stage is the point of the
      app, so on a small screen the chrome collapses to one compact row and
      the secondary controls move behind the existing settings drawer. */
-  .stage-chrome { padding: 6px 10px; gap: 6px; }
+  .stage-chrome {
+    /* Keep the notch/status-bar inset on phones too: this rule used to reset
+       the padding to a flat 6px 10px, which put Stream-safe / Settings / Exit
+       back under the OS status bar on a notched device. */
+    padding-top: max(6px, env(safe-area-inset-top));
+    padding-bottom: 6px;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+    gap: 6px;
+  }
   .stage-chrome-top { flex-wrap: wrap; row-gap: 6px; column-gap: 8px; }
   .chrome-center { display: none; }
   .chrome-left { order: 1; flex: 1 1 auto; gap: 6px; min-width: 0; overflow: hidden; }
   .chrome-right { order: 2; width: auto; flex-wrap: nowrap; gap: 4px; margin-left: auto; flex-shrink: 0; }
-  .chrome-right .btn { padding: 6px 8px; font-size: 12px; min-height: 32px; }
+  /* 32px was below the 44px WCAG 2.5.5 minimum, so Stream-safe / Settings /
+     Exit were hard to hit on a phone — the "out of comfortable reach" report.
+     The row still fits: three 44px-tall buttons at 12px type. */
+  .chrome-right .btn { padding: 6px 9px; font-size: 12px; min-height: 44px; }
   /* keep Stream-safe, Settings and Exit cleanly accessible on mobile */
   .chrome-right #broadcastBtn,
   .chrome-right #rotateBtn { display: none; }

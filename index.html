@@ -23,6 +23,12 @@
     <title>LNR Storytelling Hub &mdash; Live Broadcast Studio on Your Phone</title>
     <meta name="description" content="One phone, four broadcast engines: live interactive quiz, Guess-the-Player cards, documentary storytelling, and 24/7 video loop. Zero server bill, free to start, Pro adds partner break clips and a signed licence key. Run it from your phone and screen-cast to YouTube." />
     <link rel="canonical" href="__SITE_URL__/" />
+    <!-- Explicitly indexable. There was no robots meta at all, which is fine,
+         but stating it removes any doubt for crawlers that treat a missing
+         directive as ambiguous, and it documents the intent next to the
+         canonical. `max-image-preview:large` lets the OG cover show in results. -->
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <meta name="googlebot" content="index, follow" />
 
     <!-- Link previews (X, WhatsApp, Discord, Slack, Messenger, iMessage).
          Every URL here is ABSOLUTE and filled in at build time from

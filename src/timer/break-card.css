@@ -358,9 +358,18 @@
   mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%);
 }
 
-/* The frame's own content must sit above the layer. */
+/* The frame's own content must sit above the layer.
+   `position: relative` alone was WRONG here: `.frame-inner` is
+   `position: absolute; inset: 0` (timer.css:1020) and fills the frame. A
+   relative override drops the `inset: 0` sizing, so the content box shrank to
+   its own content height the moment a template was applied — measured 638px
+   collapsing to 548px in a 640px frame. In the player engine that pushed the
+   trivia column out of the visible area, which is the "trivia invisible when a
+   background template is selected" report. Keep the absolute fill and only
+   raise the stacking order. */
 .frame > .lnr-stage-bg ~ .frame-inner {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
 }
 
