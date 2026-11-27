@@ -786,6 +786,10 @@
 
 .video-preroll-card {
   width: min(100%, 560px);
+  /* In Stream-safe the frame is the whole 16:9 capture, so a 560px card left
+     ~80% of the screen empty and the disclaimer type tiny on a phone. The
+     card now grows with the capture and the type scales with it. */
+  width: min(100%, max(560px, 62cqw));
   max-height: 100%;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
@@ -865,20 +869,34 @@
 }
 
 .video-preroll-card .voice-indicator {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  color: var(--muted);
+  align-self: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(123, 176, 149, .34);
+  background: rgba(123, 176, 149, .10);
+  /* It was 11.5px muted grey — the smallest, dimmest thing on the card, which
+     is why it read as broken. It is a live status line, so it is now a legible
+     pill that scales with the capture and stays readable on a phone. */
+  font-size: clamp(12px, 1.15cqw, 15px);
+  letter-spacing: .02em;
+  line-height: 1.2;
+  color: #cfe3d7;
   font-family: var(--mono, ui-monospace, monospace);
+  white-space: nowrap;
 }
 
 .video-preroll-card .voice-indicator::before {
   content: '';
-  width: 6px;
-  height: 6px;
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--sage);
+  background: #7bb095;
+  box-shadow: 0 0 0 3px rgba(123, 176, 149, .18);
   animation: pulse-dot 1.2s ease-in-out infinite;
 }
 

@@ -1082,6 +1082,12 @@ body.screen-stage .screen-stage {
      answers can still exceed the frame by ~70px. Clipping here keeps that
      overflow inside the frame instead of letting it paint over the footer. */
   overflow: hidden;
+  /* Set by the fit guard's last-resort loop. `zoom` was tried first and does
+     NOT reflow: Chromium keeps reporting the pre-zoom scrollHeight, so the
+     guard believed it had failed and bottomed out at 0.6 while the block was
+     still 252px past the frame. Scaling the type through a multiplier makes
+     the browser re-lay-out, which is what the measurement needs. */
+  --q-scale: var(--q-fit-scale, 1);
 }
 
 /* When the question has already been stepped down to its smallest tier the
@@ -1160,16 +1166,16 @@ body.screen-stage .screen-stage {
    portrait frame the type would collapse to a few pixels even though the
    frame is tall. The floor keeps it readable; the overflow guard still
    steps a tier down if the floor makes a long question too tall. */
-.q-text[data-fit="xs"]  { font-size: clamp(19px, 2.9cqw, 2.9cqw); line-height: 1.34; letter-spacing: -.008em; }
-.q-text[data-fit="sm"]  { font-size: clamp(22px, 3.5cqw, 3.5cqw); line-height: 1.28; letter-spacing: -.014em; }
-.q-text[data-fit="md"]  { font-size: clamp(26px, 4.4cqw, 4.4cqw); line-height: 1.2; letter-spacing: -.02em; }
-.q-text[data-fit="lg"]  { font-size: clamp(30px, 5.6cqw, 5.6cqw); line-height: 1.14; letter-spacing: -.024em; }
-.q-text[data-fit="xl"]  { font-size: clamp(34px, 7cqw, 7cqw); line-height: 1.08; letter-spacing: -.03em; }
+.q-text[data-fit="xs"]  { font-size: calc(clamp(19px, 2.9cqw, 2.9cqw) * var(--q-scale, 1)); line-height: 1.34; letter-spacing: -.008em; }
+.q-text[data-fit="sm"]  { font-size: calc(clamp(22px, 3.5cqw, 3.5cqw) * var(--q-scale, 1)); line-height: 1.28; letter-spacing: -.014em; }
+.q-text[data-fit="md"]  { font-size: calc(clamp(26px, 4.4cqw, 4.4cqw) * var(--q-scale, 1)); line-height: 1.2; letter-spacing: -.02em; }
+.q-text[data-fit="lg"]  { font-size: calc(clamp(30px, 5.6cqw, 5.6cqw) * var(--q-scale, 1)); line-height: 1.14; letter-spacing: -.024em; }
+.q-text[data-fit="xl"]  { font-size: calc(clamp(34px, 7cqw, 7cqw) * var(--q-scale, 1)); line-height: 1.08; letter-spacing: -.03em; }
 /* Last-resort tier. The fit guard steps here only when a long question plus
    four long answers still overflow at 'xs'. Without it the guard ran out of
    tiers and the block spilled past the frame edge, which a screencast simply
    does not capture. */
-.q-text[data-fit="xxs"] { font-size: clamp(16px, 2.4cqw, 2.4cqw); line-height: 1.3; letter-spacing: -.004em; }
+.q-text[data-fit="xxs"] { font-size: calc(clamp(16px, 2.4cqw, 2.4cqw) * var(--q-scale, 1)); line-height: 1.3; letter-spacing: -.004em; }
 
 .options {
   display: grid;
@@ -1201,11 +1207,11 @@ body.screen-stage .screen-stage {
 }
 
 /* option text also scales down when an option is long */
-.opt[data-fit="xs"] { font-size: clamp(14px, 1.7cqw, 1.7cqw); }
-.opt[data-fit="sm"] { font-size: clamp(15px, 1.95cqw, 1.95cqw); }
-.opt[data-fit="md"] { font-size: clamp(16px, 2.3cqw, 2.3cqw); }
-.opt[data-fit="lg"] { font-size: clamp(17px, 2.7cqw, 2.7cqw); }
-.opt[data-fit="xxs"] { font-size: clamp(12px, 1.45cqw, 1.45cqw); }
+.opt[data-fit="xs"] { font-size: calc(clamp(14px, 1.7cqw, 1.7cqw) * var(--q-scale, 1)); }
+.opt[data-fit="sm"] { font-size: calc(clamp(15px, 1.95cqw, 1.95cqw) * var(--q-scale, 1)); }
+.opt[data-fit="md"] { font-size: calc(clamp(16px, 2.3cqw, 2.3cqw) * var(--q-scale, 1)); }
+.opt[data-fit="lg"] { font-size: calc(clamp(17px, 2.7cqw, 2.7cqw) * var(--q-scale, 1)); }
+.opt[data-fit="xxs"] { font-size: calc(clamp(12px, 1.45cqw, 1.45cqw) * var(--q-scale, 1)); }
 
 .opt-badge {
   flex: 0 0 auto;
@@ -1764,7 +1770,39 @@ body.screen-stage .screen-stage {
   background: rgba(9, 14, 22, .82);
   backdrop-filter: blur(10px);
 }
+/* The bottom bar used to be `display: none` during clean video, which also
+   took the Music button with it: the operator could not reach music at all
+   while the video engine was airing. Music is a control, not broadcast
+   content, so the bar is now floated into the bottom-right corner as a small
+   cluster holding only the transport-side controls (Voice / Music). The
+   transport itself (play / next / reveal) stays hidden — it is not needed
+   while footage is airing and would sit in the capture. */
 .screen-stage.is-video-clean .stage-chrome-bottom {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  left: auto;
+  z-index: 40;
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+.screen-stage.is-video-clean .stage-chrome-bottom .transport {
+  display: none;
+}
+.screen-stage.is-video-clean .stage-chrome-bottom .transport-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(240, 232, 212, .18);
+  background: rgba(9, 14, 22, .82);
+  backdrop-filter: blur(10px);
+}
+.screen-stage.is-video-clean .stage-chrome-bottom .kbd-hint {
   display: none;
 }
 
@@ -1911,7 +1949,20 @@ body.safe .video-restart-notice.is-visible {
 
 /* safe mode: hide every chrome + in-frame control from capture */
 body.safe .stage-chrome { display: none; }
-body.safe .safe-peek { display: grid; }
+/* The peek button is the ONLY way back out of safe mode. It is a child of
+   `.stage-wrap`, but `.screen-stage.is-video-clean` sets `position: relative`
+   on the stage and the video stage paints over it, so in the video engine the
+   button was present but unreachable — the operator was locked in clean mode
+   with no exit, no music and no Stream-safe toggle. Raising it above the
+   video layer and pinning it to the viewport corner guarantees it is always
+   hittable, in every engine and every safe state. */
+body.safe .safe-peek {
+  display: grid;
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  z-index: 60;
+}
 body.safe .stage-wrap { padding: 0; }
 body.safe .frame {
   border-radius: 0;
@@ -1976,8 +2027,12 @@ body.safe .pl-reveal-insight { font-size: clamp(21px, 1.72cqw, 1.72cqw); line-he
 body.safe .pl-card-frame { width: auto; height: min(80cqh, 100cqw); max-height: 80cqh; }
 
 /* Quiz, anecdote and milestone text get the same treatment. */
-body.safe .q-text { font-size: clamp(32px, 3.3cqw, 3.3cqw); }
-body.safe .opt-text { font-size: clamp(23px, 1.85cqw, 1.85cqw); }
+/* Safe mode sets its own (larger) type, which OVERRODE the fit guard's
+   --q-scale multiplier: the guard shrank the block, the safe rule put the
+   size straight back, and the quiz overflowed the capture by up to 365px on
+   a phone. The multiplier is applied here too so the guard keeps control. */
+body.safe .q-text { font-size: calc(clamp(32px, 3.3cqw, 3.3cqw) * var(--q-scale, 1)); }
+body.safe .opt-text { font-size: calc(clamp(23px, 1.85cqw, 1.85cqw) * var(--q-scale, 1)); }
 body.safe .ms-title { font-size: clamp(25px, 2.2cqw, 2.2cqw); }
 body.safe .ms-item b { font-size: clamp(17px, 1.3cqw, 1.3cqw); }
 body.safe .ms-item-sub { font-size: clamp(13px, 1cqw, 1cqw); }
@@ -2017,14 +2072,21 @@ body.safe .ms-cta { font-size: clamp(15.5px, 1.15cqw, 1.15cqw); }
   font-size: 17px;
   cursor: pointer;
   place-items: center;
-  opacity: 0;
+  /* It used to be opacity:0 until hover — an invisible escape hatch. On a
+     touch device there is no hover, so the operator was locked in clean mode
+     with no way out. It is now always visible at a low resting opacity and
+     brightens on hover/focus. */
+  opacity: .55;
+  background: rgba(12, 22, 18, .55);
+  border: 1px solid rgba(240, 232, 212, .18);
+  color: #f0e8d4;
   transition: opacity .2s ease, background .2s ease, color .2s ease;
 }
 .safe-peek:hover,
 .safe-peek:focus-visible {
-  opacity: .92;
-  background: rgba(12, 22, 18, .78);
-  border: 1px solid rgba(240, 232, 212, .24);
+  opacity: 1;
+  background: rgba(12, 22, 18, .88);
+  border: 1px solid rgba(240, 232, 212, .34);
   color: #f0e8d4;
 }
 

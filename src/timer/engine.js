@@ -4856,6 +4856,42 @@
 
      It must run AFTER the options are in the DOM — measuring before they
      exist would only ever see the question's height. */
+  /* How much the quiz block actually spills past the FRAME, not just past its
+     own stage box. `.quiz-stage` is `flex: 1` inside `.frame-inner`, so it can
+     grow taller than the frame and still report `scrollHeight === clientHeight`
+     — the block then paints over the footer and out of the capture. Measuring
+     the stage's own scrollHeight missed that entirely: a long question plus
+     four long answers measured "fits" while sitting 200px below the frame edge.
+     This returns the real overflow in pixels, 0 when everything is inside. */
+  function quizOverflowPx() {
+    var host = el.quizStage;
+    if (!host) return 0;
+    var own = host.scrollHeight - host.clientHeight;
+    var frame = el.frame;
+    if (!frame) return own > 0 ? own : 0;
+    var fr = frame.getBoundingClientRect();
+    var hr = host.getBoundingClientRect();
+
+    /* Measure the real painted bottom of the content, not `scrollHeight`.
+       WebKit reports `scrollHeight === clientHeight` on a flex column whose
+       children overflow, so the guard saw "fits" while the block sat 393px
+       below the frame. The bottom-most child's rect is engine-independent. */
+    var contentBottom = hr.top + host.scrollHeight;
+    var kids = host.children;
+    for (var i = 0; i < kids.length; i++) {
+      var k = kids[i];
+      if (!k || k.hidden) continue;
+      var cs = window.getComputedStyle(k);
+      if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+      var kr = k.getBoundingClientRect();
+      if (!kr.height) continue;
+      if (kr.bottom > contentBottom) contentBottom = kr.bottom;
+    }
+
+    var spill = Math.ceil(contentBottom - fr.bottom);
+    return Math.max(own, spill, 0);
+  }
+
   function applyQuestionFit(len) {
     if (!el.qText) return;
     var idx = fitFor(len);
@@ -4879,7 +4915,7 @@
 
     /* bounded so it can never loop forever */
     for (var guard = 0; guard < 8; guard++) {
-      var overflow = host.scrollHeight - host.clientHeight;
+      var overflow = quizOverflowPx();
       if (overflow <= 0) break;
 
       if (idx < 5) {
@@ -4901,10 +4937,10 @@
        changes the height only after reflow), which leaves a few pixels of
        overflow on some viewports. Re-measuring once the frame is painted
        catches that without ever looping. */
-    if (host.scrollHeight - host.clientHeight > 0) {
+    if (quizOverflowPx() > 0) {
       window.requestAnimationFrame(function () {
         for (var g2 = 0; g2 < 8; g2++) {
-          if (host.scrollHeight - host.clientHeight <= 0) break;
+          if (quizOverflowPx() <= 0) break;
           if (idx < 5) {
             idx++;
             el.qText.setAttribute('data-fit', Q_FITS[idx]);
@@ -4917,7 +4953,32 @@
           }
           break;
         }
+        scaleQuizToFit();
       });
+    }
+  }
+
+  /* Last resort, same contract as the player guard: if the block STILL leaves
+     the frame at its smallest type, shrink the reading scale in small steps.
+     A screencast captures the visible box only, so anything past the frame
+     edge is simply not in the stream — silently losing the last answer is
+     worse than slightly smaller type.
+
+     This is a separate function because it must also run AFTER a layout change
+     that the tier loop cannot see: switching Stream-safe on swaps in a larger
+     type scale, and the fit that ran before the toggle measured the old one.
+     Called from setSafe() as well, so the two never disagree. */
+  function scaleQuizToFit() {
+    var host = el.quizStage;
+    if (!host) return;
+    var sc = 1;
+    host.style.removeProperty('--q-fit-scale');
+    /* Floor is 0.5, not 0.6: at 0.6 a long question in safe mode still left
+       12-27px outside the frame in Firefox and WebKit. 0.5 is still comfortably
+       readable on a phone and guarantees the block lands inside the capture. */
+    while (sc > 0.5 && quizOverflowPx() > 0) {
+      sc = Math.round((sc - 0.03) * 100) / 100;
+      host.style.setProperty('--q-fit-scale', String(sc));
     }
   }
 
@@ -7417,6 +7478,16 @@
       if (live.phase === 'quiz' && currentQ() && !live.quizMilestone) applyQuestionFit(currentQ().q.length);
       if (live.phase === 'players') applyPlayerFit();
     });
+    /* The safe-mode type scale is applied by CSS, so the fit above can still
+       measure the pre-toggle layout. Re-fit once the new layout has painted —
+       and again after the transition — so the block is guaranteed inside the
+       capture in both directions. */
+    [120, 420].forEach(function (delay) {
+      window.setTimeout(function () {
+        if (live.phase === 'quiz' && currentQ() && !live.quizMilestone) applyQuestionFit(currentQ().q.length);
+        if (live.phase === 'players') applyPlayerFit();
+      }, delay);
+    });
   }
 
   on(el.safeBtn, 'click', function () {
@@ -8216,6 +8287,41 @@
     if (h > 0) document.documentElement.style.setProperty('--stage-h', h + 'px');
   }
 
+  /* Re-fit once the webfonts have actually loaded. The first fit pass runs
+     against fallback metrics; when the display face swaps in, every line
+     re-wraps and the block can grow past the frame. That is the "layout shifts
+     between runs / differs across browsers" report: the same content measured
+     differently depending on whether the font was cached. Re-fitting on
+     `fonts.ready` makes the result independent of cache state and of which
+     engine is rendering. */
+  if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+    document.fonts.ready.then(function () {
+      if (live.phase === 'quiz' && currentQ()) applyQuestionFit(currentQ().q.length);
+      if (live.phase === 'players') applyPlayerFit();
+    }).catch(function () {});
+  }
+
+  /* Re-fit whenever the frame or the quiz block actually changes size.
+     Timers alone were not enough: WebKit settled the frame a few frames after
+     the last scheduled pass and left 11px outside the capture. A
+     ResizeObserver fires on the real layout change, in every engine, so the
+     block is re-fitted exactly when it needs to be — and only then. */
+  if (typeof ResizeObserver === 'function') {
+    var roPending = false;
+    var ro = new ResizeObserver(function () {
+      if (roPending) return;
+      roPending = true;
+      window.requestAnimationFrame(function () {
+        roPending = false;
+        if (live.phase === 'quiz' && currentQ() && !live.quizMilestone) {
+          if (quizOverflowPx() > 0) scaleQuizToFit();
+        }
+      });
+    });
+    if (el.frame) ro.observe(el.frame);
+    if (el.quizStage) ro.observe(el.quizStage);
+  }
+
   /* re-fit the question when the frame changes size (resize / rotate) */
   var resizeTimer = 0;
   window.addEventListener('resize', function () {
@@ -8801,6 +8907,26 @@
         qFont: el.qText ? getComputedStyle(el.qText).fontSize : null,
         opts: Array.prototype.map.call(el.options.children, function (cc) { return cc.getAttribute('data-fit'); })
       };
+    },
+    /* Measured quiz geometry, so the fit guard can be asserted from a test
+       instead of eyeballed. `overflowPx` is the real spill past the frame. */
+    quizFit: function () {
+      var host = el.quizStage;
+      if (!host) return null;
+      var fr = el.frame ? el.frame.getBoundingClientRect() : null;
+      var hr = host.getBoundingClientRect();
+      return {
+        overflowPx: quizOverflowPx(),
+        scale: host.style.getPropertyValue('--q-fit-scale') || '1',
+        qFit: el.qText ? el.qText.getAttribute('data-fit') : null,
+        stageBottom: Math.round(hr.bottom),
+        contentBottom: Math.round(hr.top + host.scrollHeight),
+        frameBottom: fr ? Math.round(fr.bottom) : null
+      };
+    },
+    refitQuiz: function () {
+      if (currentQ()) applyQuestionFit(currentQ().q.length);
+      return this.quizFit();
     },
     promoCap: function () { return PROMO_MAX_SEC; },
     promo: function () {
