@@ -378,8 +378,23 @@ function swVersionPlugin(): Plugin {
         this.error(`sw version: expected exactly one CACHE_VERSION line in public/sw.js, found ${found.length}`);
       }
 
-      writeFileSync(swPath, source.replace(anchor, `const CACHE_VERSION = '${version}';`), 'utf8');
-      console.log(`[lnr-sw] cache version ${version}`);
+      /* Fold the worker's own bytes into the version it is stamped with.
+         The hash above covers index.html and /assets only, so a change made
+         ONLY to public/sw.js (a caching-strategy fix, for example) produced the
+         SAME CACHE_VERSION - and because the browser compares the worker script
+         byte-for-byte, the new worker did install, but it activated onto the
+         same cache name and `activate` deleted nothing. An installed app could
+         therefore keep serving responses cached under the old strategy. Hashing
+         the worker's own text means any edit to it always yields a new version,
+         a new cache name, and a guaranteed purge of the previous one. */
+      const versionWithWorker = createHash('sha256')
+        .update(version)
+        .update(source.replace(anchor, ''))
+        .digest('hex')
+        .slice(0, 12);
+
+      writeFileSync(swPath, source.replace(anchor, `const CACHE_VERSION = '${versionWithWorker}';`), 'utf8');
+      console.log(`[lnr-sw] cache version ${versionWithWorker}`);
     }
   };
 }

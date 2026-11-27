@@ -233,12 +233,27 @@ function cardMeta(card: HTMLDivElement, clipBreaks: ClipBreaks, kicker: string):
   card.appendChild(meta);
 }
 
-/* The "UP NEXT" card is a 10-second warning, matching the stage notices the
-   engine shows before a quiz block and before an anecdote ends. It used to run
-   for 5 seconds, which was too short for a viewer to read the headline, the
-   detail line and the countdown before the first question appeared. */
-const NOTICE_SECONDS = 10;
+/* Matches the promo notice's lead-in exactly (PRE_AD_NOTICE_MS = 5000 in
+   engine.js). All three break types now warn for the same five seconds, so the
+   rhythm of the broadcast is identical whichever break is coming. */
+const NOTICE_SECONDS = 5;
 
+/* ---------------------------------------------------------------------------
+   Pre-break notice, built from the PROMO notice's own anatomy.
+
+   There are three break types in the studio - promo, quiz, anecdote - and the
+   promo one already had a notice: `.studio-break-notice` in the stage, with a
+   pill, a bold headline, a detail line, a seconds counter and a progress bar.
+   The quiz and anecdote notices were a separate design (`.vbreak-notice-card`,
+   a big centred card with its own title scale), so the same moment in the
+   broadcast looked like two different products depending on which break was
+   coming.
+
+   This builds the quiz and anecdote notices out of the SAME classes, in the
+   SAME bottom-right corner, at the SAME size, with the SAME 10-second
+   countdown and the SAME progress bar - so all three read as one system. The
+   only thing that changes is the pill text and the copy.
+   --------------------------------------------------------------------------- */
 function noticeCard(
   kicker: string,
   headline: string,
@@ -248,20 +263,29 @@ function noticeCard(
   const card = flashCard(0);
   card.classList.add('vbreak-notice-card');
 
-  const head = elm('div', 'vbreak-card-head');
-  head.appendChild(elm('span', 'vbreak-kicker', kicker));
-  card.appendChild(head);
+  /* The promo notice's exact structure. */
+  const notice = elm('div', 'studio-break-notice vbreak-notice');
+  notice.setAttribute('role', 'status');
+  notice.setAttribute('aria-live', 'polite');
 
-  card.appendChild(elm('p', 'vbreak-notice-title', headline));
-  card.appendChild(elm('p', 'vbreak-notice-sub', detail));
+  const row = elm('div', 'studio-break-notice-row');
+  row.appendChild(elm('span', 'studio-break-pill', kicker));
 
-  const counter = elm('div', 'vbreak-notice-count', String(NOTICE_SECONDS));
-  card.appendChild(counter);
+  const copy = elm('div', 'studio-break-notice-copy');
+  copy.appendChild(elm('b', '', headline));
+  copy.appendChild(elm('span', '', detail));
+  row.appendChild(copy);
 
-  const track = elm('div', 'vbreak-notice-track');
-  const bar = elm('div', 'vbreak-notice-bar');
+  const counter = elm('span', 'studio-break-notice-timer', String(NOTICE_SECONDS));
+  row.appendChild(counter);
+  notice.appendChild(row);
+
+  const track = elm('div', 'studio-break-bar');
+  const bar = elm('span', '');
   track.appendChild(bar);
-  card.appendChild(track);
+  notice.appendChild(track);
+
+  card.appendChild(notice);
 
   return new Promise<boolean>((resolve) => {
     const startedAt = performance.now();
@@ -302,9 +326,9 @@ async function playBreak(
 
   if (total > 0) {
     const ready = await noticeCard(
-      'UP NEXT',
-      'Quiz break',
-      'The first question starts in a moment.',
+      'QUIZ BREAK',
+      'Quiz break starting soon',
+      `The first of ${total} question${total === 1 ? '' : 's'} starts in a moment.`,
       alive
     );
     if (!ready || !alive()) return;
@@ -322,8 +346,8 @@ async function playBreak(
 
   if (item.anecdote && alive()) {
     const ready = await noticeCard(
-      'UP NEXT',
-      'Anecdote',
+      'ANECDOTE',
+      'Anecdote starting soon',
       'A short story from the source starts in a moment.',
       alive
     );

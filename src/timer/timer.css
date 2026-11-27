@@ -1923,6 +1923,86 @@ body.safe .frame {
 }
 body.safe .screen-stage { gap: 0; }
 
+/* Stream Safe reading surface.
+   In safe mode the frame is a full 16:9 capture, so the player is laid out to
+   fill it: one large reading column beside the card, both vertically centred.
+   The type is stepped up well past the in-studio size because this is what a
+   viewer sees on a phone in a livestream chat pane. Everything here is scoped
+   to body.safe so the operator's studio view is untouched. */
+body.safe .player-safe-zone,
+body.safe .frame.is-chat-safe .player-safe-zone {
+  height: 100%;
+  max-height: 100%;
+  grid-template-columns: minmax(0, 1.32fr) minmax(0, .88fr);
+  align-items: center;
+  column-gap: 3cqw;
+  width: 100%;
+  max-width: 1720px;
+  margin: 0 auto;
+}
+body.safe .player-stage,
+body.safe .milestone-stage { justify-content: center; }
+body.safe .player-stage .player-main-col,
+body.safe .frame.is-chat-safe .player-stage .player-main-col {
+  justify-content: center;
+  height: auto;
+  max-height: 100%;
+  gap: 1.25cqw;
+}
+body.safe .frame-inner { padding: 2.3cqw 3cqw; gap: 1.3cqw; }
+
+/* Headline and clues scale with the capture width, not the studio pane. */
+body.safe .pl-headline { font-size: clamp(34px, 3.1cqw, 3.1cqw); line-height: 1.1; }
+body.safe .pl-headline.is-with-clues { font-size: clamp(30px, 2.7cqw, 2.7cqw); }
+body.safe .pl-clues { flex: 0 0 auto; justify-content: center; gap: 1.05cqw; }
+body.safe .pl-clue-item {
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1.1cqw 1.7cqw;
+  font-size: clamp(29px, 2.45cqw, 2.45cqw);
+  line-height: 1.34;
+  border-radius: .9cqw;
+}
+body.safe .pl-clue-num { font-size: max(16px, 1.4cqw); }
+body.safe .pl-stage-badge,
+body.safe .pl-countdown-pill { font-size: clamp(17px, 1.28cqw, 1.28cqw); padding: .5cqw 1.2cqw; }
+
+/* Reveal block: the payoff screen, so it gets the largest type of all. */
+body.safe .pl-reveal-name { font-size: clamp(40px, 3.55cqw, 3.55cqw); }
+body.safe .pl-reveal-sub { font-size: clamp(21px, 1.7cqw, 1.7cqw); }
+body.safe .pl-reveal-insight { font-size: clamp(21px, 1.72cqw, 1.72cqw); line-height: 1.5; }
+
+/* The card fills its column height instead of floating small in the middle. */
+body.safe .pl-card-frame { width: auto; height: min(80cqh, 100cqw); max-height: 80cqh; }
+
+/* Quiz, anecdote and milestone text get the same treatment. */
+body.safe .q-text { font-size: clamp(32px, 3.3cqw, 3.3cqw); }
+body.safe .opt-text { font-size: clamp(23px, 1.85cqw, 1.85cqw); }
+body.safe .ms-title { font-size: clamp(25px, 2.2cqw, 2.2cqw); }
+body.safe .ms-item b { font-size: clamp(17px, 1.3cqw, 1.3cqw); }
+body.safe .ms-item-sub { font-size: clamp(13px, 1cqw, 1cqw); }
+body.safe .ms-grade-item b { font-size: clamp(19px, 1.45cqw, 1.45cqw); }
+body.safe .ms-grade-item span { font-size: clamp(13.5px, 1cqw, 1cqw); }
+body.safe .ms-cta { font-size: clamp(15.5px, 1.15cqw, 1.15cqw); }
+
+/* Portrait / narrow: stack and let the reading column breathe. */
+@media (max-aspect-ratio: 1 / 1), (max-width: 760px) and (orientation: portrait) {
+  body.safe .player-safe-zone,
+  body.safe .frame.is-chat-safe .player-safe-zone {
+    grid-template-columns: none;
+    max-width: none;
+    column-gap: 0;
+    row-gap: 2.4cqw;
+  }
+  body.safe .pl-headline { font-size: clamp(26px, 6.4cqw, 6.4cqw); }
+  body.safe .pl-headline.is-with-clues { font-size: clamp(24px, 5.8cqw, 5.8cqw); }
+  body.safe .pl-clue-item { font-size: clamp(20px, 4.6cqw, 4.6cqw); padding: 2cqw 3cqw; }
+  body.safe .pl-reveal-name { font-size: clamp(28px, 7cqw, 7cqw); }
+  body.safe .pl-reveal-sub,
+  body.safe .pl-reveal-insight { font-size: clamp(15px, 3.6cqw, 3.6cqw); }
+  body.safe .pl-card-frame { height: auto; width: min(100%, calc(48cqh * .8)); max-height: 48cqh; }
+}
+
 .safe-peek {
   display: none;
   position: absolute;

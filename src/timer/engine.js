@@ -3228,11 +3228,27 @@
 
   /* The text-only promo funnel. Shown during a promo break when there is no
      sponsor clip to play, so the break still earns its place: it advertises
-     the studio itself and sends viewers to the site. */
+     the studio itself and sends viewers to the site.
+
+     DEFAULT SURFACE. The funnel is now the default promo break, not a
+     fallback. Before this, `effectivePromoList()` always contained the
+     built-in studio promo clip on the free tier, so `!list.length` was never
+     true and the funnel could not appear at all - the break always played the
+     same 22-second clip. The operator can still choose a clip-first break
+     (S.promoDefaultSurface === 'clip'), and any clip they upload themselves
+     always wins over the funnel, because a real sponsor break is the point of
+     the feature. */
+  function promoFunnelActive() {
+    if (!live.inSession || live.phase !== 'promo') return false;
+    if ((S.promoDefaultSurface || 'funnel') === 'clip') return false;
+    /* An operator's own uploaded clip takes precedence over the house funnel. */
+    var own = effectivePromoList().filter(function (p) { return p && !p.builtIn; });
+    return own.length === 0;
+  }
+
   function updatePromoFunnel() {
     if (!el.promoFunnel) return;
-    var list = effectivePromoList();
-    var show = live.inSession && live.phase === 'promo' && !list.length;
+    var show = promoFunnelActive();
     el.promoFunnel.hidden = !show;
     if (!show) return;
 
@@ -5469,11 +5485,72 @@
     var mainCol = el.playerStage.querySelector('.player-main-col');
     if (!mainCol) return;
     var tiers = ['normal', 'tight', 'compact'];
+
+    /* Measure from a clean slate. `data-pfit` and the reveal/countdown state
+       both change the font scale, so a stale tier from the previous sub-phase
+       made the guard believe content fit when it did not (and vice versa). */
     el.playerStage.setAttribute('data-pfit', 'normal');
+    var fits = false;
     for (var i = 0; i < tiers.length; i++) {
       el.playerStage.setAttribute('data-pfit', tiers[i]);
-      if (mainCol.scrollHeight <= mainCol.clientHeight + 2) break;
+      if (!overflows(mainCol)) { fits = true; break; }
     }
+    /* If even the smallest type overflows, the column was still centred - and
+       `.player-main-col` is `justify-content: center` inside `overflow: hidden`.
+       A centred flex box that overflows is clipped at BOTH ends, so the top of
+       the first clue (and the stage badge above it) was cut off while the tail
+       of the list was cut off below. That is the "player trivia does not
+       display" report: the trivia WAS rendering, just outside the visible box.
+       The overflow tier pins the column to the top and lets the clue list take
+       the remaining height and scroll inside itself, so nothing is clipped. */
+    el.playerStage.setAttribute('data-pfit', fits ? (el.playerStage.getAttribute('data-pfit') || 'normal') : 'overflow');
+
+    /* The reveal block is measured too: on a short viewport the name, club line
+       and insight paragraph can together exceed the column, and the insight is
+       the trivia the player quiz exists to show. */
+    var meta = el.playerStage.querySelector('.pl-reveal-meta');
+    if (meta && !meta.hidden && overflows(mainCol)) {
+      el.playerStage.setAttribute('data-pfit', 'overflow');
+    }
+
+    /* Last resort. The overflow tier scrolls the column internally, which is
+       right for the operator but wrong for a capture: a scrolling box on a
+       livestream silently hides whatever is below the fold, and nobody in chat
+       can scroll it. So once the column is measurable, if content STILL leaves
+       the stage box, shrink the reading scale in small steps until it fits.
+       A CSS custom property is used so the studio type scale is restored the
+       moment there is room again. */
+    var scale = 1;
+    el.playerStage.style.removeProperty('--pl-fit-scale');
+    while (scale > 0.62 && contentExceedsStage(el.playerStage, mainCol, meta)) {
+      scale = Math.round((scale - 0.04) * 100) / 100;
+      el.playerStage.style.setProperty('--pl-fit-scale', String(scale));
+    }
+  }
+
+  /* A single place for the "does this box scroll?" test, so the tier loop and
+     the reveal check cannot drift apart. Two pixels of tolerance absorbs
+     sub-pixel rounding without hiding a genuinely clipped line. */
+  function overflows(box) {
+    return box.scrollHeight > box.clientHeight + 2;
+  }
+
+  /* True when anything inside the reading column paints outside the stage's
+     own box - measured with rects, not scrollHeight, because the stage clips
+     with `overflow: hidden` and therefore never reports a larger scrollHeight
+     of its own. */
+  function contentExceedsStage(stage, mainCol, meta) {
+    var stageRect = stage.getBoundingClientRect();
+    if (!stageRect.height) return false;
+    var probes = [mainCol, meta];
+    for (var i = 0; i < probes.length; i++) {
+      var node = probes[i];
+      if (!node || node.hidden) continue;
+      var rect = node.getBoundingClientRect();
+      if (!rect.height) continue;
+      if (rect.bottom > stageRect.bottom + 2 || rect.top < stageRect.top - 2) return true;
+    }
+    return false;
   }
 
   function renderPlayerStage() {
@@ -6684,7 +6761,11 @@
       var adSecDefault = effectivePromoAdSec();
       var clipLabel = 'Fallback Partner Break Slot (' + formatShortSec(adSecDefault) + ')';
       var plannedAdSec = adSecDefault;
-      if (activePromos.length) {
+      /* A funnel break has no clip, so it is timed by the configured break
+         length rather than by a clip's own duration. */
+      var funnelMode = (S.promoDefaultSurface || 'funnel') === 'funnel' &&
+        activePromos.filter(function (p) { return p && !p.builtIn; }).length === 0;
+      if (activePromos.length && !funnelMode) {
         var adIdx;
         if (S.promoOrder === 'shuffle' && activePromos.length > 1) {
           adIdx = Math.floor(Math.random() * activePromos.length);
@@ -6795,9 +6876,19 @@
           showOwnedBreaksNotice();
         }
       } else {
-        playClip(phase === 'promo' ? live.clipIndex : 0);
+        /* When the text-only funnel is the promo surface, do NOT load a clip
+           behind it: `playClip` would fetch the built-in studio promo mp4,
+           autoplay its audio under the funnel card, and hold the stage video
+           layer over the card on some browsers. The funnel is a full-frame
+           surface in its own right. */
+        if (phase !== 'promo' || !promoFunnelActive()) {
+          playClip(phase === 'promo' ? live.clipIndex : 0);
+        } else {
+          stopVideo();
+        }
         updatePromoBrand();
         updatePromoOverlay();
+        updatePromoFunnel();
       }
     }
 
@@ -7310,20 +7401,17 @@
       el.safeBtn.classList.toggle('is-on', !!on_);
     }
     applyChatSafe();
-    // Hide any video overlays during stream-safe mode
-    if (on_) {
-      closeDrawer();
-      // Hide preroll and interactive notice if showing
-      if (el.videoPreroll && !el.videoPreroll.hidden) {
-        var wasPrerollActive = prerollActive;
-        dismissPreroll();
-        if (wasPrerollActive) interactiveNoticeDismissed = true;
-      }
-      // Hide break overlay if showing
-      if (overlay && !overlay.hidden) {
-        hideOverlay();
-      }
-    }
+    /* Stream-safe is a CLEAN CAPTURE of the broadcast - it is not a way to skip
+       parts of the broadcast. It used to call dismissPreroll() here, which tore
+       the disclaimer card down the moment the operator switched clean mode on:
+       the reference disclaimer is a legal/attribution requirement, so clean
+       capture must leave it alone. It also called `hideOverlay()` and read a
+       bare `overlay` variable - neither exists in this file (hideOverlay is
+       private to video-breaks.ts), so switching safe mode on threw
+       "ReferenceError: overlay is not defined" and aborted the rest of setSafe.
+       The drawer is still closed, because it is operator UI that would sit in
+       the capture. */
+    if (on_) closeDrawer();
     window.requestAnimationFrame(function () {
       sizeStage();
       if (live.phase === 'quiz' && currentQ() && !live.quizMilestone) applyQuestionFit(currentQ().q.length);
@@ -8628,6 +8716,20 @@
   /* exposed for diagnostics & tests */
   window.LNR_DEBUG = {
     tier: function () { return 'studio'; },
+    /* Exposed so the player layout guard can be exercised directly (and
+       re-run after a manual state change) without starting a timed session. */
+    refit: function () { applyPlayerFit(); return el.playerStage ? el.playerStage.getAttribute('data-pfit') : null; },
+    fitReport: function () {
+      var st = el.playerStage; var col = st && st.querySelector('.player-main-col');
+      var meta = st && st.querySelector('.pl-reveal-meta');
+      if (!st || !col) return null;
+      return {
+        pfit: st.getAttribute('data-pfit'),
+        overflowPx: col.scrollHeight - col.clientHeight,
+        stageBottom: Math.round(st.getBoundingClientRect().bottom),
+        contentBottom: Math.round((meta && !meta.hidden ? meta : col).getBoundingClientRect().bottom)
+      };
+    },
     bankCount: function () {
       var pLib = window.LNR_PLAYERS;
       var sLib = window.LNR_STORIES;
@@ -8675,6 +8777,21 @@
     setSegment: setSegment,
     setEngine: setEngine,
     startSession: startSession,
+    setSafe: setSafe,
+    startPreroll: startPreroll,
+    prerollState: function () {
+      return {
+        active: prerollActive,
+        hidden: el.videoPreroll ? el.videoPreroll.hidden : null,
+        safe: document.body.classList.contains('safe'),
+        phase: live.phase
+      };
+    },
+    enterPromo: function () {
+      enterPhase('promo', false, { returnPhase: homePhase() });
+      updatePromoFunnel();
+      return { phase: live.phase, funnel: promoFunnelActive() };
+    },
     rotate: rotateNow,
     startBroadcast: startBroadcast,
     toggleDev: toggleDev,
