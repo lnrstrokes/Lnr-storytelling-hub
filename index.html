@@ -1,38 +1,13 @@
 <!doctype html>
 <html lang="en">
   <head>
-    
-<!-- Google Analytics 4.
-     Never loaded on the operator's own devices: a registered owner device, or
-     any browser that has been opened once with ?me=1, sends nothing at all —
-     no page_view, no realtime hit. ?me=0 removes the opt-out again.
-     The flag has to be read here, before gtag.js loads, or the first page_view
-     would already be counted. -->
-<script>
-  (function () {
-    try {
-      if (/[?&]me=1(&|$)/.test(location.search)) localStorage.setItem('lnr_internal_traffic', '1');
-      if (/[?&]me=0(&|$)/.test(location.search)) localStorage.removeItem('lnr_internal_traffic');
-      window.__LNR_ANALYTICS_OFF__ =
-        localStorage.getItem('lnr_internal_traffic') === '1' ||
-        !!localStorage.getItem('lnr_owner_check_v1');
-    } catch (e) {
-      window.__LNR_ANALYTICS_OFF__ = false;
-    }
-    if (window.__LNR_ANALYTICS_OFF__) return;
-    window.dataLayer = window.dataLayer || [];
-    window.gtag = function gtag() { window.dataLayer.push(arguments); };
-    var tag = document.createElement('script');
-    tag.async = true;
-    tag.src = 'https://www.googletagmanager.com/gtag/js?id=G-4K18FJXFX6';
-    document.head.appendChild(tag);
-    window.gtag('js', new Date());
-    window.gtag('config', 'G-4K18FJXFX6');
-  })();
-</script>
+    <!-- Google Analytics 4. External file rather than an inline block so the
+         site can enforce a script-src that allows no inline JavaScript. -->
+    <script src="/analytics-boot.js"></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0c1210" />
+    <meta name="color-scheme" content="dark" />
 
     <!-- Brand faces. Linked here rather than @import-ed from a stylesheet:
          Tailwind expands into rules before any later @import, and a browser
@@ -171,76 +146,9 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then((reg) => {
-            console.log('lnr Studio PWA ServiceWorker active');
-            // A new build is waiting: activate it, then reload once so the
-            // installed app shows the newest version instead of a stale cache.
-            reg.addEventListener('updatefound', () => {
-              const sw = reg.installing;
-              if (!sw) return;
-              sw.addEventListener('statechange', () => {
-                if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-                  sw.postMessage({ type: 'SKIP_WAITING' });
-                }
-              });
-            });
-          }).catch((err) => {
-            console.warn('SW registration:', err);
-          });
-
-          // A controllerchange on the FIRST install is not an update: the worker
-          // has merely claimed a page that was never controlled. Reloading there
-          // threw away the freshly booted app (and any speech it had queued) for
-          // no reason. Only reload when a previous build was replaced.
-          let hadController = !!navigator.serviceWorker.controller;
-          let reloaded = false;
-          navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (!hadController) {
-              hadController = true;
-              return;
-            }
-            if (reloaded) return;
-            reloaded = true;
-            window.location.reload();
-          });
-        });
-      }
-    </script>
-    <!-- Shared GA4 helper (gtag is already loaded above). Tracks only existing
-         buttons; never ships emails, licence keys, names or file contents. -->
-    <script type="module">
-      import '/src/analytics.ts';
-      (function () {
-        function track() {
-          if (typeof window.LNR_TRACK === 'function') {
-            window.LNR_TRACK.apply(window.LNR_TRACK, arguments);
-          }
-        }
-
-        function trackUpgrade(location) {
-          track('upgrade_click', { location: location });
-        }
-
-        // Existing Hub-page upgrade / Pro surfaces.
-        document.addEventListener('click', function (e) {
-          var t = e.target;
-          var link = t && (t.closest('#pricingProBtn') || t.closest('#pricingFreeBtn'));
-          if (link) {
-            var loc = link.id === 'pricingProBtn' ? 'pricing_pro_btn' : 'pricing_free_btn';
-            trackUpgrade(loc);
-          }
-          if (t && t.id === 'homeGoStudioBtn') {
-            trackUpgrade('home_start_studio');
-          }
-        });
-
-        // Existing Selar checkout surface (Pro purchase path).
-        // The canonical Selar link is the Pro checkout URL used everywhere in the app;
-        // track it where the existing app opens it (engine.js / pro-gate).
-      })();
-    </script>
+    <script src="/sw-register.js"></script>
+    <!-- Shared GA4 helper (gtag is loaded above). Tracks only existing buttons;
+         never ships emails, licence keys, names or file contents. -->
+    <script type="module" src="/src/analytics-entry.ts"></script>
   </body>
 </html>

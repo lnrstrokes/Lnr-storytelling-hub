@@ -24,6 +24,18 @@ async function startServer() {
 
   if (process.env.NODE_ENV === 'production') {
     const distDir = path.resolve(process.cwd(), 'dist');
+    /* Mirrors the headers vercel.json sets, so the bundled `npm start` server
+       enforces the same policy instead of silently running without it. */
+    app.use((_req, res, next) => {
+      res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.google-analytics.com https://www.googletagmanager.com; media-src 'self' blob: data:; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://www.google.com; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests"
+      );
+      res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      next();
+    });
     app.use(express.static(distDir));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distDir, 'index.html'));
