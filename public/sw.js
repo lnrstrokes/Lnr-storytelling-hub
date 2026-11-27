@@ -219,6 +219,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  /* The worker script itself must NEVER be served from this cache.
+     `/sw.js` fell through to the catch-all below, which cached it. The
+     browser's update check then read the OLD worker out of the cache, saw no
+     change, and never installed the new build — an installed PWA stayed on the
+     previous version indefinitely, which is exactly the "I deployed but the app
+     still looks old" report. `updateViaCache: 'none'` in sw-register.js only
+     covers the HTTP cache, not this one. */
+  if (url.pathname === '/sw.js' || url.pathname === '/sw-register.js') {
+    event.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
+
   /* Everything else: network first, fall back to cache. */
   event.respondWith(
     fetch(req)
