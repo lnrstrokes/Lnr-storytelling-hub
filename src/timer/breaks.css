@@ -265,6 +265,127 @@
   color: #f0b9a4;
 }
 
+/* ------------------------------------------------------- notice wording
+   The editable quiz / anecdote notice copy. Sits inside the break panel, which
+   is the video engine's Pro settings surface, directly under the break
+   controls it affects. */
+.vbreak-notice-copy-block {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(240, 232, 212, .1);
+}
+
+.vbreak-notice-copy-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.vbreak-notice-copy-head h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: #f2ead8;
+}
+
+.vbreak-notice-copy-tag {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #191206;
+  background: var(--brass, #cfa35a);
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.vbreak-notice-copy-help {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #9fb0a5;
+}
+
+.vbreak-notice-copy-help b {
+  color: #d8c9a8;
+  font-weight: 700;
+}
+
+.vbreak-notice-copy-field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 10px;
+  margin-bottom: 2px;
+}
+
+.vbreak-notice-copy-field > span {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  font-weight: 600;
+  color: #c3d0c7;
+}
+
+.vbreak-notice-copy-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 11px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #f4ecdb;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(240, 232, 212, .16);
+  border-radius: 8px;
+}
+
+.vbreak-notice-copy-field input::placeholder {
+  color: #7d8d83;
+}
+
+.vbreak-notice-copy-field input:focus {
+  outline: none;
+  border-color: var(--brass, #cfa35a);
+  background: rgba(255, 255, 255, .07);
+}
+
+.vbreak-notice-copy-field input:disabled {
+  color: #8b9a90;
+  background: rgba(255, 255, 255, .02);
+  border-color: rgba(240, 232, 212, .08);
+  cursor: not-allowed;
+}
+
+.vbreak-notice-copy-count {
+  font-size: 11px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: #8b9a90;
+  white-space: nowrap;
+}
+
+.vbreak-notice-copy-count[data-state='limit'] {
+  color: #e8b98a;
+  font-weight: 700;
+}
+
+.vbreak-notice-copy-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.vbreak-notice-copy-block.is-locked .vbreak-notice-copy-actions {
+  opacity: .45;
+  pointer-events: none;
+}
+
+.vbreak-notice-copy-block.is-locked .vbreak-notice-copy-tag {
+  background: rgba(240, 232, 212, .18);
+  color: #b9c6bd;
+}
+
 .vbreak-footer {
   display: flex;
   align-items: center;

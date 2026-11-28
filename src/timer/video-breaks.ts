@@ -14,6 +14,7 @@
 
 /* --- imports --- */
 import { breaksFor, buildPanel } from './break-panel';
+import { noticeText } from './notice-copy';
 import {
   BreakItem,
   ClipBreaks,
@@ -272,7 +273,16 @@ function noticeCard(
   row.appendChild(elm('span', 'studio-break-pill', kicker));
 
   const copy = elm('div', 'studio-break-notice-copy');
-  copy.appendChild(elm('b', '', headline));
+  const headlineEl = elm('b', '', headline);
+  /* Render guard. The editor caps input at NOTICE_COPY_LIMIT, but a value
+     written by an older build, a hand-edited localStorage entry or a future
+     limit change could still be longer. Clamp here so the notice can never
+     spill out of its box: the CSS also clamps to two lines as a second net. */
+  headlineEl.style.display = '-webkit-box';
+  headlineEl.style.webkitLineClamp = '2';
+  headlineEl.style.webkitBoxOrient = 'vertical';
+  headlineEl.style.overflow = 'hidden';
+  copy.appendChild(headlineEl);
   copy.appendChild(elm('span', '', detail));
   row.appendChild(copy);
 
@@ -327,7 +337,7 @@ async function playBreak(
   if (total > 0) {
     const ready = await noticeCard(
       'QUIZ BREAK',
-      'Quiz break starting soon',
+      noticeText('quiz'),
       `The first of ${total} question${total === 1 ? '' : 's'} starts in a moment.`,
       alive
     );
@@ -347,7 +357,7 @@ async function playBreak(
   if (item.anecdote && alive()) {
     const ready = await noticeCard(
       'ANECDOTE',
-      'Anecdote starting soon',
+      noticeText('anecdote'),
       'A short story from the source starts in a moment.',
       alive
     );

@@ -4645,20 +4645,28 @@ body.safe .chat-safe-guide { display: none !important; }
 .vbreak-card.vbreak-notice-card::before,
 .vbreak-card.vbreak-notice-card::after { display: none; }
 
-.vbreak-notice {
+/* ROOT CAUSE of the "quiz / anecdote notice is hidden" report.
+   `.vbreak-card > :not(.vbreak-bg-layer)` (further up this file) sets
+   `position: relative` on every direct child of a break card, so it wins over
+   a plain `.vbreak-notice` rule on specificity (0,2,0 vs 0,1,0). The notice
+   therefore laid out in normal flow at the TOP-LEFT of the card instead of
+   being pinned to the bottom-right corner: on desktop it sat above the card's
+   own box, and on a phone it was pushed to y = -132px, i.e. completely off
+   screen. That is why the notice looked "hidden" while the card itself was
+   fine. The selector below is specific enough to beat the child rule, and
+   `inset` is used so no longhand can be left behind. */
+.vbreak-card.vbreak-notice-card > .vbreak-notice {
   position: absolute;
-  right: clamp(12px, 2.2cqw, 34px);
-  bottom: clamp(12px, 2.4cqw, 34px);
-  left: auto;
-  top: auto;
+  inset: auto clamp(12px, 2.2cqw, 34px) clamp(12px, 2.4cqw, 34px) auto;
   width: min(92%, 420px);
   margin: 0;
+  z-index: 2;
 }
 
 /* On a narrow stage the notice spans the width instead of hugging a corner,
    so the copy never wraps into a tall sliver. */
 @media (max-width: 620px), (max-aspect-ratio: 1/1) {
-  .vbreak-notice {
+  .vbreak-card.vbreak-notice-card > .vbreak-notice {
     left: clamp(10px, 3cqw, 20px);
     right: clamp(10px, 3cqw, 20px);
     bottom: clamp(10px, 3cqw, 20px);
