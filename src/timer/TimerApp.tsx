@@ -188,38 +188,18 @@ export default function TimerApp() {
       });
     }
 
-    // Existing upgrade / Selar / Jotform surfaces that already live in the timer markup.
-    const trackUpgrade = (location: string) => {
-      try {
-        window.LNR_TRACK?.('upgrade_click', { location });
-      } catch {}
-    };
-    const trackSelarOpen = () => {
-      try {
-        window.LNR_TRACK?.('selar_open');
-      } catch {}
-    };
+    // Upgrade / Selar / Jotform surfaces that already live in the timer markup.
+    //
+    // The upgrade buttons are deliberately NOT tracked here any more. This file
+    // used to attach a third listener that fired `selar_open` + `upgrade_click`
+    // on top of analytics-entry.ts and engine.js, so one Pro click produced
+    // three or four events. openProCheckout() in engine.js is now the single
+    // owner of upgrade_click / checkout_start, and pro/license.ts owns purchase.
     const trackJotformOpen = () => {
       try {
         window.LNR_TRACK?.('jotform_open');
       } catch {}
     };
-
-    const onUpgradeClick = (e: MouseEvent) => {
-      const t = e.currentTarget as HTMLElement | null;
-      if (!t) return;
-      // Pro checkout is the existing Selar checkout surface.
-      trackSelarOpen();
-      const loc = t.id === 'pricingProBtn'
-        ? 'pricing_pro_btn'
-        : t.id === 'sermonUpgradeLink' || t.id === 'videoTierUpgradeLink'
-          ? (t.id === 'sermonUpgradeLink' ? 'sermon_upgrade_link' : 'video_tier_upgrade_link')
-          : 'upgrade';
-      trackUpgrade(loc);
-    };
-    host.querySelectorAll<HTMLElement>('#pricingProBtn, #sermonUpgradeLink, #videoTierUpgradeLink').forEach((btn) => {
-      btn.addEventListener('click', onUpgradeClick);
-    });
 
     // Existing "Send Pre-filled Email" / details-form surface opens a mailto to the
     // studio contact address. That is the existing details-form flow; track it there.

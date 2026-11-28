@@ -26,5 +26,13 @@
   tag.src = 'https://www.googletagmanager.com/gtag/js?id=G-4K18FJXFX6';
   document.head.appendChild(tag);
   window.gtag('js', new Date());
-  window.gtag('config', 'G-4K18FJXFX6');
+  /* Cross-domain linking. Checkout leaves for selar.com in a new tab, and
+     without a linker config GA4 treats that as a brand-new session with no
+     referrer — the visitor simply disappears at the boundary, which is why the
+     funnel could never be joined up. The linker appends a _gl parameter to
+     outbound links to these domains so the session continues on the other
+     side. It only works if Selar forwards the parameter; that is their side. */
+  window.gtag('config', 'G-4K18FJXFX6', {
+    linker: { domains: ['selar.com', 'www.selar.com'] }
+  });
 })();

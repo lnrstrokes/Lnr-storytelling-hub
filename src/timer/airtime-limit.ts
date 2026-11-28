@@ -1,12 +1,25 @@
 /* ==========================================================================
-   airtime-limit.ts — 5 hours of airtime per day on Free, unlimited on Pro
+   airtime-limit.ts — unlimited broadcast airtime on every plan
    --------------------------------------------------------------------------
    THE RULE
 
-     Free  : 5 hours of broadcast airtime per calendar day, counted by the
-             SERVER (/api/airtime). The server refuses to start or continue a
-             session once the allowance is spent.
+     Free  : unlimited. No cap is applied, and no session is ever refused or
+             cut off for airtime.
      Pro   : unlimited. No cap is ever applied to a licensed device.
+
+   WHY THE CAP WAS REMOVED
+
+   The cap was 5 hours per calendar day on Free, enforced by /api/airtime. It
+   was removed for two reasons. First, it was unenforceable in practice: with
+   no Redis configured the endpoint reports store:"memory", so the tally lived
+   in one serverless instance and reset on every cold start — the limit did not
+   actually hold. Second, it was cutting real broadcasts off mid-stream, which
+   is the worst possible moment to interrupt a creator.
+
+   This module is now a METER, not a gate. It still counts airtime and reports
+   it to the server, because that number is useful telemetry and a future paid
+   tier can restore a ceiling without touching any call site. Nothing here can
+   stop a broadcast.
 
    WHY THE SERVER OWNS THE NUMBER
 
@@ -45,11 +58,11 @@
 
 import { getProLicenseKey, getProState, PRO_CHECKOUT_URL } from '../pro/license';
 
-/* Free plan: 5 hours of airtime per calendar day. Raised from 2 hours — see
-   the note in api/airtime.ts for the reasoning. The two constants must stay in
-   step: the server is the source of truth, and this one only drives the UI and
-   the offline fallback. */
-export const FREE_DAILY_LIMIT_MS = 5 * 60 * 60 * 1000;
+/* Unlimited on every plan. Infinity means "no ceiling": Infinity - usedMs is
+   still Infinity, and usedMs >= Infinity is never true, so no comparison below
+   can refuse a session. Kept as a named constant so the UI, the offline
+   fallback and api/airtime.ts all read the same value. */
+export const FREE_DAILY_LIMIT_MS = Infinity;
 
 const TICK_MS = 1000;
 /** A single tick longer than this is a suspended tab, not real airtime. */
@@ -203,11 +216,10 @@ export function isPro(): boolean {
   return getProState().active;
 }
 
-/** True when a Free device has used its allowance for today. */
+/** Airtime is never exhausted: every plan is unlimited. Kept as a function
+ *  because the UI and the test harness still ask the question. */
 export function isAirtimeExhausted(): boolean {
-  if (isPro()) return false;
-  if (lastServer && lastServer.pro) return false;
-  return airtimeRemainingMs() <= 0;
+  return false;
 }
 
 /** "2h 00m" / "48m" / "9s" — short enough for a hint line.
@@ -216,6 +228,10 @@ export function isAirtimeExhausted(): boolean {
  * for the first few seconds.
  */
 export function formatAirtime(ms: number): string {
+  /* An unlimited plan has no number to print. Callers that show a countdown
+     must check for this first; returning "unlimited" here keeps a stray call
+     from rendering "Infinityh 00m". */
+  if (!Number.isFinite(ms)) return 'unlimited';
   const remaining = Math.max(0, ms);
   const totalMinutes = Math.ceil(remaining / 60000);
   if (totalMinutes >= 1) {
@@ -252,20 +268,17 @@ function stageExit(): void {
 
 function updateCopy(): void {
   const pro = isPro() || !!(lastServer && lastServer.pro);
-  const remaining = airtimeRemainingMs();
 
   const note = document.getElementById('airtimeNotice');
   if (note) {
     note.hidden = false;
     note.textContent = pro
-      ? 'Pro Studio: unlimited airtime today.'
-      : remaining > 0
-        ? `Creator Free: ${formatAirtime(remaining)} of airtime left today. Pro Studio is unlimited.`
-        : 'Creator Free: today\'s 5 hours of airtime are used. Pro Studio is unlimited.';
+      ? 'Pro Studio: unlimited airtime.'
+      : 'Creator Free: unlimited airtime. No daily limit.';
   }
 
   const freeBullet = document.getElementById('airtimeFreeBullet');
-  if (freeBullet) freeBullet.textContent = `5 hours of airtime per day (${formatAirtime(remaining)} left today)`;
+  if (freeBullet) freeBullet.textContent = 'Unlimited airtime — no daily limit';
 
   const proBullet = document.getElementById('airtimeProBullet');
   if (proBullet) proBullet.textContent = 'Unlimited daily airtime';
@@ -373,7 +386,7 @@ function showLimitDialog(): void {
  */
 const STALE_PLAN_COPY = 'freely with zero paywalls or daily limits.';
 const CURRENT_PLAN_COPY =
-  'with no paywalls. Pro Studio has no daily airtime limit; Creator Free includes 5 hours of airtime per day.';
+  'with no paywalls and no daily airtime limit on any plan.';
 
 function fixPlanCopy(root: HTMLElement): void {
   root.querySelectorAll('p').forEach((p) => {
@@ -383,21 +396,12 @@ function fixPlanCopy(root: HTMLElement): void {
   });
 }
 
-function enforce(): void {
-  if (isPro()) return;
-  if (airtimeRemainingMs() > 0) return;
-  /* Stop the broadcast first, then explain. Leaving the stage running under
-     the dialog was the old behaviour: the stream kept airing behind a modal. */
-  if (inSession()) {
-    stageExit();
-    /* The engine's Exit is asynchronous; if the stage is still up on the next
-       frame, force the class off so nothing keeps airing. */
-    window.setTimeout(() => {
-      if (inSession()) document.body.classList.remove('screen-stage', 'safe');
-    }, 400);
-  }
-  showLimitDialog();
-}
+/** Airtime is unlimited, so there is nothing to enforce.
+ *
+ *  `showLimitDialog()` and `stageExit()` above are deliberately kept: they are
+ *  the complete, tested cut-off path, and a future paid tier can restore a
+ *  ceiling by calling them from one place. Nothing calls them today, which is
+ *  the point — no plan has an airtime ceiling. */
 
 /* --------------------------------------------------------------- install */
 
@@ -445,51 +449,16 @@ export function installAirtimeLimit(root: HTMLElement): void {
   /* --- ask the server for the real tally on load ------------------------ */
   void callServer('status').then(() => updateCopy());
 
-  /* --- block Start when the day is spent -------------------------------- */
-  /* The click is intercepted in the capture phase, BEFORE the engine's own
-     handler, and the server is asked for a final verdict. A stale cache can
-     never let a spent day go live. */
-  /* The allowed click has to be replayed, because this listener already
-     stopped the original one. Without this flag the replay is caught by THIS
-     listener again, which replayes again: an endless loop of /api/airtime
-     calls in which the engine's Start handler is never reached. */
-  let replayingStart = false;
-
+  /* --- Start is never intercepted --------------------------------------- */
+  /* This used to capture the Start click, ask /api/airtime for a verdict and
+     replay the click when allowed. With airtime unlimited there is nothing to
+     ask, so the interception is gone: Start reaches the engine directly, with
+     no server round trip and no replay loop to get wrong. The session is still
+     opened on the server for telemetry, fire-and-forget. */
   document.addEventListener('click', (event) => {
     const target = event.target as HTMLElement | null;
     if (!target || target.id !== 'startBtn') return;
-    /* Our own replay: let it through to the engine untouched. */
-    if (replayingStart) {
-      replayingStart = false;
-      return;
-    }
-    if (isPro()) return;
-
-    /* Optimistic local block: instant, and correct in the common case. */
-    if (airtimeRemainingMs() <= 0) {
-      event.preventDefault();
-      event.stopPropagation();
-      showLimitDialog();
-      return;
-    }
-
-    /* Confirm with the server. If it refuses, cancel the click. */
-    event.preventDefault();
-    event.stopPropagation();
-    void callServer('start').then((state) => {
-      updateCopy();
-      if (state && state.allowed === false) {
-        showLimitDialog();
-        return;
-      }
-      /* Allowed (or the server is unreachable and the cache says there is
-         time left): replay the click so the engine starts normally. */
-      const btn = document.getElementById('startBtn') as HTMLButtonElement | null;
-      if (btn) {
-        replayingStart = true;
-        btn.click();
-      }
-    });
+    void callServer('start').then(() => updateCopy());
   }, true);
 
   /* --- pin the day while a session is open ------------------------------ */
@@ -532,7 +501,9 @@ export function installAirtimeLimit(root: HTMLElement): void {
 
     syncSessionDay();
 
-    if (!inSession() || document.hidden || sessionPaused() || isPro()) return;
+    /* Meter every plan, Pro included: the number is telemetry now, not a
+       gate, and a future ceiling needs the history. */
+    if (!inSession() || document.hidden || sessionPaused()) return;
     if (delta <= 0 || delta > MAX_TICK_MS) return;
 
     /* Local cache advances immediately so the UI is honest between syncs. */
@@ -544,13 +515,8 @@ export function installAirtimeLimit(root: HTMLElement): void {
       lastSyncAt = now;
       const send = unsyncedMs;
       unsyncedMs = 0;
-      void callServer('tick', { deltaMs: send }).then((state) => {
-        if (state && state.allowed === false) enforce();
-        updateCopy();
-      });
+      void callServer('tick', { deltaMs: send }).then(() => updateCopy());
     }
-
-    enforce();
   };
 
   window.setInterval(() => {
@@ -563,11 +529,7 @@ export function installAirtimeLimit(root: HTMLElement): void {
   window.setInterval(() => {
     if (Date.now() - lastRefreshAt < REFRESH_EVERY_MS) return;
     lastRefreshAt = Date.now();
-    if (isPro()) return;
-    void callServer('status').then(() => {
-      updateCopy();
-      enforce();
-    });
+    void callServer('status').then(() => updateCopy());
   }, REFRESH_EVERY_MS);
 
   /* Leaving the tab must not be counted as airtime, and returning must not

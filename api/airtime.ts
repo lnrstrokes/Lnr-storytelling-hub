@@ -10,9 +10,21 @@
 
    THE RULE
 
-     Free : 5 hours of airtime per calendar day (UTC), counted by the server.
-     Pro  : unlimited. The licence key is verified HERE, not trusted from the
-            client, so a Free device cannot claim Pro to dodge the cap.
+     Free : unlimited. No cap is applied, and no session is ever refused or
+            cut off for airtime.
+     Pro  : unlimited.
+
+   WHY THE CAP WAS REMOVED
+
+   The cap was 5 hours per calendar day on Free. It was removed because it was
+   unenforceable in practice — with no Redis configured this endpoint reports
+   store:"memory", so the tally lived in one serverless instance and reset on
+   every cold start — and because it cut real broadcasts off mid-stream.
+
+   This endpoint is now a METER. It still records airtime, because that number
+   is useful telemetry and a future paid tier can restore a ceiling here
+   without touching the client. It never refuses a start and never refuses or
+   clamps a tick.
 
    IDENTITY
 
@@ -41,17 +53,10 @@ import { json, readJson, verifyProLicenseKey } from './_edge';
 
 export const config = { runtime: 'edge' };
 
-/* Free plan: 5 hours of airtime per calendar day.
-
-   Raised from 2 hours. The 2-hour cap was cutting real broadcasts off
-   mid-stream: a single quiz block plus a documentary episode plus the breaks
-   between them routinely runs past two hours, so a Free creator hit the wall
-   during their first session and had no reason to believe a second one would
-   be different. Five hours covers a full evening's broadcast, which is what
-   the product is actually for, while still leaving a clear reason to upgrade
-   for anyone running 24/7. The enforcement mechanism is unchanged — only the
-   number moved. */
-const FREE_DAILY_LIMIT_MS = 5 * 60 * 60 * 1000;
+/* Unlimited on every plan. Infinity means "no ceiling": usedMs >= Infinity is
+   never true, so no branch below can refuse a session. Kept as a named
+   constant so the client module and this endpoint read the same value. */
+const FREE_DAILY_LIMIT_MS = Infinity;
 
 /** A single tick longer than this is a suspended tab, not real airtime. */
 const MAX_TICK_MS = 90 * 1000;
@@ -330,9 +335,12 @@ export default async function handler(req: Request): Promise<Response> {
       ok: true,
       pro,
       usedMs: rec.usedMs,
-      limitMs: FREE_DAILY_LIMIT_MS,
-      remainingMs: pro ? null : Math.max(0, FREE_DAILY_LIMIT_MS - rec.usedMs),
-      exhausted: !pro && rec.usedMs >= FREE_DAILY_LIMIT_MS,
+      /* null, not Infinity: JSON.stringify turns Infinity into null anyway, and
+         an explicit null is what the client's `remainingMs: number | null`
+         type already expects for "no ceiling". */
+      limitMs: null,
+      remainingMs: null,
+      exhausted: false,
       day: rec.day,
       store: store.kind,
       ...payload,
@@ -351,10 +359,9 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   if (action === 'start') {
-    if (rec.usedMs >= FREE_DAILY_LIMIT_MS) {
-      return respond(403, { allowed: false, reason: 'exhausted' });
-    }
-    /* Opening the session here is what makes the day stick for its duration. */
+    /* Never refused: airtime is unlimited on every plan. The session is still
+       opened so the day is pinned for the duration, which keeps the telemetry
+       honest across midnight. */
     await openSession(store, id, deviceId);
     return respond(200, { allowed: true });
   }
@@ -364,22 +371,15 @@ export default async function handler(req: Request): Promise<Response> {
     if (!Number.isFinite(delta) || delta <= 0) {
       return respond(400, { allowed: false, reason: 'bad-delta' });
     }
-    /* Clamp: a suspended tab or a forged huge delta cannot burn or bank more
-       than one real tick. */
+    /* Clamp: a suspended tab or a forged huge delta cannot bank more than one
+       real tick. This is a sanity bound on the METER, not a cap on airtime. */
     const add = Math.min(Math.round(delta), MAX_TICK_MS);
 
-    if (rec.usedMs >= FREE_DAILY_LIMIT_MS) {
-      return respond(403, { allowed: false, reason: 'exhausted' });
-    }
-
-    rec.usedMs = Math.min(FREE_DAILY_LIMIT_MS, rec.usedMs + add);
+    rec.usedMs += add;
     await persist();
 
-    const exhausted = rec.usedMs >= FREE_DAILY_LIMIT_MS;
-    return respond(exhausted ? 403 : 200, {
-      allowed: !exhausted,
-      reason: exhausted ? 'exhausted' : undefined,
-    });
+    /* Always allowed. The tally is recorded, never enforced. */
+    return respond(200, { allowed: true });
   }
 
   if (action === 'stop') {

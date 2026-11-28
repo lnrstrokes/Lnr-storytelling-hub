@@ -8,6 +8,15 @@
    Zero external API dependencies — runs deterministically offline.
    ============================================================ */
 
+/* The pack layer: named graphic and motion primitives a story can reference.
+   Imported here so the Evidence Board schema can be validated on ingestion —
+   an unknown pack name is now a named error instead of a silently blank scene. */
+import {
+  validatePackReferences,
+  checkStoryQuality,
+  loadCustomPacks,
+} from './story-packs.ts';
+
 export type StoryArchetype =
   | 'historical_anomaly'
   | 'historical_heist'
@@ -1471,6 +1480,27 @@ function normalizeVisualMode(raw: unknown): StoryBeatVisualMode {
   return 'evidence_card';
 }
 
+/**
+ * Map an Evidence Board graphic pack onto the visual mode the stage already
+ * knows how to draw.
+ *
+ * The engine has ten visual modes and they are the right primitives: `map` is a
+ * floor plan, `profile` is a composite sketch, `evidence_card` is a note,
+ * `artifact` is a stamp. So a pack does not need a new renderer to be useful —
+ * it needs a mapping. This is that mapping, and it is why the pack layer can
+ * ship before the DOM builders do.
+ */
+function visualModeForPack(pack: string): StoryBeatVisualMode {
+  const p = String(pack || '').toLowerCase();
+  if (p.includes('floorplan') || p.includes('trailmap')) return 'map';
+  if (p.includes('sketch') || p.includes('silhouette')) return 'profile';
+  if (p.includes('stamp')) return 'artifact';
+  if (p.includes('document') || p.includes('card')) return 'document';
+  if (p.includes('string')) return 'comparison';
+  if (p.includes('board')) return 'evidence_card';
+  return 'evidence_card';
+}
+
 function normalizeSpeaker(raw: unknown): StorySpeaker | undefined {
   const s = String(raw || '').toUpperCase().trim();
   if (s === 'SAR' || s === 'DIQ' || s === 'NARRATOR') return s;
@@ -1590,6 +1620,122 @@ function validateAndNormalizeEpisode(raw: unknown, idx: number): { ep?: StoryEpi
     };
   }
 
+  /* 1b. Evidence Board pack schema: { title, background, scenes:[{elements:[]}] }
+
+     This is the shape the story-generation system prompt asks for. It used to
+     fall through to the legacy `acts` branch and fail with "must include
+     hook+beats or acts", so a story written to the brief was rejected outright.
+     It is accepted here and mapped onto the existing StoryEpisode model: one
+     scene becomes one beat, and the pack name picks the visual mode. */
+  if (Array.isArray(obj.scenes) && obj.scenes.length) {
+    const title = String(obj.title || '').trim();
+    if (title.length < 3) return { err: `Story ${idx + 1}: missing "title"` };
+
+    const packIssues = validatePackReferences(
+      obj as Parameters<typeof validatePackReferences>[0]
+    );
+    const hardErrors = packIssues.filter((i) => i.severity === 'error');
+    if (hardErrors.length) {
+      /* A pack that does not exist used to be ignored, which rendered a blank
+         scene with no explanation. It is now a named error. */
+      return {
+        err: `Story "${title}": ${hardErrors.map((i) => `${i.where}: ${i.message}`).join('; ')}`
+      };
+    }
+
+    const beats: StoryBeat[] = [];
+    (obj.scenes as Record<string, unknown>[]).forEach((scRaw, sIdx) => {
+      if (!scRaw || typeof scRaw !== 'object') return;
+      const sc = scRaw as Record<string, unknown>;
+      const elements = Array.isArray(sc.elements) ? (sc.elements as Record<string, unknown>[]) : [];
+
+      /* The scene's narration is the concatenation of its note bodies: that is
+         what the reader speaks and what the beat text is used for. */
+      const lines: string[] = [];
+      let headline = '';
+      let firstPack = '';
+      elements.forEach((elRaw) => {
+        if (!elRaw || typeof elRaw !== 'object') return;
+        const el = elRaw as Record<string, unknown>;
+        if (!firstPack && el.pack) firstPack = String(el.pack);
+        const content = (el.content && typeof el.content === 'object' ? el.content : {}) as Record<string, unknown>;
+        if (!headline && content.title) headline = String(content.title).trim();
+        if (Array.isArray(content.body)) {
+          content.body.forEach((line) => {
+            const t = String(line || '').trim();
+            if (t) lines.push(t);
+          });
+        }
+        if (Array.isArray(content.highlights)) {
+          content.highlights.forEach((h) => {
+            const text = h && typeof h === 'object' ? String((h as Record<string, unknown>).text || '').trim() : '';
+            if (text) lines.push(text);
+          });
+        }
+      });
+
+      const text = lines.join(' ').trim();
+      if (text.length < 10) return;
+
+      beats.push({
+        beatNumber: beats.length + 1,
+        visualMode: visualModeForPack(firstPack),
+        headline: headline || `Exhibit ${beats.length + 1}`,
+        text,
+        openLoop: sc.transition_out ? String(sc.transition_out) : undefined,
+        visual: {},
+      });
+    });
+
+    if (!beats.length) return { err: `Story "${title}": no scene produced readable text` };
+
+    const quality = checkStoryQuality(obj as Parameters<typeof checkStoryQuality>[0]);
+    quality.forEach((q) => {
+      /* Warnings are surfaced, not fatal: a story that is merely thin should
+         still play. */
+      if (q.severity === 'warning') console.warn(`[story] ${title} — ${q.where}: ${q.message}`);
+    });
+
+    return {
+      ep: {
+        id: String(obj.id || obj.story_id || `custom_board_${Date.now()}_${idx}`),
+        title,
+        subtitle: String(obj.subtitle || 'Evidence Board reconstruction').trim(),
+        category,
+        era: String(obj.era || 'Investigative Archive').trim(),
+        archetype: 'historical_heist',
+        pacingProfile,
+        accentColor: String(obj.accent_color || obj.accentColor || '#cfa35a'),
+        audioBedPreference: 'ambient',
+        hook: {
+          durationSec: 9,
+          badge: String(obj.badge || 'CASE FILE · EVIDENCE BOARD').trim(),
+          headline: title.toUpperCase(),
+          narration: beats[0].text,
+        },
+        beats: beats.slice(0, 8),
+        chatCheckpoint: {
+          countdownSec: 15,
+          prompt: String(obj.central_question || 'WHAT DOES THE EVIDENCE POINT TO?').trim(),
+          options: [
+            'A) The protocol was broken from the inside',
+            'B) The loss was an accident of timing',
+            'C) The record itself is unreliable',
+          ],
+          correctIndex: 0,
+        },
+        resolution: {
+          reveal: String(obj.reveal || 'The evidence board closes with the case still open.').trim(),
+          flawEveryoneMisses: String(
+            obj.flaw || 'The reconstruction shows how long the breach went unchallenged.'
+          ).trim(),
+          whyItMatters: String(obj.why_it_matters || 'Chronology is what turns a rumour into a case.').trim(),
+          nextStoryBridge: 'Stay in chat — the next case file opens shortly.',
+        },
+      },
+    };
+  }
+
   /* 2. Backward-compatible fallback for legacy { acts: [...] } JSON packs */
   const title = String(obj.title || '').trim();
   if (title.length < 3) return { err: `Story ${idx + 1}: missing "title"` };
@@ -1660,6 +1806,9 @@ function validateAndNormalizeEpisode(raw: unknown, idx: number): { ep?: StoryEpi
 
 export function loadStoryLibrary(): Promise<void> {
   loadCustomFromStorage();
+  /* Custom packs must be registered before any story is validated, or a story
+     that references a user-uploaded pack would be rejected as unknown. */
+  loadCustomPacks();
 
   const api = {
     getAllEpisodes: (category?: string): StoryEpisode[] => {

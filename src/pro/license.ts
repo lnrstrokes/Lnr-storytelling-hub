@@ -258,6 +258,71 @@ async function post(
   }
 }
 
+/** The pending-checkout marker openProCheckout() writes, read on activation. */
+interface PendingCheckout {
+  ref?: string;
+  location?: string;
+  at?: number;
+}
+
+/**
+ * Report a completed purchase to analytics.
+ *
+ * This is the only place a `purchase` event is emitted, and it fires on a
+ * VERIFIED activation — the licence server has already said yes, so this is a
+ * real sale and not a click. It is matched back to the click that started it
+ * through the pending-checkout marker openProCheckout() writes.
+ *
+ * A key activated with no marker (hand-minted, or bought on another device)
+ * reports `purchase_unattributed` instead, so those stay distinguishable
+ * rather than being silently merged into real sales.
+ */
+function reportPurchase(license: ProLicense): void {
+  try {
+    const track = (window as unknown as {
+      LNR_TRACK?: (name: string, params?: Record<string, unknown>) => void;
+    }).LNR_TRACK;
+    if (typeof track !== 'function') return;
+
+    const PENDING_KEY = 'lnr_pending_checkout_v1';
+    const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+    let marker: PendingCheckout | null = null;
+    try {
+      const raw = localStorage.getItem(PENDING_KEY);
+      if (raw) marker = JSON.parse(raw) as PendingCheckout;
+    } catch {
+      marker = null;
+    }
+
+    const fresh =
+      !!marker &&
+      typeof marker.at === 'number' &&
+      Date.now() - marker.at >= 0 &&
+      Date.now() - marker.at <= MAX_AGE_MS;
+
+    if (fresh && marker) {
+      track('purchase', {
+        checkout_ref: marker.ref || '',
+        checkout_location: marker.location || '',
+        plan: license.tier,
+        value: 19,
+        currency: 'USD',
+        seconds_since_checkout: Math.round((Date.now() - (marker.at || Date.now())) / 1000),
+      });
+      /* Consumed once: a second device activating the same key must not report
+         a second sale. */
+      try {
+        localStorage.removeItem(PENDING_KEY);
+      } catch {}
+    } else {
+      track('purchase_unattributed', { plan: license.tier });
+    }
+  } catch {
+    /* analytics must never break activation */
+  }
+}
+
 /**
  * Activate a key on this device.
  *
@@ -299,6 +364,8 @@ export async function activatePro(
     // Verified, but unusable here (wrong site / already expired).
     return { ok: false, error: next.error || 'This key cannot be used on this site.' };
   }
+  /* Only a verified, usable key counts as a sale. */
+  reportPurchase(license);
   return { ok: true };
 }
 

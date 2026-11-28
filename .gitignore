@@ -24,3 +24,4 @@ server.js
 lnr-storytelling-hub/evidence/
 evidence/
 public/og-image.png
+verify-results*.json

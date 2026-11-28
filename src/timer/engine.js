@@ -541,21 +541,68 @@
     return false;
   }
 
-  /** Send a plan button to the secure checkout (never to a local unlock). */
-  function openProCheckout() {
+  /** Send a plan button to the secure checkout (never to a local unlock).
+   *
+   *  THIS IS THE ONLY PLACE THAT REPORTS AN UPGRADE.
+   *
+   *  It is the only code that actually leaves for Selar, so it is the only
+   *  place that can honestly say "a checkout was started". Three other layers
+   *  used to fire `upgrade_click` on the same click (analytics-entry.ts,
+   *  TimerApp.tsx, and two more handlers in this file), which is why one Pro
+   *  click produced three or four events and why the funnel was unreadable.
+   *
+   *  The funnel is now: upgrade_click -> checkout_start -> (Selar) -> purchase.
+   *  `purchase` is emitted by pro/license.ts when a key is activated, matched
+   *  back to this click through the pending-checkout marker written below.
+   */
+  function openProCheckout(location) {
+    var loc = location || 'pro_checkout_button';
+
+    /* A non-identifying reference, so the activation can be tied back to the
+       click that started it. Random, not derived from the device or the user:
+       it carries no personal data and is useless outside this funnel. */
+    var ref = '';
     try {
-      window.open(PRO_CHECKOUT_URL, '_blank', 'noopener,noreferrer');
+      var bytes = new Uint8Array(8);
+      crypto.getRandomValues(bytes);
+      ref = Array.prototype.map.call(bytes, function (b) {
+        return ('0' + b.toString(16)).slice(-2);
+      }).join('');
+    } catch (e) {
+      ref = String(Date.now());
+    }
+
+    var url = PRO_CHECKOUT_URL;
+    try {
+      url += (url.indexOf('?') === -1 ? '?' : '&') + 'ref=' + encodeURIComponent(ref);
+    } catch (e) {}
+
+    /* Record the click BEFORE opening the tab: a popup blocker or a fast
+       navigation must not be able to swallow the event. */
+    try {
+      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
+        window.LNR_TRACK('upgrade_click', { location: loc });
+        window.LNR_TRACK('checkout_start', { location: loc, checkout_ref: ref });
+      }
+    } catch (e) {}
+
+    /* The marker pro/license.ts reads on activation. Seven days is long enough
+       for a manual key to arrive and be pasted in, short enough that a stale
+       marker cannot claim a later, unrelated purchase. */
+    try {
+      localStorage.setItem('lnr_pending_checkout_v1', JSON.stringify({
+        ref: ref,
+        location: loc,
+        at: Date.now()
+      }));
+    } catch (e) {}
+
+    try {
+      window.open(url, '_blank', 'noopener,noreferrer');
       toast('Opening secure checkout. Activate your Pro key in the Pro panel after payment.');
     } catch (e) {
       toast('Subscribe at ' + PRO_CHECKOUT_URL + ', then activate your Pro key.');
     }
-    // Existing Selar checkout surface.
-    try {
-      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
-        window.LNR_TRACK('selar_open');
-        window.LNR_TRACK('upgrade_click', { location: 'pro_checkout_button' });
-      }
-    } catch (e) {}
   }
 
   function toast(msg, bad) {
@@ -826,20 +873,18 @@
     on(el.homeGoStudioBtn, 'click', function () { setPage('studio'); setWizardStep(1); });
     on(el.topbarStartBtn, 'click', function () { setPage('studio'); setWizardStep(1); });
     on(el.pricingProBtn, 'click', function () {
-      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
-        try { window.LNR_TRACK('upgrade_click', { location: 'pricing_pro_btn' }); } catch (e) {}
-      }
-      openProCheckout();
+      /* No tracking here: openProCheckout owns upgrade_click and checkout_start,
+         so reporting it here as well would double-count the same click. */
+      openProCheckout('pricing_pro_btn');
     });
     on(el.pricingFreeBtn, 'click', function () {
-      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
-        try { window.LNR_TRACK('upgrade_click', { location: 'pricing_free_btn' }); } catch (e) {}
-      }
+      /* "Current Plan" is informational. It is not an upgrade and must not be
+         reported as one; analytics-entry.ts records it as plan_current_click. */
     });
     on(el.homeGoStudioBtn, 'click', function () {
-      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
-        try { window.LNR_TRACK('upgrade_click', { location: 'home_start_studio' }); } catch (e) {}
-      }
+      /* "Start free" opens the studio. analytics-entry.ts records it as
+         studio_start. It used to be logged as upgrade_click, which made every
+         new visitor look like a warm upgrade lead. */
     });
     /* A licence activated (or removed) in the dock re-evaluates the tier. */
     window.addEventListener('lnr:pro-changed', function () {
@@ -6919,6 +6964,12 @@
       if (phase === 'video' && clips.length > 0) {
         var firstClip = clips[0];
         var ownership = firstClip ? clipOwnership(firstClip.id) : 'reference';
+        /* Clear the once-per-clip guard BEFORE the notice is shown. Without
+           this the disclaimer appeared on the first clip of a page load and was
+           suppressed on every clip after it, because the only other reset lived
+           inside dismissPreroll() and that returns early for an owned clip
+           (prerollActive is false). */
+        resetInteractiveNotice();
         /* A REFERENCE clip gets the spoken disclaimer before it airs; an owned
            clip plays straight away. `startPreroll()` was left defined but never
            called, so the reference disclaimer never played at all — the reader
@@ -8073,20 +8124,16 @@
     } catch (e) {}
   });
   on(el.sermonUpgradeLink, 'click', function (e) {
-    // Existing upgrade link on the sermon panel.
-    try {
-      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
-        window.LNR_TRACK('upgrade_click', { location: 'sermon_upgrade_link' });
-      }
-    } catch (e) {}
+    /* These two links used to record an upgrade_click and then do nothing at
+       all: the visitor stayed on the page, the click was counted, and the sale
+       was impossible. They now go through openProCheckout, which is the single
+       owner of the upgrade funnel. */
+    if (e && e.preventDefault) e.preventDefault();
+    openProCheckout('sermon_upgrade_link');
   });
   on(el.videoTierUpgradeLink, 'click', function (e) {
-    // Existing upgrade link on the video tier note.
-    try {
-      if (window.LNR_TRACK && typeof window.LNR_TRACK === 'function') {
-        window.LNR_TRACK('upgrade_click', { location: 'video_tier_upgrade_link' });
-      }
-    } catch (e) {}
+    if (e && e.preventDefault) e.preventDefault();
+    openProCheckout('video_tier_upgrade_link');
   });
 
   function csvCell(val) {
