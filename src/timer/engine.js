@@ -3031,6 +3031,29 @@
     interactiveNoticeDismissed = true;
   }
 
+  /* Clear the once-per-clip guard so the next qualifying clip shows its notice.
+     This is the function `enterPhase()` calls on every entry into the video
+     phase. It was CALLED there but never DEFINED, so the call threw
+     "ReferenceError: resetInteractiveNotice is not defined" at the top of the
+     video branch — which aborted enterPhase() before playClip(0) ran. The
+     visible symptom was the video engine "failing to load": the stage came up
+     with an empty frame, stageVideo.src stayed empty and readyState 0, and the
+     "add a clip" placeholder stayed on screen even though a clip was loaded.
+     It also has to clear the pending timer and hide the card, otherwise a
+     notice left over from the previous clip would still be on screen. */
+  function resetInteractiveNotice() {
+    if (interactiveNoticeTimer) {
+      window.clearTimeout(interactiveNoticeTimer);
+      interactiveNoticeTimer = 0;
+    }
+    var overlay = el.videoPreroll;
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.onclick = null;
+    }
+    interactiveNoticeDismissed = false;
+  }
+
   function currentInteractiveDisclaimer() {
     try {
       var raw = localStorage.getItem('lnr_video_disclaimer_v1');
